@@ -15,24 +15,15 @@ if 'round_results' not in st.session_state:
 # UI Title
 st.title("Algo Z100-Inspired Baccarat Predictor")
 
-# Game Result Entry with Point Input
+# Game Result Entry with Form for Better UX
 st.subheader("Enter Game Result")
-col1, col2, col3 = st.columns(3)
-with col1:
-    if st.button("Player Wins"):
-        points = st.number_input("Enter Player points (0-9):", min_value=0, max_value=9, value=0, key="player_points")
-        if points is not None:
-            st.session_state.history.append(("P", points))
-with col2:
-    if st.button("Banker Wins"):
-        points = st.number_input("Enter Banker points (0-9):", min_value=0, max_value=9, value=0, key="banker_points")
-        if points is not None:
-            st.session_state.history.append(("B", points))
-with col3:
-    if st.button("Tie"):
-        points = st.number_input("Enter Tie points (0-9):", min_value=0, max_value=9, value=0, key="tie_points")
-        if points is not None:
-            st.session_state.history.append(("T", points))
+with st.form("game_result"):
+    outcome = st.selectbox("Result:", ["Player Wins", "Banker Wins", "Tie"])
+    points = st.number_input("Points (0-9):", min_value=0, max_value=9, value=0)
+    submit = st.form_submit_button("Add Result")
+    if submit:
+        outcome_map = {"Player Wins": "P", "Banker Wins": "B", "Tie": "T"}
+        st.session_state.history.append((outcome_map[outcome], points))
 
 # Bead Plate Function (Casino-Style with Plotly)
 def create_bead_plate(history, rows=6, cols=12):
@@ -67,12 +58,12 @@ def create_bead_plate(history, rows=6, cols=12):
             mode="markers+text",
             marker=dict(
                 color=colors,
-                size=30,  # Larger size to fit numbers
+                size=28,  # Adjusted size to match image
                 line=dict(width=1, color="black")  # Black outline
             ),
             text=points_text,
             textposition="middle center",
-            textfont=dict(color="white", size=14),  # White numbers
+            textfont=dict(color="white", size=16, family="Arial"),  # White numbers, larger font
             hoverinfo="text",
             texttemplate="%{text}",
         )
@@ -86,30 +77,43 @@ def create_bead_plate(history, rows=6, cols=12):
     if next_row < rows:
         arrow_x = next_col
         arrow_y = rows - 1 - next_row
-        if next_row < rows - 1:  # Point down if column not full
+        if next_row < rows - 1 and next_col == cols - 1:  # Point left if column full
+            arrow_dx = 0.9
+            arrow_dy = 0
+        elif next_row < rows - 1:  # Point down if column not full
             arrow_dx = 0
-            arrow_dy = -0.8
-        else:  # Point left if moving to next column
-            arrow_dx = 0.8
+            arrow_dy = -0.9
+        else:  # Point left if at bottom-right corner
+            arrow_dx = 0.9
             arrow_dy = 0
     
     # Add arrows
     if arrow_x is not None and arrow_y is not None:
+        # Main arrow line
         fig.add_shape(
             type="line",
             x0=arrow_x, y0=arrow_y,
             x1=arrow_x + arrow_dx, y1=arrow_y + arrow_dy,
-            line=dict(color="white", width=3),
+            line=dict(color="white", width=4),  # Thicker arrow
             xref="x", yref="y"
         )
-        # Add arrowhead
-        fig.add_shape(
-            type="path",
-            path=f"M {arrow_x + arrow_dx} {arrow_y + arrow_dy} L {arrow_x + arrow_dx - 0.2 if arrow_dx else arrow_x} {arrow_y + arrow_dy + 0.2 if arrow_dy else arrow_y + 0.2} L {arrow_x + arrow_dx + 0.2 if arrow_dx else arrow_x} {arrow_y + arrow_dy - 0.2 if arrow_dy else arrow_y - 0.2} Z",
-            fillcolor="white",
-            line=dict(color="white"),
-            xref="x", yref="y"
-        )
+        # Add arrowhead (triangle)
+        if arrow_dx > 0:  # Left arrow
+            fig.add_shape(
+                type="path",
+                path=f"M {arrow_x + arrow_dx} {arrow_y} L {arrow_x + arrow_dx - 0.3} {arrow_y + 0.3} L {arrow_x + arrow_dx - 0.3} {arrow_y - 0.3} Z",
+                fillcolor="white",
+                line=dict(color="white"),
+                xref="x", yref="y"
+            )
+        else:  # Down arrow
+            fig.add_shape(
+                type="path",
+                path=f"M {arrow_x} {arrow_y + arrow_dy} L {arrow_x + 0.3} {arrow_y + arrow_dy + 0.3} L {arrow_x - 0.3} {arrow_y + arrow_dy + 0.3} Z",
+                fillcolor="white",
+                line=dict(color="white"),
+                xref="x", yref="y"
+            )
     
     # Customize layout
     fig.update_layout(
@@ -128,8 +132,8 @@ def create_bead_plate(history, rows=6, cols=12):
         ),
         showlegend=False,
         plot_bgcolor="white",
-        paper_bgcolor="#4B0082",  # Purple background like the image
-        width=800,
+        paper_bgcolor="#4B0082",  # Purple background
+        width=900,  # Wider to match image proportions
         height=300,
         margin=dict(l=20, r=20, t=20, b=20)
     )
@@ -140,10 +144,10 @@ def create_bead_plate(history, rows=6, cols=12):
             if (rows - 1 - row) not in y_positions or col not in x_positions or (col, rows - 1 - row) not in zip(x_positions, y_positions):
                 fig.add_shape(
                     type="rect",
-                    x0=col - 0.4, y0=(rows - 1 - row) - 0.4,
-                    x1=col + 0.4, y1=(rows - 1 - row) + 0.4,
+                    x0=col - 0.35, y0=(rows - 1 - row) - 0.35,
+                    x1=col + 0.35, y1=(rows - 1 - row) + 0.35,
                     fillcolor="lightgray",
-                    line=dict(color="lightgray"),
+                    line=dict(color="lightgray", width=1),
                     xref="x", yref="y"
                 )
     
@@ -158,7 +162,7 @@ if st.session_state.history:
 else:
     st.write("No history yet. Add game outcomes to see the bead plate.")
 
-# Show raw history (optional, for reference)
+# Show raw history
 st.write("Raw History: " + " ".join([f"{outcome}({points})" for outcome, points in st.session_state.history]))
 
 # Prediction Engine (Hybrid AI)
