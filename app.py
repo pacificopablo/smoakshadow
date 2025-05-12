@@ -26,16 +26,53 @@ with col3:
     if st.button("Tie"):
         st.session_state.history.append("T")
 
-# Show history
-st.subheader("Game History")
-st.write(" ".join(st.session_state.history))
+# Bead Plate Function
+def create_bead_plate(history, rows=6, cols=12):
+    # Initialize empty grid
+    grid = np.full((rows, cols), "", dtype=str)
+    
+    # Fill grid with history outcomes
+    for i, outcome in enumerate(history):
+        row = i // cols
+        col = i % cols
+        if row < rows:  # Only fill within grid size
+            grid[row, col] = outcome
+    
+    # Create DataFrame
+    df = pd.DataFrame(grid)
+    
+    # Define styling function for DataFrame
+    def style_cell(val):
+        if val == "P":
+            return "background-color: blue; color: white; text-align: center;"
+        elif val == "B":
+            return "background-color: red; color: white; text-align: center;"
+        elif val == "T":
+            return "background-color: green; color: white; text-align: center;"
+        return "background-color: white; text-align: center;"
+    
+    # Apply styling
+    styled_df = df.style.applymap(style_cell)
+    return styled_df
+
+# Show Bead Plate
+st.subheader("Bead Plate (Game History)")
+st.write("Blue: Player (P), Red: Banker (B), Green: Tie (T)")
+if st.session_state.history:
+    bead_plate = create_bead_plate(st.session_state.history)
+    st.dataframe(bead_plate, use_container_width=True)
+else:
+    st.write("No history yet. Add game outcomes to see the bead plate.")
+
+# Show raw history (optional, for reference)
+st.write("Raw History: " + " ".join(st.session_state.history))
 
 # Prediction Engine (Hybrid AI)
 def predict_next_move(history):
     if len(history) < 4:
         return "Waiting", 0.0
 
-    # Pattern vote (very simple example)
+    # Pattern vote
     last_four = history[-4:]
     pattern_vote = "B" if last_four.count("B") > last_four.count("P") else "P"
 
