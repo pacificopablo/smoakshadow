@@ -8,6 +8,7 @@ from typing import Tuple, Dict, Optional, List
 
 # --- Constants ---
 SESSION_FILE = "online_users.txt"
+SIMULATION_LOG = "simulation_log.txt"
 PARLAY_TABLE = {
     i: {'base': b, 'parlay': p} for i, (b, p) in enumerate([
         (1, 2), (1, 2), (1, 2), (2, 4), (3, 6), (4, 8), (6, 12), (8, 16),
@@ -78,6 +79,7 @@ def initialize_session_state():
         'z1003_loss_count': 0,
         'z1003_bet_factor': 1.0,
         'z1003_continue': False,
+        'z1003_level_changes': 0,
         'advice': "",
         'history': [],
         'wins': 0,
@@ -96,7 +98,6 @@ def initialize_session_state():
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0
     }
-    # Initialize fourgram tracking
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
     for key, value in defaults.items():
@@ -125,6 +126,7 @@ def reset_session():
         'z1003_loss_count': 0,
         'z1003_bet_factor': 1.0,
         'z1003_continue': False,
+        'z1003_level_changes': 0,
         'advice': "Session reset: Target reached.",
         'history': [],
         'wins': 0,
@@ -142,7 +144,7 @@ def reset_session():
 
 # --- Prediction Logic ---
 def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, int, int, float, float]:
-    """Analyze sequence patterns including bigrams, trigrams, 4-grams, and shoe bias, treating ties as neutral."""
+    """Analyze sequence patterns, excluding ties from streak/chop/double counts."""
     bigram_transitions = defaultdict(lambda: defaultdict(int))
     trigram_transitions = defaultdict(lambda: defaultdict(int))
     fourgram_transitions = defaultdict(lambda: defaultdict(int))
@@ -151,6 +153,7 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
     current_streak = last_pattern = None
     player_count = banker_count = 0
 
+    filtered_sequence = [x for x in sequence if x in ['P', 'B']]  # Exclude ties for pattern counts
     for i in range(len(sequence) - 1):
         if sequence[i] == 'P':
             player_count += 1
@@ -168,22 +171,22 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
                     fourgram = tuple(sequence[i:i+4])
                     fourgram_transitions[fourgram][next_outcome] += 1
 
-        if i > 0 and sequence[i] != 'T' and sequence[i-1] != 'T':
-            if sequence[i] == sequence[i-1]:
-                if current_streak == sequence[i]:
-                    streak_count += 1
-                else:
-                    current_streak = sequence[i]
-                    streak_count = 1
-                if i > 1 and sequence[i-1] == sequence[i-2] and sequence[i-2] != 'T':
-                    double_count += 1
+    for i in range(1, len(filtered_sequence)):
+        if filtered_sequence[i] == filtered_sequence[i-1]:
+            if current_streak == filtered_sequence[i]:
+                streak_count += 1
             else:
-                current_streak = None
-                streak_count = 0
-                if i > 1 and sequence[i] != sequence[i-2] and sequence[i-2] != 'T':
-                    chop_count += 1
+                current_streak = filtered_sequence[i]
+                streak_count = 1
+            if i > 1 and filtered_sequence[i-1] == filtered_sequence[i-2]:
+                double_count += 1
+        else:
+            current_streak = None
+            streak_count = 0
+            if i > 1 and filtered_sequence[i] != filtered_sequence[i-2]:
+                chop_count += 1
 
-        if i < len(sequence) - 2:
+        if i < len(filtered_sequence) - 1:
             current_pattern = (
                 'streak' if streak_count >= 2 else
                 'chop' if chop_count >= 2 else
@@ -192,18 +195,18 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
             if last_pattern and last_pattern != current_pattern:
                 pattern_changes += 1
             last_pattern = current_pattern
-            next_outcome = sequence[i+2]
+            next_outcome = filtered_sequence[i+1]
             pattern_transitions[current_pattern][next_outcome] += 1
 
-    volatility = pattern_changes / max(len(sequence) - 2, 1)
+    volatility = pattern_changes / max(len(filtered_sequence) - 2, 1)
     total_outcomes = max(player_count + banker_count, 1)
     shoe_bias = player_count / total_outcomes if player_count > banker_count else -banker_count / total_outcomes
     return (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
             streak_count, chop_count, double_count, volatility, shoe_bias)
 
 def calculate_weights(streak_count: int, chop_count: int, double_count: int, shoe_bias: float) -> Dict[str, float]:
-    """Calculate adaptive weights using pseudo-logistic success ratios and shoe bias."""
-    total_bets = max(st.session_state.pattern_attempts.get('bigram', 1), 1)
+    """Calculate adaptive weights, emphasizing four-grams when reliable."""
+    total_bets = max(st.session_state.pattern_attempts.get('fourgram', 1), 1)
     success_ratios = {
         'bigram': st.session_state.pattern_success.get('bigram', 0) / total_bets
                   if st.session_state.pattern_attempts.get('bigram', 0) > 0 else 0.5,
@@ -215,27 +218,27 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
         'chop': 0.4 if chop_count >= 2 else 0.2,
         'double': 0.4 if double_count >= 1 else 0.2
     }
-    # Pseudo-logistic transformation: exp(success) / (1 + exp(success))
+    if success_ratios['fourgram'] > 0.6:  # Boost four-gram weight if highly successful
+        success_ratios['fourgram'] *= 1.2
     weights = {k: np.exp(v) / (1 + np.exp(v)) for k, v in success_ratios.items()}
     
-    # Adjust for shoe bias
     if shoe_bias > 0.1:
         weights['bigram'] *= 1.1
         weights['trigram'] *= 1.1
-        weights['fourgram'] *= 1.1
+        weights['fourgram'] *= 1.15
     elif shoe_bias < -0.1:
         weights['bigram'] *= 0.9
         weights['trigram'] *= 0.9
-        weights['fourgram'] *= 0.9
+        weights['fourgram'] *= 0.85
 
     total_w = sum(weights.values())
     if total_w == 0:
-        weights = {'bigram': 0.35, 'trigram': 0.25, 'fourgram': 0.20, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
+        weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
         total_w = sum(weights.values())
     return {k: max(w / total_w, 0.05) for k, w in weights.items()}
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
-    """Predict the next outcome with 4-grams, shoe bias, and neutral tie handling."""
+    """Predict the next outcome with enhanced four-grams and neutral tie handling."""
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
     if len(sequence) < 4:
         return 'B', 45.86, {}
@@ -250,7 +253,6 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
     prob_p = prob_b = total_weight = 0
     insights = {}
 
-    # Bigram
     if len(recent_sequence) >= 2:
         bigram = tuple(recent_sequence[-2:])
         total = sum(bigram_transitions[bigram].values())
@@ -262,7 +264,6 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
             total_weight += weights['bigram']
             insights['Bigram'] = f"{weights['bigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
 
-    # Trigram
     if len(recent_sequence) >= 3:
         trigram = tuple(recent_sequence[-3:])
         total = sum(trigram_transitions[trigram].values())
@@ -274,7 +275,6 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
             total_weight += weights['trigram']
             insights['Trigram'] = f"{weights['trigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
 
-    # Fourgram
     if len(recent_sequence) >= 4:
         fourgram = tuple(recent_sequence[-4:])
         total = sum(fourgram_transitions[fourgram].values())
@@ -286,7 +286,6 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
             total_weight += weights['fourgram']
             insights['Fourgram'] = f"{weights['fourgram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
 
-    # Streak
     if streak_count >= 2:
         streak_prob = min(0.7, 0.5 + streak_count * 0.05) * (0.8 if streak_count > 4 else 1.0)
         current_streak = recent_sequence[-1]
@@ -299,7 +298,6 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
         total_weight += weights['streak']
         insights['Streak'] = f"{weights['streak']*100:.0f}% ({streak_count} {current_streak})"
 
-    # Chop
     if chop_count >= 2:
         next_pred = 'B' if recent_sequence[-1] == 'P' else 'P'
         if next_pred == 'P':
@@ -311,7 +309,6 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
         total_weight += weights['chop']
         insights['Chop'] = f"{weights['chop']*100:.0f}% ({chop_count} alternations)"
 
-    # Double
     if double_count >= 1 and len(recent_sequence) >= 2 and recent_sequence[-1] == recent_sequence[-2]:
         double_prob = 0.6
         if recent_sequence[-1] == 'P':
@@ -329,7 +326,6 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
     else:
         prob_p, prob_b = 44.62, 45.86
 
-    # Adjust for shoe bias
     if shoe_bias > 0.1:
         prob_p *= 1.05
         prob_b *= 0.95
@@ -355,13 +351,13 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
         insights['Pattern Transition'] = f"10% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
 
     recent_accuracy = (st.session_state.prediction_accuracy['P'] + st.session_state.prediction_accuracy['B']) / max(st.session_state.prediction_accuracy['total'], 1)
-    threshold = 30.0 + (st.session_state.consecutive_losses * 0.3) - (recent_accuracy * 1.0)
-    threshold = min(max(threshold, 30.0), 40.0)
+    threshold = 32.0 + (st.session_state.consecutive_losses * 0.5) - (recent_accuracy * 0.8)  # Stricter threshold
+    threshold = min(max(threshold, 32.0), 42.0)
     insights['Threshold'] = f"{threshold:.1f}%"
 
     if st.session_state.pattern_volatility > 0.5:
-        threshold += 1.0
-        insights['Volatility'] = f"High (Adjustment: +1% threshold)"
+        threshold += 1.5
+        insights['Volatility'] = f"High (Adjustment: +1.5% threshold)"
 
     if prob_p > prob_b and prob_p >= threshold:
         return 'P', prob_p, insights
@@ -398,12 +394,12 @@ def update_t3_level():
         st.session_state.t3_results = []
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
-    """Calculate the next bet amount based on strategy and conditions."""
+    """Calculate the next bet amount, resetting level/step if risk is too high."""
     if st.session_state.consecutive_losses >= 3 and conf < 45.0:
         return None, f"No bet: Paused after {st.session_state.consecutive_losses} losses"
     if st.session_state.pattern_volatility > 0.6:
         return None, f"No bet: High pattern volatility"
-    if pred is None or conf < 30.0:
+    if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
 
     if st.session_state.strategy == 'Z1003.1':
@@ -417,7 +413,20 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     else:  # Parlay16
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
         bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
-        if bet_amount > st.session_state.bankroll:
+        st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
+
+    safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
+    if (bet_amount > st.session_state.bankroll or
+        st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
+        bet_amount > st.session_state.bankroll * 0.10):
+        if st.session_state.strategy == 'T3':
+            old_level = st.session_state.t3_level
+            st.session_state.t3_level = 1
+            if old_level != st.session_state.t3_level:
+                st.session_state.t3_level_changes += 1
+            st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, old_level)
+            bet_amount = st.session_state.base_bet
+        elif st.session_state.strategy == 'Parlay16':
             old_step = st.session_state.parlay_step
             st.session_state.parlay_step = 1
             st.session_state.parlay_using_base = True
@@ -425,20 +434,14 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                 st.session_state.parlay_step_changes += 1
             st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
             bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step]['base']
-        st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
-
-    safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
-    if (bet_amount > st.session_state.bankroll or
-        st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
-        bet_amount > st.session_state.bankroll * 0.10):
-        if st.session_state.strategy == 'Parlay16':
-            old_step = st.session_state.parlay_step
-            st.session_state.parlay_step = 1
-            st.session_state.parlay_using_base = True
-            if old_step != st.session_state.parlay_step:
-                st.session_state.parlay_step_changes += 1
-            st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
-        return None, "No bet: Risk too high for current bankroll."
+        elif st.session_state.strategy == 'Z1003.1':
+            old_loss_count = st.session_state.z1003_loss_count
+            st.session_state.z1003_loss_count = 0
+            st.session_state.z1003_bet_factor = 1.0
+            if old_loss_count != st.session_state.z1003_loss_count:
+                st.session_state.z1003_level_changes += 1
+            bet_amount = st.session_state.base_bet
+        return None, "No bet: Risk too high for current bankroll. Level/step reset to 1."
 
     return bet_amount, f"Next Bet: ${bet_amount:.0f} on {pred}"
 
@@ -464,6 +467,7 @@ def place_result(result: str):
         "z1003_loss_count": st.session_state.z1003_loss_count,
         "z1003_bet_factor": st.session_state.z1003_bet_factor,
         "z1003_continue": st.session_state.z1003_continue,
+        "z1003_level_changes": st.session_state.z1003_level_changes,
         "pending_bet": st.session_state.pending_bet,
         "wins": st.session_state.wins,
         "losses": st.session_state.losses,
@@ -580,7 +584,7 @@ def place_result(result: str):
 
 # --- Simulation Logic ---
 def simulate_shoe(num_hands: int = 80) -> Dict:
-    """Simulate a Baccarat shoe and evaluate prediction accuracy."""
+    """Simulate a Baccarat shoe and log results."""
     outcomes = np.random.choice(
         ['P', 'B', 'T'],
         size=num_hands,
@@ -610,7 +614,7 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
             st.session_state.prediction_accuracy[outcome] += 1 if pred == outcome else 0
 
     accuracy = (correct / total * 100) if total > 0 else 0
-    return {
+    result = {
         'accuracy': accuracy,
         'correct': correct,
         'total': total,
@@ -618,6 +622,15 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
         'pattern_attempts': dict(pattern_attempts),
         'sequence': sequence
     }
+
+    try:
+        with open(SIMULATION_LOG, 'a', encoding='utf-8') as f:
+            f.write(f"{datetime.now().isoformat()}: Accuracy={accuracy:.1f}%, Correct={correct}/{total}, "
+                    f"Fourgram={result['pattern_success'].get('fourgram', 0)}/{result['pattern_attempts'].get('fourgram', 0)}\n")
+    except PermissionError:
+        st.error("Unable to write to simulation log.")
+
+    return result
 
 # --- UI Components ---
 def render_setup_form():
@@ -667,6 +680,7 @@ def render_setup_form():
                     'z1003_loss_count': 0,
                     'z1003_bet_factor': 1.0,
                     'z1003_continue': False,
+                    'z1003_level_changes': 0,
                     'advice': "",
                     'history': [],
                     'wins': 0,
@@ -810,11 +824,11 @@ def render_status():
     st.markdown(f"**Safety Net Percentage**: {st.session_state.safety_net_percentage:.1f}%")
     strategy_status = f"**Betting Strategy**: {st.session_state.strategy}"
     if st.session_state.strategy == 'T3':
-        strategy_status += f" | Level: {st.session_state.t3_level} | Peak Level: {st.session_state.t3_peak_level}"
+        strategy_status += f" | Level: {st.session_state.t3_level} | Peak Level: {st.session_state.t3_peak_level} | Level Changes: {st.session_state.t3_level_changes}"
     elif st.session_state.strategy == 'Parlay16':
-        strategy_status += f" | Steps: {st.session_state.parlay_step}/16 | Peak Steps: {st.session_state.parlay_peak_step} | Consecutive Wins: {st.session_state.parlay_wins}"
+        strategy_status += f" | Steps: {st.session_state.parlay_step}/16 | Peak Steps: {st.session_state.parlay_peak_step} | Step Changes: {st.session_state.parlay_step_changes} | Consecutive Wins: {st.session_state.parlay_wins}"
     elif st.session_state.strategy == 'Z1003.1':
-        strategy_status += f" | Loss Count: {st.session_state.z1003_loss_count} | Continue: {st.session_state.z1003_continue}"
+        strategy_status += f" | Loss Count: {st.session_state.z1003_loss_count} | Level Changes: {st.session_state.z1003_level_changes} | Continue: {st.session_state.z1003_continue}"
     st.markdown(strategy_status)
     st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
     st.markdown(f"**Online Users**: {track_user_session()}")
@@ -904,6 +918,7 @@ def render_simulation():
             success = result['pattern_success'][pattern]
             attempts = result['pattern_attempts'][pattern]
             st.write(f"{pattern}: {success}/{attempts} ({success/attempts*100:.1f}%)" if attempts > 0 else f"{pattern}: 0/0 (0%)")
+        st.write("Results logged to simulation_log.txt")
 
 # --- Main Application ---
 def main():
