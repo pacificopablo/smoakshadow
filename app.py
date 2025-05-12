@@ -6,24 +6,27 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Z 1003.1 Baccarat Tracker", layout="wide")
 st.title("Z 1003.1 Baccarat Tracker")
 
-# --- Session Info ---
-st.header("1. Session Info")
-session_date = st.date_input("Date", date.today())
-table_id = st.text_input("Table ID")
-bankroll = st.number_input("Starting Bankroll", min_value=0)
-base_bet = st.number_input("Base Bet", min_value=0)
-trigger_found = st.checkbox("Trigger Found?")
-
-# Initialize session states
+# --- Session Initialization ---
 if "bets" not in st.session_state:
     st.session_state.bets = []
 if "profits" not in st.session_state:
     st.session_state.profits = [0]
 if "t3_level" not in st.session_state:
     st.session_state.t3_level = 1
+if "start_bankroll" not in st.session_state:
+    st.session_state.start_bankroll = 0
 
-# Display Current Bankroll
-current_bankroll = bankroll + st.session_state.profits[-1]
+# --- Session Info ---
+st.header("1. Session Info")
+session_date = st.date_input("Date", date.today())
+table_id = st.text_input("Table ID")
+start_bankroll = st.number_input("Starting Bankroll", value=st.session_state.start_bankroll, min_value=0)
+base_bet = st.number_input("Base Bet", min_value=0)
+trigger_found = st.checkbox("Trigger Found?")
+
+# Update session bankroll
+st.session_state.start_bankroll = start_bankroll
+current_bankroll = st.session_state.start_bankroll + st.session_state.profits[-1]
 st.markdown(f"**Current Bankroll:** ${current_bankroll}**")
 
 # --- Trigger Observation ---
@@ -48,7 +51,7 @@ if st.button("Add Bet"):
     if bet_side and actual_result:
         result = "Win" if bet_side == actual_result else "Loss"
         if actual_result == "Tie":
-            result = "Loss"  # Optionally treat Tie as Push
+            result = "Loss"
 
         profit = bet_amount if result == "Win" else -bet_amount
         new_total = st.session_state.profits[-1] + profit
@@ -59,12 +62,14 @@ if st.button("Add Bet"):
             "Amount": bet_amount,
             "Actual Result": actual_result,
             "Result": result,
-            "Level": st.session_state.t3_level
+            "Level": st.session_state.t3_level,
+            "Profit": profit,
+            "Bankroll After": st.session_state.start_bankroll + new_total
         })
 
         st.session_state.profits.append(new_total)
 
-        # T3 Progression (every 3 bets)
+        # T3 Logic
         if len(st.session_state.bets) % 3 == 0:
             last_3 = st.session_state.bets[-3:]
             win_count = sum(1 for b in last_3 if b["Result"] == "Win")
@@ -77,13 +82,13 @@ if st.button("Add Bet"):
             elif win_count == 0:
                 st.session_state.t3_level += 2
 
-# --- Bet History Table ---
+# --- Bet History ---
 if st.session_state.bets:
     st.subheader("Betting History")
     bets_df = pd.DataFrame(st.session_state.bets)
     st.dataframe(bets_df, use_container_width=True)
 
-    # --- Export ---
+    # CSV Export
     csv = bets_df.to_csv(index=False).encode("utf-8")
     st.download_button("Download CSV", csv, "baccarat_bets.csv", "text/csv")
 
@@ -96,14 +101,12 @@ if st.session_state.bets:
     first_win = st.session_state.bets[0]["Result"] == "Win"
 
     st.markdown(f"**Total Bets:** {len(st.session_state.bets)}")
-    st.markdown(f"**Total Wins:** {wins}")
-    st.markdown(f"**Total Losses:** {losses}")
+    st.markdown(f"**Wins:** {wins} | **Losses:** {losses}")
     st.markdown(f"**Total Profit:** ${total_profit}")
-    st.markdown(f"**First Win:** {'Yes' if first_win else 'No'}")
     st.markdown(f"**Current T3 Level:** {st.session_state.t3_level}")
-    st.markdown(f"**Updated Bankroll:** ${bankroll + total_profit}")
+    st.markdown(f"**Bankroll After All Bets:** ${st.session_state.start_bankroll + total_profit}")
 
-    # --- Chart ---
+    # Chart
     st.subheader("Profit Over Time")
     fig, ax = plt.subplots()
     ax.plot(st.session_state.profits, marker='o')
