@@ -69,10 +69,12 @@ def initialize_session_state():
         't3_level': 1,
         't3_results': [],
         't3_level_changes': 0,
+        't3_peak_level': 1,
         'parlay_step': 1,
         'parlay_wins': 0,
         'parlay_using_base': True,
         'parlay_step_changes': 0,
+        'parlay_peak_step': 1,
         'z1003_loss_count': 0,
         'z1003_bet_factor': 1.0,
         'z1003_continue': False,
@@ -111,10 +113,12 @@ def reset_session():
         't3_level': 1,
         't3_results': [],
         't3_level_changes': 0,
+        't3_peak_level': 1,
         'parlay_step': 1,
         'parlay_wins': 0,
         'parlay_using_base': True,
         'parlay_step_changes': 0,
+        'parlay_peak_step': 1,
         'z1003_loss_count': 0,
         'z1003_bet_factor': 1.0,
         'z1003_continue': False,
@@ -238,7 +242,7 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
             insights['Trigram'] = f"{weights['trigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
 
     if streak_count >= 2:
-        streak_prob = min(0.7, 0.5 + streak_count * 0.05) * (0.8 if streak_count > 4 STUDIES else 1.0)
+        streak_prob = min(0.7, 0.5 + streak_count * 0.05) * (0.8 if streak_count > 4 else 1.0)
         current_streak = recent_sequence[-1]
         if current_streak == 'P':
             prob_p += weights['streak'] * streak_prob
@@ -334,6 +338,7 @@ def update_t3_level():
             st.session_state.t3_level = st.session_state.t3_level + 2
         if old_level != st.session_state.t3_level:
             st.session_state.t3_level_changes += 1
+        st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, st.session_state.t3_level)
         st.session_state.t3_results = []
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
@@ -346,7 +351,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         return None, f"No bet: Confidence too low"
 
     if st.session_state.strategy == 'Z1003.1':
-        if st.session_state.z1003_loss_count >= 3:
+        if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
             return None, "No bet: Stopped after three losses (Z1003.1 rule)"
         bet_amount = st.session_state.base_bet * st.session_state.z1003_bet_factor
     elif st.session_state.strategy == 'Flatbet':
@@ -362,7 +367,9 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             st.session_state.parlay_using_base = True
             if old_step != st.session_state.parlay_step:
                 st.session_state.parlay_step_changes += 1
+            st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
             bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step]['base']
+        st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
 
     safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
     if (bet_amount > st.session_state.bankroll or
@@ -374,6 +381,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             st.session_state.parlay_using_base = True
             if old_step != st.session_state.parlay_step:
                 st.session_state.parlay_step_changes += 1
+            st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
         return None, "No bet: Risk too high for current bankroll."
 
     return bet_amount, f"Next Bet: ${bet_amount:.0f} on {pred}"
@@ -400,7 +408,7 @@ def place_result(result: str):
         "z1003_loss_count": st.session_state.z1003_loss_count,
         "z1003_bet_factor": st.session_state.z1003_bet_factor,
         "z1003_continue": st.session_state.z1003_continue,
-        "pending_bet": st.session_state.pending st.session_state.pending_bet,
+        "pending_bet": st.session_state.pending_bet,
         "wins": st.session_state.wins,
         "losses": st.session_state.losses,
         "prediction_accuracy": st.session_state.prediction_accuracy.copy(),
@@ -430,6 +438,7 @@ def place_result(result: str):
                     st.session_state.parlay_using_base = True
                     if old_step != st.session_state.parlay_step:
                         st.session_state.parlay_step_changes += 1
+                    st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
                 else:
                     st.session_state.parlay_using_base = False
             elif st.session_state.strategy == 'Z1003.1':
@@ -454,6 +463,7 @@ def place_result(result: str):
                 st.session_state.parlay_using_base = True
                 if old_step != st.session_state.parlay_step:
                     st.session_state.parlay_step_changes += 1
+                st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
             elif st.session_state.strategy == 'Z1003.1':
                 st.session_state.z1003_loss_count += 1
                 st.session_state.z1003_bet_factor += 0.2  # Incremental increase (e.g., $500 to $600)
@@ -553,10 +563,12 @@ def render_setup_form():
                     't3_level': 1,
                     't3_results': [],
                     't3_level_changes': 0,
+                    't3_peak_level': 1,
                     'parlay_step': 1,
                     'parlay_wins': 0,
                     'parlay_using_base': True,
                     'parlay_step_changes': 0,
+                    'parlay_peak_step': 1,
                     'z1003_loss_count': 0,
                     'z1003_bet_factor': 1.0,
                     'z1003_continue': False,
@@ -701,9 +713,9 @@ def render_status():
     st.markdown(f"**Safety Net Percentage**: {st.session_state.safety_net_percentage:.1f}%")
     strategy_status = f"**Betting Strategy**: {st.session_state.strategy}"
     if st.session_state.strategy == 'T3':
-        strategy_status += f" | T3 Level: {st.session_state.t3_level} | Level Changes: {st.session_state.t3_level_changes}"
+        strategy_status += f" | Level: {st.session_state.t3_level} | Peak Level: {st.session_state.t3_peak_level}"
     elif st.session_state.strategy == 'Parlay16':
-        strategy_status += f" | Parlay Step: {st.session_state.parlay_step}/16 | Step Changes: {st.session_state.parlay_step_changes} | Consecutive Wins: {st.session_state.parlay_wins}"
+        strategy_status += f" | Steps: {st.session_state.parlay_step}/16 | Peak Steps: {st.session_state.parlay_peak_step} | Consecutive Wins: {st.session_state.parlay_wins}"
     elif st.session_state.strategy == 'Z1003.1':
         strategy_status += f" | Loss Count: {st.session_state.z1003_loss_count} | Bet Factor: {st.session_state.z1003_bet_factor:.2f} | Continue: {st.session_state.z1003_continue}"
     st.markdown(strategy_status)
