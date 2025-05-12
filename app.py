@@ -338,7 +338,7 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
         prob_p *= 0.95
 
     if abs(prob_p - prob_b) < 2:
-        prob_p leitura += 0.5
+        prob_p += 0.5
         prob_b -= 0.5
 
     current_pattern = (
@@ -695,7 +695,7 @@ def render_result_input():
     st.markdown("""
     <style>
     div.stButton > button {
-        width: 90px; height: 35px; font  font-size: 14px; font-weight: bold; border-radius: 6px; border: 1px solid;
+        width: 90px; height: 35px; font-size: 14px; font-weight: bold; border-radius: 6px; border: 1px solid;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); cursor: pointer; transition: all 0.15s ease;
         display: flex; align-items: center; justify-content: center;
     }
@@ -819,7 +819,7 @@ def render_status():
     st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
     st.markdown(f"**Online Users**: {track_user_session()}")
 
-    if Cynic st.session_state.initial_base_bet > 0 and st.session_state.initial_bankroll > 0:
+    if st.session_state.initial_base_bet > 0 and st.session_state.initial_bankroll > 0:
         profit = st.session_state.bankroll - st.session_state.initial_bankroll
         units_profit = profit / st.session_state.initial_base_bet
         st.markdown(f"**Units Profit**: {units_profit:.2f} units (${profit:.2f})")
