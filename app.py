@@ -76,7 +76,7 @@ def initialize_session_state():
         'parlay_step_changes': 0,
         'parlay_peak_step': 1,
         'z1003_loss_count': 0,
-        'z1003_bet_factor': 1.0,
+        'z1003_bet_factor': 1.0,  # Kept for compatibility, not used in new logic
         'z1003_continue': False,
         'advice': "",
         'history': [],
@@ -353,7 +353,8 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
             return None, "No bet: Stopped after three losses (Z1003.1 rule)"
-        bet_amount = st.session_state.base_bet * st.session_state.z1003_bet_factor
+        # Incremental increase after loss, e.g., $500 to $600 implies +$100 per loss
+        bet_amount = st.session_state.base_bet + (st.session_state.z1003_loss_count * 100)
     elif st.session_state.strategy == 'Flatbet':
         bet_amount = st.session_state.base_bet
     elif st.session_state.strategy == 'T3':
@@ -442,8 +443,8 @@ def place_result(result: str):
                 else:
                     st.session_state.parlay_using_base = False
             elif st.session_state.strategy == 'Z1003.1':
+                # Reset after first win
                 st.session_state.z1003_loss_count = 0
-                st.session_state.z1003_bet_factor = 1.0
                 st.session_state.z1003_continue = False
             st.session_state.wins += 1
             st.session_state.prediction_accuracy[selection] += 1
@@ -466,7 +467,6 @@ def place_result(result: str):
                 st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
             elif st.session_state.strategy == 'Z1003.1':
                 st.session_state.z1003_loss_count += 1
-                st.session_state.z1003_bet_factor += 0.2  # Incremental increase (e.g., $500 to $600)
                 if st.session_state.z1003_loss_count == 2 and st.session_state.history and st.session_state.history[-1]['Win']:
                     st.session_state.z1003_continue = True
                 elif st.session_state.z1003_loss_count >= 3:
@@ -501,7 +501,7 @@ def place_result(result: str):
         "T3_Level": st.session_state.t3_level,
         "Parlay_Step": st.session_state.parlay_step,
         "Z1003_Loss_Count": st.session_state.z1003_loss_count,
-        "Z1003_Bet_Factor": st.session_state.z1003_bet_factor,
+        "Z1003_Bet_Factor": None,  # Not used in new logic
         "Previous_State": previous_state,
         "Bet_Placed": bet_placed
     })
@@ -717,7 +717,7 @@ def render_status():
     elif st.session_state.strategy == 'Parlay16':
         strategy_status += f" | Steps: {st.session_state.parlay_step}/16 | Peak Steps: {st.session_state.parlay_peak_step} | Consecutive Wins: {st.session_state.parlay_wins}"
     elif st.session_state.strategy == 'Z1003.1':
-        strategy_status += f" | Loss Count: {st.session_state.z1003_loss_count} | Bet Factor: {st.session_state.z1003_bet_factor:.2f} | Continue: {st.session_state.z1003_continue}"
+        strategy_status += f" | Loss Count: {st.session_state.z1003_loss_count} | Continue: {st.session_state.z1003_continue}"
     st.markdown(strategy_status)
     st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
     st.markdown(f"**Online Users**: {track_user_session()}")
@@ -781,7 +781,6 @@ def render_history():
                 "T3_Level": h["T3_Level"] if st.session_state.strategy == 'T3' else "-",
                 "Parlay_Step": h["Parlay_Step"] if st.session_state.strategy == 'Parlay16' else "-",
                 "Z1003_Loss_Count": h["Z1003_Loss_Count"] if st.session_state.strategy == 'Z1003.1' else "-",
-                "Z1003_Bet_Factor": f"{h['Z1003_Bet_Factor']:.2f}" if st.session_state.strategy == 'Z1003.1' else "-"
             }
             for h in st.session_state.history[-n:]
         ])
@@ -790,9 +789,9 @@ def render_export():
     """Render session data export option."""
     st.subheader("Export Session")
     if st.button("Download Session Data"):
-        csv_data = "Bet,Result,Amount,Win,T3_Level,Parlay_Step,Z1003_Loss_Count,Z1003_Bet_Factor\n"
+        csv_data = "Bet,Result,Amount,Win,T3_Level,Parlay_Step,Z1003_Loss_Count\n"
         for h in st.session_state.history:
-            csv_data += f"{h['Bet'] or '-'},{h['Result']},${h['Amount']:.0f},{h['Win']},{h['T3_Level']},{h['Parlay_Step']},{h['Z1003_Loss_Count']},{h['Z1003_Bet_Factor']}\n"
+            csv_data += f"{h['Bet'] or '-'},{h['Result']},${h['Amount']:.0f},{h['Win']},{h['T3_Level']},{h['Parlay_Step']},{h['Z1003_Loss_Count']}\n"
         st.download_button("Download CSV", csv_data, "session_data.csv", "text/csv")
 
 # --- Main Application ---
