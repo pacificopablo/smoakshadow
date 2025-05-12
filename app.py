@@ -50,15 +50,15 @@ def create_bead_plate(history, rows=6, cols=12):
             if outcome == "P":
                 colors.append("blue")
                 markers.append("circle")
-                sizes.append(20)  # Larger circle for Player
+                sizes.append(20)  # Shaded circle for Player
             elif outcome == "B":
                 colors.append("red")
                 markers.append("circle")
-                sizes.append(20)  # Larger circle for Banker
+                sizes.append(20)  # Shaded circle for Banker
             elif outcome == "T":
                 colors.append("green")
-                markers.append("circle")  # Small dot for Tie
-                sizes.append(8)
+                markers.append("circle")  # Shaded circle for Tie
+                sizes.append(20)  # Same size as P/B
     
     # Create Plotly figure
     fig = go.Figure()
@@ -101,7 +101,8 @@ def create_bead_plate(history, rows=6, cols=12):
         ),
         showlegend=False,
         plot_bgcolor="white",
-        width=600,
+        paper_bgcolor="white",
+        width=800,  # Increased width for better visibility
         height=300,
         margin=dict(l=20, r=20, t=20, b=20)
     )
@@ -110,7 +111,7 @@ def create_bead_plate(history, rows=6, cols=12):
 
 # Show Bead Plate
 st.subheader("Bead Plate (Game History)")
-st.write("Blue Circle: Player (P), Red Circle: Banker (B), Green Dot: Tie (T)")
+st.write("Blue Circle: Player (P), Red Circle: Banker (B), Green Circle: Tie (T)")
 if st.session_state.history:
     bead_plate = create_bead_plate(st.session_state.history)
     st.plotly_chart(bead_plate, use_container_width=True)
