@@ -174,8 +174,19 @@ def initialize_session_state():
         'pause_until': 0.0,
         'locked_profit': 0.0
     }
+    # Ensure pattern_success and pattern_attempts are properly initialized
+    defaults['pattern_success']['bigram'] = 0
+    defaults['pattern_success']['trigram'] = 0
     defaults['pattern_success']['fourgram'] = 0
+    defaults['pattern_success']['streak'] = 0
+    defaults['pattern_success']['chop'] = 0
+    defaults['pattern_success']['double'] = 0
+    defaults['pattern_attempts']['bigram'] = 0
+    defaults['pattern_attempts']['trigram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
+    defaults['pattern_attempts']['streak'] = 0
+    defaults['pattern_attempts']['chop'] = 0
+    defaults['pattern_attempts']['double'] = 0
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
@@ -236,8 +247,19 @@ def reset_session(reason: str = "target_or_stop_loss"):
         'session_id': current_session_id,
         'session_start_time': current_session_start_time
     })
+    # Reinitialize pattern defaults
+    st.session_state.pattern_success['bigram'] = 0
+    st.session_state.pattern_success['trigram'] = 0
     st.session_state.pattern_success['fourgram'] = 0
+    st.session_state.pattern_success['streak'] = 0
+    st.session_state.pattern_success['chop'] = 0
+    st.session_state.pattern_success['double'] = 0
+    st.session_state.pattern_attempts['bigram'] = 0
+    st.session_state.pattern_attempts['trigram'] = 0
     st.session_state.pattern_attempts['fourgram'] = 0
+    st.session_state.pattern_attempts['streak'] = 0
+    st.session_state.pattern_attempts['chop'] = 0
+    st.session_state.pattern_attempts['double'] = 0
 
 def start_new_shoe():
     reset_session(reason="new_shoe")
@@ -300,40 +322,46 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
             streak_count, chop_count, double_count, volatility, shoe_bias)
 
 def calculate_weights(streak_count: int, chop_count: int, double_count: int, shoe_bias: float) -> Dict[str, float]:
-    total_bets = max(st.session_state.pattern_attempts.get('fourgram', 1), 1)
-    success_ratios = {
-        'bigram': st.session_state.pattern_success.get('bigram', 0) / total_bets
-                  if st.session_state.pattern_attempts.get('bigram', 0) > 0 else 0.5,
-        'trigram': st.session_state.pattern_success.get('trigram', 0) / total_bets
-                   if st.session_state.pattern_attempts.get('trigram', 0) > 0 else 0.5,
-        'fourgram': st.session_state.pattern_success.get('fourgram', 0) / total_bets
-                    if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.5,
-        'streak': 0.6 if streak_count >= 2 else 0.3,
-        'chop': 0.4 if chop_count >= 2 else 0.2,
-        'double': 0.4 if double_count >= 1 else 0.2
-    }
-    if success_ratios['fourgram'] > 0.6:
-        success_ratios['fourgram'] *= 1.2
-    weights = {k: np.exp(v) / (1 + np.exp(v)) + 0.01 for k, v in success_ratios.items()}
-    logging.debug(f"Success ratios: {success_ratios}, Initial weights: {weights}, Shoe bias: {shoe_bias}")
-    if shoe_bias > 0.1:
-        weights['bigram'] *= 1.1
-        weights['trigram'] *= 1.1
-        weights['fourgram'] *= 1.15
-    elif shoe_bias < -0.1:
-        weights['bigram'] *= 0.9
-        weights['trigram'] *= 0.9
-        weights['fourgram'] *= 0.85
-    weights['bigram'] += BANKER_BIAS if shoe_bias < 0 else -BANKER_BIAS
-    weights['bigram'] = max(weights['bigram'], 0.01)  # Prevent negative weights
-    logging.debug(f"Adjusted weights: {weights}")
-    total_w = sum(weights.values())
-    logging.debug(f"Total weight: {total_w}")
-    if total_w <= 0 or total_w < 0.01:
-        weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
+    # Default weights in case of failure
+    default_weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
+    try:
+        total_bets = max(st.session_state.pattern_attempts.get('fourgram', 1), 1)
+        success_ratios = {
+            'bigram': st.session_state.pattern_success.get('bigram', 0) / total_bets
+                      if st.session_state.pattern_attempts.get('bigram', 0) > 0 else 0.5,
+            'trigram': st.session_state.pattern_success.get('trigram', 0) / total_bets
+                       if st.session_state.pattern_attempts.get('trigram', 0) > 0 else 0.5,
+            'fourgram': st.session_state.pattern_success.get('fourgram', 0) / total_bets
+                        if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.5,
+            'streak': 0.6 if streak_count >= 2 else 0.3,
+            'chop': 0.4 if chop_count >= 2 else 0.2,
+            'double': 0.4 if double_count >= 1 else 0.2
+        }
+        if success_ratios['fourgram'] > 0.6:
+            success_ratios['fourgram'] *= 1.2
+        weights = {k: np.exp(v) / (1 + np.exp(v)) + 0.01 for k, v in success_ratios.items()}
+        logging.debug(f"Success ratios: {success_ratios}, Initial weights: {weights}, Shoe bias: {shoe_bias}")
+        if shoe_bias > 0.1:
+            weights['bigram'] *= 1.1
+            weights['trigram'] *= 1.1
+            weights['fourgram'] *= 1.15
+        elif shoe_bias < -0.1:
+            weights['bigram'] *= 0.9
+            weights['trigram'] *= 0.9
+            weights['fourgram'] *= 0.85
+        weights['bigram'] += BANKER_BIAS if shoe_bias < 0 else -BANKER_BIAS
+        weights['bigram'] = max(weights['bigram'], 0.01)  # Prevent negative weights
         total_w = sum(weights.values())
-        logging.debug(f"Applied default weights: {weights}, Total weight: {total_w}")
-    return {k: max(w / total_w, 0.05) for k, v in weights.items()}
+        logging.debug(f"Adjusted weights: {weights}, Total weight: {total_w}")
+        if total_w <= 0 or total_w < 0.01:
+            weights = default_weights.copy()
+            total_w = sum(weights.values())
+            logging.debug(f"Applied default weights: {weights}, Total weight: {total_w}")
+        return {k: max(w / total_w, 0.05) for k, w in weights.items()}
+    except Exception as e:
+        logging.error(f"Error in calculate_weights: {str(e)}")
+        total_w = sum(default_weights.values())
+        return {k: max(w / total_w, 0.05) for k, w in default_weights.items()}
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
@@ -820,8 +848,19 @@ def render_setup_form():
                         'pause_until': 0.0,
                         'locked_profit': 0.0
                     })
+                    # Initialize pattern defaults
+                    st.session_state.pattern_success['bigram'] = 0
+                    st.session_state.pattern_success['trigram'] = 0
                     st.session_state.pattern_success['fourgram'] = 0
+                    st.session_state.pattern_success['streak'] = 0
+                    st.session_state.pattern_success['chop'] = 0
+                    st.session_state.pattern_success['double'] = 0
+                    st.session_state.pattern_attempts['bigram'] = 0
+                    st.session_state.pattern_attempts['trigram'] = 0
                     st.session_state.pattern_attempts['fourgram'] = 0
+                    st.session_state.pattern_attempts['streak'] = 0
+                    st.session_state.pattern_attempts['chop'] = 0
+                    st.session_state.pattern_attempts['double'] = 0
                     st.success(f"Session started with {betting_strategy} strategy! Fight the house edge with discipline.")
 
 def render_result_input():
