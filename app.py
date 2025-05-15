@@ -6,6 +6,7 @@ import time
 import numpy as np
 from typing import Tuple, Dict, Optional, List
 import uuid
+import pytz
 
 # --- Constants ---
 SESSION_FILE = "online_users.txt"
@@ -26,6 +27,7 @@ PROFIT_LOCK_PERCENTAGE = 10.0  # Lock profits after 10% gain
 SESSION_TIME_LIMIT = 2700  # 45 minutes in seconds
 MIN_CONFIDENCE_THRESHOLD = 40.0  # Minimum confidence for bets
 BANKER_BIAS = 0.10  # Stronger preference for Banker
+PAUSE_DURATION = 180  # 3 minutes in seconds
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -177,11 +179,16 @@ def initialize_session_state():
     if st.session_state.strategy not in STRATEGIES:
         st.session_state.strategy = 'T3'
 
-def reset_session():
+def reset_session(reason: str = "target_or_stop_loss"):
     current_bankroll = st.session_state.bankroll
     current_session_id = st.session_state.get('session_id', str(time.time()))
     current_session_start_time = st.session_state.get('session_start_time', time.time())
     initialize_session_state()
+    advice_message = (
+        f"Session reset: Target or stop-loss hit. Bankroll (${current_bankroll:.2f}) carried forward."
+        if reason == "target_or_stop_loss"
+        else f"New shoe started. Bankroll (${current_bankroll:.2f}) carried forward. Patterns reset to fight the house edge."
+    )
     st.session_state.update({
         'bankroll': current_bankroll,
         'base_bet': 0.10,
@@ -202,7 +209,7 @@ def reset_session():
         'z1003_bet_factor': 1.0,
         'z1003_continue': False,
         'z1003_level_changes': 0,
-        'advice': f"Session reset: Target or stop-loss hit. Bankroll (${current_bankroll:.2f}) carried forward.",
+        'advice': advice_message,
         'history': [],
         'wins': 0,
         'losses': 0,
@@ -228,6 +235,10 @@ def reset_session():
     })
     st.session_state.pattern_success['fourgram'] = 0
     st.session_state.pattern_attempts['fourgram'] = 0
+
+def start_new_shoe():
+    reset_session(reason="new_shoe")
+    st.success("New shoe started! Sequence and patterns reset, bankroll carried forward.")
 
 # --- Prediction Logic ---
 def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, int, int, float, float]:
@@ -314,7 +325,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     if total_w == 0:
         weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
         total_w = sum(weights.values())
-    return {k: max(w / total_w, 0.05) for k, w in weights.items()}
+    return {k: max(w / total_w, 0.05) for k, v in weights.items()}
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
@@ -471,11 +482,14 @@ def update_t3_level():
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
     current_time = time.time()
+    pst = pytz.timezone('America/Los_Angeles')
     if current_time < st.session_state.pause_until:
-        return None, f"Paused until {datetime.fromtimestamp(st.session_state.pause_until).strftime('%H:%M:%S')}. Patience fights the house edge."
+        pause_end = datetime.fromtimestamp(st.session_state.pause_until, tz=pst).strftime('%Y-%m-%d %H:%M:%S %Z')
+        return None, f"Paused until {pause_end}. Patience fights the house edge."
     if st.session_state.consecutive_losses >= 2 and conf < 50.0:
-        st.session_state.pause_until = current_time + 600
-        return None, f"No bet: Paused for 10 minutes after {st.session_state.consecutive_losses} losses. Discipline is key."
+        st.session_state.pause_until = current_time + PAUSE_DURATION
+        pause_end = datetime.fromtimestamp(st.session_state.pause_until, tz=pst).strftime('%Y-%m-%d %H:%M:%S %Z')
+        return None, f"No bet: Paused until {pause_end} after {st.session_state.consecutive_losses} losses. Discipline is key."
     if st.session_state.pattern_volatility > 0.6:
         return None, f"No bet: High volatility (house edge thrives in chaos). Wait for stability."
     if pred is None or conf < MIN_CONFIDENCE_THRESHOLD:
@@ -531,10 +545,10 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
 
 def place_result(result: str):
     if st.session_state.target_hit or check_stop_loss():
-        reset_session()
+        reset_session(reason="target_or_stop_loss")
         return
     if time.time() - st.session_state.session_start_time > SESSION_TIME_LIMIT:
-        reset_session()
+        reset_session(reason="target_or_stop_loss")
         st.session_state.advice = "Session time limit reached. Take a break to maintain discipline."
         return
     st.session_state.last_was_tie = (result == 'T')
@@ -654,6 +668,7 @@ def place_result(result: str):
     if check_target_hit():
         st.session_state.target_hit = True
         lock_profit()
+        reset_session(reason="target_or_stop_loss")
         return
     pred, conf, insights = predict_next()
     if st.session_state.strategy == 'Z1003.1' and st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
@@ -799,7 +814,7 @@ def render_setup_form():
 
 def render_result_input():
     with st.expander("Enter Result", expanded=True):
-        cols = st.columns(5)
+        cols = st.columns(6)
         with cols[0]:
             if st.button("Player", key="player_btn", help="Record a Player win (1.24% house edge)"):
                 place_result("P")
@@ -852,7 +867,11 @@ def render_result_input():
                     st.session_state.pending_bet = (bet_amount, pred)
                     st.session_state.advice = f"Next Bet: ${bet_amount:.2f} on {pred}"
                     st.rerun()
-        st.warning("Focus on Banker bets to minimize the house edge (1.06%). Avoid Ties (14.36% edge).")
+        with cols[5]:
+            if st.button("New Shoe", key="new_shoe_btn", help="Start a new shoe, resetting sequence and patterns"):
+                start_new_shoe()
+                st.rerun()
+        st.warning("Focus on Banker bets to minimize the house edge (1.06%). Avoid Ties (14.36% edge). Click 'New Shoe' when the dealer announces the shoe end.")
 
 def render_bead_plate():
     with st.expander("Bead Plate", expanded=True):
@@ -934,6 +953,14 @@ def render_status():
         st.markdown(f"**Session Time**: {int(time_elapsed // 60)}m {int(time_elapsed % 60)}s")
         if time_elapsed > SESSION_TIME_LIMIT * 0.8:
             st.warning("Approaching session time limit. End soon to fight the house edge.")
+        # Pause status
+        current_time = time.time()
+        if current_time < st.session_state.pause_until:
+            pst = pytz.timezone('America/Los_Angeles')
+            pause_end = datetime.fromtimestamp(st.session_state.pause_until, tz=pst).strftime('%Y-%m-%d %H:%M:%S %Z')
+            st.warning(f"Betting paused until {pause_end} due to {st.session_state.consecutive_losses} consecutive losses.")
+        else:
+            st.markdown("**Pause Status**: No active pause.")
 
 def render_accuracy():
     with st.expander("Prediction Accuracy"):
