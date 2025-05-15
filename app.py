@@ -27,18 +27,17 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
-STOP_LOSS_PERCENTAGE = 15.0  # Stop if bankroll drops by 15%
-PROFIT_LOCK_PERCENTAGE = 10.0  # Lock profits after 10% gain
-SESSION_TIME_LIMIT = 2700  # 45 minutes in seconds
-MIN_CONFIDENCE_THRESHOLD = 40.0  # Minimum confidence for bets
-BANKER_BIAS = 0.10  # Stronger preference for Banker
-PAUSE_DURATION = 180  # 3 minutes in seconds
+STOP_LOSS_PERCENTAGE = 15.0
+PROFIT_LOCK_PERCENTAGE = 10.0
+SESSION_TIME_LIMIT = 2700
+MIN_CONFIDENCE_THRESHOLD = 40.0
+BANKER_BIAS = 0.10
+PAUSE_DURATION = 180
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
     st.markdown("""
     <style>
-    /* General Styling */
     body {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         background-color: #f7f9fc;
@@ -90,7 +89,6 @@ def apply_custom_css():
         border-radius: 8px;
         padding: 15px;
     }
-    /* Bead Plate */
     .bead-plate {
         display: flex;
         gap: 5px;
@@ -194,7 +192,7 @@ def reset_session(reason: str = "target_or_stop_loss"):
         if reason == "target_or_stop_loss"
         else f"New shoe started. Bankroll (${current_bankroll:.2f}) carried forward. Patterns reset to fight the house edge."
     )
-    st/session_state.update({
+    st.session_state.update({
         'bankroll': current_bankroll,
         'base_bet': 0.10,
         'initial_base_bet': 0.10,
@@ -317,6 +315,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     if success_ratios['fourgram'] > 0.6:
         success_ratios['fourgram'] *= 1.2
     weights = {k: np.exp(v) / (1 + np.exp(v)) + 0.01 for k, v in success_ratios.items()}
+    logging.debug(f"Success ratios: {success_ratios}, Initial weights: {weights}, Shoe bias: {shoe_bias}")
     if shoe_bias > 0.1:
         weights['bigram'] *= 1.1
         weights['trigram'] *= 1.1
@@ -326,9 +325,11 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
         weights['trigram'] *= 0.9
         weights['fourgram'] *= 0.85
     weights['bigram'] += BANKER_BIAS if shoe_bias < 0 else -BANKER_BIAS
+    weights['bigram'] = max(weights['bigram'], 0.01)  # Prevent negative weights
+    logging.debug(f"Adjusted weights: {weights}")
     total_w = sum(weights.values())
-    logging.debug(f"Success ratios: {success_ratios}, Weights: {weights}, Total weight: {total_w}")
-    if total_w < 0.01:
+    logging.debug(f"Total weight: {total_w}")
+    if total_w <= 0 or total_w < 0.01:
         weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
         total_w = sum(weights.values())
         logging.debug(f"Applied default weights: {weights}, Total weight: {total_w}")
@@ -964,7 +965,6 @@ def render_status():
         st.markdown(f"**Session Time**: {int(time_elapsed // 60)}m {int(time_elapsed % 60)}s")
         if time_elapsed > SESSION_TIME_LIMIT * 0.8:
             st.warning("Approaching session time limit. End soon to fight the house edge.")
-        # Pause status
         current_time = time.time()
         if current_time < st.session_state.pause_until:
             pst = pytz.timezone('America/Los_Angeles')
