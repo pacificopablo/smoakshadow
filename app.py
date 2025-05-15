@@ -7,6 +7,11 @@ import numpy as np
 from typing import Tuple, Dict, Optional, List
 import uuid
 import pytz
+import logging
+
+# --- Logging Setup ---
+logging.basicConfig(level=logging.DEBUG, filename='baccarat.log', filemode='a',
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Constants ---
 SESSION_FILE = "online_users.txt"
@@ -189,7 +194,7 @@ def reset_session(reason: str = "target_or_stop_loss"):
         if reason == "target_or_stop_loss"
         else f"New shoe started. Bankroll (${current_bankroll:.2f}) carried forward. Patterns reset to fight the house edge."
     )
-    st.session_state.update({
+    st/session_state.update({
         'bankroll': current_bankroll,
         'base_bet': 0.10,
         'initial_base_bet': 0.10,
@@ -311,7 +316,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     }
     if success_ratios['fourgram'] > 0.6:
         success_ratios['fourgram'] *= 1.2
-    weights = {k: np.exp(v) / (1 + np.exp(v)) for k, v in success_ratios.items()}
+    weights = {k: np.exp(v) / (1 + np.exp(v)) + 0.01 for k, v in success_ratios.items()}
     if shoe_bias > 0.1:
         weights['bigram'] *= 1.1
         weights['trigram'] *= 1.1
@@ -322,15 +327,21 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
         weights['fourgram'] *= 0.85
     weights['bigram'] += BANKER_BIAS if shoe_bias < 0 else -BANKER_BIAS
     total_w = sum(weights.values())
-    if total_w == 0:
+    logging.debug(f"Success ratios: {success_ratios}, Weights: {weights}, Total weight: {total_w}")
+    if total_w < 0.01:
         weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
         total_w = sum(weights.values())
+        logging.debug(f"Applied default weights: {weights}, Total weight: {total_w}")
     return {k: max(w / total_w, 0.05) for k, v in weights.items()}
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
     if len(sequence) < 4:
-        return 'B', 45.86, {'Initial': 'Default to Banker due to lower house edge (1.06%)'}
+        logging.debug(f"Sequence too short ({len(sequence)}): Defaulting to Banker")
+        return 'B', 45.86, {
+            'Initial': 'Default to Banker due to lower house edge (1.06%)',
+            'Weights': 'bigram: 0.30, trigram: 0.25, fourgram: 0.25, streak: 0.15, chop: 0.05, double: 0.05'
+        }
     recent_sequence = sequence[-WINDOW_SIZE:]
     (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
      streak_count, chop_count, double_count, volatility, shoe_bias) = analyze_patterns(recent_sequence)
@@ -338,7 +349,7 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
     prior_p, prior_b = 44.62 / 100, 45.86 / 100
     weights = calculate_weights(streak_count, chop_count, double_count, shoe_bias)
     prob_p = prob_b = total_weight = 0
-    insights = {}
+    insights = {'Weights': ', '.join([f'{k}: {v:.2f}' for k, v in weights.items()])}
     if len(recent_sequence) >= 2:
         bigram = tuple(recent_sequence[-2:])
         total = sum(bigram_transitions[bigram].values())
