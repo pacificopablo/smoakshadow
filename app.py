@@ -134,4 +134,7 @@ if total_bets >= 3:
 
 # --- HISTORY TABLE ---
 st.subheader("Bet History (Latest 20)")
-st.dataframe(df[["Bet On", "Game Result", "Result", "Wager", "Net", "Balance"]].tail(20), use_container_width=True)
+if not df.empty and all(col in df.columns for col in ["Bet On", "Game Result", "Result", "Wager", "Net", "Balance"]):
+    st.dataframe(df[["Bet On", "Game Result", "Result", "Wager", "Net", "Balance"]].tail(20), use_container_width=True)
+else:
+    st.write("No bet history available yet.")
