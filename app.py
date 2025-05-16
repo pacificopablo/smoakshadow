@@ -396,7 +396,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
                 'double': 0.05
             }
             total_w = sum(weights.values())
-        return {k: max(w / total_w, 0.05) for k, w in weights.items()}
+        return {k: max(w / total_w, 0.05) for k, v in weights.items()}
     except Exception as e:
         logger.error(f"Weight calculation failed: {e}")
         return {
@@ -1022,7 +1022,6 @@ def render_status():
             with col1:
                 st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
                 st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
-                st.markdown(f2566
                 st.markdown(f"**Safety Net**: {'Enabled' if st.session_state.safety_net_enabled else 'Disabled'}"
                             f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
             with col2:
