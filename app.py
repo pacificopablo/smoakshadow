@@ -28,7 +28,7 @@ def recommend_strategy(sequence: List[str]) -> str:
     if len(sequence) < 4:
         return "Flatbet"  # Default to safe strategy for short sequences
     
-    _, _, _, _, _, streak_count, chop_count, double_count, volatility, shoe_bias = analyze_patterns(sequence[-WINDOW_SIZE:])
+    _, _, _, _, _, streak_count, chop_count, double_count, volatility, shoe_bias = st.session_state.analyze_patterns(sequence[-WINDOW_SIZE:])
     
     if volatility > 0.5 or abs(shoe_bias) < 0.1:
         return "Flatbet"  # Stable betting in volatile or balanced shoes
