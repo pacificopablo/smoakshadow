@@ -655,10 +655,6 @@ def place_result(result: str):
     if st.session_state.target_hit or check_stop_loss():
         reset_session(reason="target_or_stop_loss")
         return
-    if time.time() - st.session_state.session_start_time > SESSION_TIME_LIMIT:
-        reset_session(reason="target_or_stop_loss")
-        st.session_state.advice = "Session time limit reached. Take a break to maintain discipline."
-        return
     st.session_state.last_was_tie = (result == 'T')
     bet_amount = 0
     bet_placed = False
@@ -1069,8 +1065,6 @@ def render_status():
             st.markdown("**Est. House Edge Loss**: $0.00")
         time_elapsed = time.time() - st.session_state.session_start_time
         st.markdown(f"**Session Time**: {int(time_elapsed // 60)}m {int(time_elapsed % 60)}s")
-        if time_elapsed > SESSION_TIME_LIMIT * 0.8:
-            st.warning("Approaching session time limit. End soon to fight the house edge.")
         current_time = time.time()
         if current_time < st.session_state.pause_until:
             pst = pytz.timezone('America/Los_Angeles')
