@@ -32,7 +32,7 @@ PROFIT_LOCK_PERCENTAGE = 10.0
 SESSION_TIME_LIMIT = 2700
 MIN_CONFIDENCE_THRESHOLD = 40.0
 BANKER_BIAS = 0.10
-PAUSE_DURATION = 180
+PAUSE_DURATION = 30
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -174,7 +174,6 @@ def initialize_session_state():
         'pause_until': 0.0,
         'locked_profit': 0.0
     }
-    # Ensure pattern_success and pattern_attempts are properly initialized
     defaults['pattern_success']['bigram'] = 0
     defaults['pattern_success']['trigram'] = 0
     defaults['pattern_success']['fourgram'] = 0
@@ -247,7 +246,6 @@ def reset_session(reason: str = "target_or_stop_loss"):
         'session_id': current_session_id,
         'session_start_time': current_session_start_time
     })
-    # Reinitialize pattern defaults
     st.session_state.pattern_success['bigram'] = 0
     st.session_state.pattern_success['trigram'] = 0
     st.session_state.pattern_success['fourgram'] = 0
@@ -322,7 +320,6 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
             streak_count, chop_count, double_count, volatility, shoe_bias)
 
 def calculate_weights(streak_count: int, chop_count: int, double_count: int, shoe_bias: float) -> Dict[str, float]:
-    # Default weights in case of failure
     default_weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
     try:
         total_bets = max(st.session_state.pattern_attempts.get('fourgram', 1), 1)
@@ -350,7 +347,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
             weights['trigram'] *= 0.9
             weights['fourgram'] *= 0.85
         weights['bigram'] += BANKER_BIAS if shoe_bias < 0 else -BANKER_BIAS
-        weights['bigram'] = max(weights['bigram'], 0.01)  # Prevent negative weights
+        weights['bigram'] = max(weights['bigram'], 0.01)
         total_w = sum(weights.values())
         logging.debug(f"Adjusted weights: {weights}, Total weight: {total_w}")
         if total_w <= 0 or total_w < 0.01:
@@ -808,7 +805,7 @@ def render_setup_form():
                 else:
                     st.session_state.update({
                         'bankroll': bankroll,
-                        'base_bet': base_bet,
+                        'base_bet': bankroll,
                         'initial_base_bet': base_bet,
                         'strategy': betting_strategy,
                         'sequence': [],
@@ -848,7 +845,6 @@ def render_setup_form():
                         'pause_until': 0.0,
                         'locked_profit': 0.0
                     })
-                    # Initialize pattern defaults
                     st.session_state.pattern_success['bigram'] = 0
                     st.session_state.pattern_success['trigram'] = 0
                     st.session_state.pattern_success['fourgram'] = 0
