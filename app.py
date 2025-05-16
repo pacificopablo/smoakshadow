@@ -1,4 +1,4 @@
-# Version: 2025-05-14-fix-v12
+# Version: 2025-05-14-fix-v12-markov
 import streamlit as st
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -9,6 +9,7 @@ from typing import Tuple, Dict, Optional, List
 import tempfile
 import logging
 import traceback
+import uuid
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
@@ -24,7 +25,7 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
-APP_VERSION = "2025-05-14-fix-v12"
+APP_VERSION = "2025-05-14-fix-v12-markov"
 
 # --- Logging Setup ---
 logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
@@ -118,6 +119,8 @@ def initialize_session_state():
     }
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
+    defaults['pattern_success']['markov'] = 0
+    defaults['pattern_attempts']['markov'] = 0
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
@@ -167,17 +170,22 @@ def reset_session():
         'last_win_confidence': 0.0,
         'consecutive_wins': 0,
     })
+    st.session_state.pattern_success['fourgram'] = 0
+    st.session_state.pattern_attempts['fourgram'] = 0
+    st.session_state.pattern_success['markov'] = 0
+    st.session_state.pattern_attempts['markov'] = 0
     logging.debug("reset_session completed")
 
 # --- Prediction Logic ---
-def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, int, int, float, float, Dict]:
-    """Analyze sequence patterns with streak and chop metrics."""
+def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, Dict, int, int, int, float, float, Dict]:
+    """Analyze sequence patterns with streak, chop metrics, and Markov transitions."""
     logging.debug("Entering analyze_patterns")
     try:
         bigram_transitions = defaultdict(lambda: defaultdict(int))
         trigram_transitions = defaultdict(lambda: defaultdict(int))
         fourgram_transitions = defaultdict(lambda: defaultdict(int))
         pattern_transitions = defaultdict(lambda: defaultdict(int))
+        markov_transitions = defaultdict(lambda: defaultdict(int))
         streak_count = chop_count = double_count = pattern_changes = 0
         current_streak = last_pattern = None
         player_count = banker_count = 0
@@ -190,6 +198,11 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
                 player_count += 1
             elif sequence[i] == 'B':
                 banker_count += 1
+
+            # Markov transitions (first-order)
+            if sequence[i] in ['P', 'B', 'T']:
+                next_outcome = sequence[i+1]
+                markov_transitions[sequence[i]][next_outcome] += 1
 
             if i < len(sequence) - 2:
                 bigram = tuple(sequence[i:i+2])
@@ -261,14 +274,14 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
 
         logging.debug("analyze_patterns completed")
         return (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
-                streak_count, chop_count, double_count, volatility, shoe_bias, extra_metrics)
+                markov_transitions, streak_count, chop_count, double_count, volatility, shoe_bias, extra_metrics)
     except Exception as e:
         logging.error(f"analyze_patterns error: {str(e)}\n{traceback.format_exc()}")
         st.error("Error analyzing patterns. Try resetting the session.")
-        return ({}, {}, {}, {}, 0, 0, 0, 0.0, 0.0, {})
+        return ({}, {}, {}, {}, {}, 0, 0, 0, 0.0, 0.0, {})
 
 def calculate_weights(streak_count: int, chop_count: int, double_count: int, shoe_bias: float) -> Dict[str, float]:
-    """Calculate adaptive weights with error handling."""
+    """Calculate adaptive weights with error handling, including Markov model."""
     logging.debug("Entering calculate_weights")
     try:
         total_bets = max(st.session_state.pattern_attempts.get('fourgram', 1), 1)
@@ -276,6 +289,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
             'bigram': st.session_state.pattern_success.get('bigram', 0) / total_bets,
             'trigram': st.session_state.pattern_success.get('trigram', 0) / total_bets,
             'fourgram': st.session_state.pattern_success.get('fourgram', 0) / total_bets,
+            'markov': st.session_state.pattern_success.get('markov', 0) / total_bets,
             'streak': 0.6 if streak_count >= 2 else 0.3,
             'chop': 0.4 if chop_count >= 2 else 0.2,
             'double': 0.4 if double_count >= 1 else 0.2
@@ -300,20 +314,32 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
 
         if success_ratios['fourgram'] > 0.6:
             success_ratios['fourgram'] *= 1.3
+        if success_ratios['markov'] > 0.6:
+            success_ratios['markov'] *= 1.2
 
         weights = {k: np.exp(v) / (1 + np.exp(v)) for k, v in success_ratios.items()}
         if shoe_bias > 0.1:
             weights['bigram'] *= 1.1
             weights['trigram'] *= 1.1
             weights['fourgram'] *= 1.15
+            weights['markov'] *= 1.1
         elif shoe_bias < -0.1:
             weights['bigram'] *= 0.9
             weights['trigram'] *= 0.9
             weights['fourgram'] *= 0.85
+            weights['markov'] *= 0.9
 
         total_weight = sum(weights.values())
         if total_weight == 0:
-            weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
+            weights = {
+                'bigram': 0.25,
+                'trigram': 0.20,
+                'fourgram': 0.20,
+                'markov': 0.20,
+                'streak': 0.10,
+                'chop': 0.05,
+                'double': 0.05
+            }
             total_weight = sum(weights.values())
 
         normalized_weights = {k: max(v / total_weight, 0.05) for k, v in weights.items()}
@@ -329,14 +355,30 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     except NameError as e:
         logging.error(f"NameError in calculate_weights: {str(e)}\n{traceback.format_exc()}")
         st.error(f"Variable error in weight calculation: {str(e)}. Try resetting the session.")
-        return {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
+        return {
+            'bigram': 0.25,
+            'trigram': 0.20,
+            'fourgram': 0.20,
+            'markov': 0.20,
+            'streak': 0.10,
+            'chop': 0.05,
+            'double': 0.05
+        }
     except Exception as e:
         logging.error(f"calculate_weights error: {str(e)}\n{traceback.format_exc()}")
         st.error("Error calculating weights. Try resetting the session.")
-        return {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
+        return {
+            'bigram': 0.25,
+            'trigram': 0.20,
+            'fourgram': 0.20,
+            'markov': 0.20,
+            'streak': 0.10,
+            'chop': 0.05,
+            'double': 0.05
+        }
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
-    """Predict the next outcome with error handling."""
+    """Predict the next outcome with error handling, incorporating Markov model."""
     logging.debug("Entering predict_next")
     try:
         sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
@@ -346,7 +388,7 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
 
         recent_sequence = shadow_sequence[-WINDOW_SIZE:]
         (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
-         streak_count, chop_count, double_count, volatility, shoe_bias, extra_metrics) = analyze_patterns(recent_sequence)
+         markov_transitions, streak_count, chop_count, double_count, volatility, shoe_bias, extra_metrics) = analyze_patterns(sequence)
         st.session_state.pattern_volatility = volatility
 
         prior_p, prior_b = 44.62 / 100, 45.86 / 100
@@ -357,10 +399,30 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
         recent_performance = {}
 
         recent_bets = st.session_state.history[-10:]
-        for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double']:
+        for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
             success = sum(1 for h in recent_bets if h['Bet_Placed'] and h['Win'] and pattern in h.get('Previous_State', {}).get('insights', {}))
             attempts = sum(1 for h in recent_bets if h['Bet_Placed'] and pattern in h.get('Previous_State', {}).get('insights', {}))
             recent_performance[pattern] = success / max(attempts, 1) if attempts > 0 else 0.0
+
+        # Markov model prediction
+        if sequence:
+            last_state = sequence[-1]
+            total = sum(markov_transitions[last_state].values())
+            if total > 0:
+                p_prob = markov_transitions[last_state]['P'] / total
+                b_prob = markov_transitions[last_state]['B'] / total
+                prob_p += weights['markov'] * (prior_p + p_prob) / (1 + total)
+                prob_b += weights['markov'] * (prior_b + b_prob) / (1 + total)
+                total_weight += weights['markov']
+                reliability = min(total / 5, 1.0)
+                pattern_reliability['Markov'] = reliability
+                insights['Markov'] = {
+                    'weight': weights['markov'] * 100,
+                    'p_prob': p_prob * 100,
+                    'b_prob': b_prob * 100,
+                    'reliability': reliability * 100,
+                    'recent_performance': recent_performance['markov'] * 100
+                }
 
         if len(recent_sequence) >= 2:
             bigram = tuple(recent_sequence[-2:])
@@ -448,7 +510,7 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
                 prob_b += weights['chop'] * 0.6
                 prob_p += weights['chop'] * 0.4
             total_weight += weights['chop']
-            reliability = min(chop_count / 5, 1.0)
+            reliability = min(chop_count / 5, 1. noite: No change needed here since render_insights already handles dynamic patterns
             pattern_reliability['Chop'] = reliability
             insights['Chop'] = {
                 'weight': weights['chop'] * 100,
@@ -519,9 +581,9 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
         recent_accuracy = (st.session_state.prediction_accuracy['P'] + st.session_state.prediction_accuracy['B']) / max(st.session_state.prediction_accuracy['total'], 1)
         threshold = 32.0 + (st.session_state.consecutive_losses * 2.0) - (recent_accuracy * 0.8)
         threshold = min(max(threshold, 32.0), 48.0)
-        if recent_performance.get('fourgram', 0) > 0.7:
+        if recent_performance.get('fourgram', 0) > 0.7 or recent_performance.get('markov', 0) > 0.7:
             threshold -= 2.0
-        elif recent_performance.get('fourgram', 0) < 0.3:
+        elif recent_performance.get('fourgram', 0) < 0.3 or recent_performance.get('markov', 0) < 0.3:
             threshold += 2.0
         insights['Threshold'] = {'value': threshold, 'adjusted': f'{threshold:.1f}%'}
 
@@ -618,7 +680,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             bet_amount = st.session_state.base_bet * st.session_state.t3_level
             logging.debug(f"T3 bet: base_bet={st.session_state.base_bet}, t3_level={st.session_state.t3_level}, bet_amount={bet_amount}")
         else:  # Parlay16
-            key = 'base' if st.session_state.parlay_using_base else 'parlay'
+            key = 'base' if st.sessio_state.parlay_using_base else 'parlay'
             bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
             st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
 
@@ -728,7 +790,7 @@ def place_result(result: str):
                     st.session_state.z1003_loss_count = 0
                     st.session_state.z1003_continue = False
                 st.session_state.prediction_accuracy[selection] += 1
-                for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double']:
+                for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
                     if pattern in st.session_state.insights:
                         st.session_state.pattern_success[pattern] += 1
                         st.session_state.pattern_attempts[pattern] += 1
@@ -748,7 +810,7 @@ def place_result(result: str):
                 })
                 if len(st.session_state.loss_log) > LOSS_LOG_LIMIT:
                     st.session_state.loss_log = st.session_state.loss_log[-LOSS_LOG_LIMIT:]
-                for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double']:
+                for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
                     if pattern in st.session_state.insights:
                         st.session_state.pattern_attempts[pattern] += 1
                 if st.session_state.strategy == 'Parlay16':
@@ -859,7 +921,8 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
         try:
             with open(SIMULATION_LOG, 'a', encoding='utf-8') as f:
                 f.write(f"{datetime.now().isoformat()}: Accuracy={accuracy:.1f}%, Correct={correct}/{total}, "
-                        f"Fourgram={result['pattern_success'].get('fourgram', 0)}/{result['pattern_attempts'].get('fourgram', 0)}\n")
+                        f"Fourgram={result['pattern_success'].get('fourgram', 0)}/{result['pattern_attempts'].get('fourgram', 0)}, "
+                        f"Markov={result['pattern_success'].get('markov', 0)}/{result['pattern_attempts'].get('markov', 0)}\n")
         except (PermissionError, OSError) as e:
             logging.error(f"Simulation log write error: {str(e)}")
             st.warning("Unable to write to simulation log. Results displayed only.")
@@ -948,6 +1011,8 @@ def render_setup_form():
                     })
                     st.session_state.pattern_success['fourgram'] = 0
                     st.session_state.pattern_attempts['fourgram'] = 0
+                    st.session_state.pattern_success['markov'] = 0
+                    st.session_state.pattern_attempts['markov'] = 0
                     st.success(f"Session started with {betting_strategy} strategy!")
         logging.debug("render_setup_form completed")
     except Exception as e:
@@ -1106,7 +1171,7 @@ def render_insights():
             if 'Recommendation' in st.session_state.insights:
                 st.markdown(f"**Recommendation**: {st.session_state.insights['Recommendation']['text']}")
 
-            for pattern in ['Bigram', 'Trigram', 'Fourgram', 'Streak', 'Chop', 'Double']:
+            for pattern in ['Bigram', 'Trigram', 'Fourgram', 'Markov', 'Streak', 'Chop', 'Double']:
                 if pattern in st.session_state.insights:
                     details = st.session_state.insights[pattern]
                     st.write(f"**{pattern}**")
