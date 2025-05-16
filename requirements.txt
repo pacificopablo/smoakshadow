@@ -1,2 +1,1 @@
-streamlit==1.38.0 n
-numpy==1.26.4
+streamlit==1.38.0 numpy==1.26.4 typing-extensions==4.12.2
