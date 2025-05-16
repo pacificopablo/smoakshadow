@@ -535,20 +535,73 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         return None, f"No bet: High volatility (house edge thrives in chaos). Wait for stability."
     if pred is None or conf < MIN_CONFIDENCE_THRESHOLD:
         return None, f"No bet: Confidence too low ({conf:.1f}% < {MIN_CONFIDENCE_THRESHOLD}%). The house edge wins on weak bets."
+
+    # Calculate strategy multiplier and base unit
+    base_unit = st.session_state.initial_base_bet if st.session_state.strategy == 'Parlay16' else st.session_state.base_bet
+    multiplier = 1
+    advice_suffix = ""
+    
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
             return None, "No bet: Stopped after three losses (Z1003.1 rule). Reset to fight the house edge."
-        bet_amount = st.session_state.base_bet + (st.session_state.z1003_loss_count * 25)
+        # Convert Z1003.1 to multiplier: base_bet + (z1003_loss_count * 25) ≈ base_bet * (1 + z1003_loss_count * 250/base_bet)
+        multiplier = 1 + (st.session_state.z1003_loss_count * 25 / base_unit)
+        multiplier = round(multiplier)  # Ensure integer multiplier
     elif st.session_state.strategy == 'Flatbet':
-        bet_amount = st.session_state.base_bet
+        multiplier = 1
     elif st.session_state.strategy == 'T3':
-        bet_amount = st.session_state.base_bet * st.session_state.t3_level
-    else:
+        multiplier = st.session_state.t3_level
+    else:  # Parlay16
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
-        bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
+        multiplier = PARLAY_TABLE[st.session_state.parlay_step][key]
         st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
+    
+    # Calculate raw bet
+    bet_amount = base_unit * multiplier
+    
+    # Apply max bet cap as largest integer multiplier
     max_bet = st.session_state.bankroll * 0.02
-    bet_amount = min(bet_amount, max_bet)
+    max_multiplier = int(max_bet // base_unit)
+    if multiplier > max_multiplier:
+        if st.session_state.strategy == 'T3':
+            old_level = st.session_state.t3_level
+            st.session_state.t3_level = max(1, max_multiplier)
+            if old_level != st.session_state.t3_level:
+                st.session_state.t3_level_changes += 1
+            st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, old_level)
+            multiplier = st.session_state.t3_level
+            advice_suffix = f" (T3 level reduced to {multiplier} due to 2% bankroll cap)"
+        elif st.session_state.strategy == 'Parlay16':
+            old_step = st.session_state.parlay_step
+            # Find largest step where multiplier <= max_multiplier
+            for step in range(st.session_state.parlay_step, 0, -1):
+                step_multiplier = PARLAY_TABLE[step][key]
+                if step_multiplier <= max_multiplier:
+                    st.session_state.parlay_step = step
+                    multiplier = step_multiplier
+                    break
+            else:
+                st.session_state.parlay_step = 1
+                multiplier = PARLAY_TABLE[1]['base']
+            if old_step != st.session_state.parlay_step:
+                st.session_state.parlay_step_changes += 1
+            st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+            advice_suffix = f" (Parlay step reduced to {st.session_state.parlay_step} due to 2% bankroll cap)"
+        elif st.session_state.strategy == 'Z1003.1':
+            old_loss_count = st.session_state.z1003_loss_count
+            # Adjust loss count to fit max_multiplier
+            new_loss_count = max(0, int((max_multiplier * base_unit - base_unit) / 25))
+            st.session_state.z1003_loss_count = new_loss_count
+            multiplier = 1 + (new_loss_count * 25 / base_unit)
+            multiplier = round(multiplier)
+            if old_loss_count != new_loss_count:
+                st.session_state.z1003_level_changes += 1
+            advice_suffix = f" (Z1003.1 loss count reduced to {new_loss_count} due to 2% bankroll cap)"
+        else:  # Flatbet
+            multiplier = 1  # Flatbet always uses base_bet
+        bet_amount = base_unit * multiplier
+    
+    # Safety net checks
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if (bet_amount > st.session_state.bankroll or
@@ -560,7 +613,9 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                 if old_level != st.session_state.t3_level:
                     st.session_state.t3_level_changes += 1
                 st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, old_level)
-                bet_amount = st.session_state.base_bet
+                multiplier = 1
+                bet_amount = base_unit
+                advice_suffix = f" (T3 level reset to 1 due to safety net)"
             elif st.session_state.strategy == 'Parlay16':
                 old_step = st.session_state.parlay_step
                 st.session_state.parlay_step = 1
@@ -568,21 +623,33 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                 if old_step != st.session_state.parlay_step:
                     st.session_state.parlay_step_changes += 1
                 st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
-                bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step]['base']
+                multiplier = PARLAY_TABLE[1]['base']
+                bet_amount = base_unit * multiplier
+                advice_suffix = f" (Parlay step reset to 1 due to safety net)"
             elif st.session_state.strategy == 'Z1003.1':
                 old_loss_count = st.session_state.z1003_loss_count
                 st.session_state.z1003_loss_count = 0
                 st.session_state.z1003_bet_factor = 1.0
                 if old_loss_count != st.session_state.z1003_loss_count:
                     st.session_state.z1003_level_changes += 1
-                bet_amount = st.session_state.base_bet
-            return None, "No bet: Risk too high. Level/step reset to minimize house edge impact."
+                multiplier = 1
+                bet_amount = base_unit
+                advice_suffix = f" (Z1003.1 loss count reset to 0 due to safety net)"
+            else:  # Flatbet
+                multiplier = 1
+                bet_amount = base_unit
+            return None, f"No bet: Risk too high. Level/step reset to minimize house edge impact{advice_suffix}."
+    
+    # Final bet check
+    if bet_amount > st.session_state.bankroll:
+        return None, f"No bet: Bet amount (${bet_amount:.2f}) exceeds bankroll (${st.session_state.bankroll:.2f})."
+    
     if st.session_state.learning_mode:
-        return bet_amount, f"Next Bet: ${bet_amount:.2f} on {pred}. Small bets reduce the house edge’s bite."
+        return bet_amount, f"Next Bet: ${bet_amount:.2f} on {pred}. Small bets reduce the house edge’s bite{advice_suffix}."
     if bet_amount > st.session_state.bankroll * 0.015:
         st.session_state.pending_bet = (bet_amount, pred)
-        return None, f"Confirm bet of ${bet_amount:.2f} on {pred}? High bets feed the house edge."
-    return bet_amount, f"Next Bet: ${bet_amount:.2f} on {pred}"
+        return None, f"Confirm bet of ${bet_amount:.2f} on {pred}? High bets feed the house edge{advice_suffix}."
+    return bet_amount, f"Next Bet: ${bet_amount:.2f} on {pred}{advice_suffix}"
 
 def place_result(result: str):
     if st.session_state.target_hit or check_stop_loss():
