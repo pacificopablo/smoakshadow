@@ -573,6 +573,24 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             return None, "No bet: Risk too high for current bankroll. Level/step reset to 1."
     return bet_amount, f"Auto Bet: ${bet_amount:.2f} on {pred}"
 
+def undo_last_result():
+    if st.session_state.history:
+        last_history = st.session_state.history.pop()
+        previous_state = last_history["Previous_State"]
+        st.session_state.update(previous_state)
+        if st.session_state.sequence:
+            st.session_state.sequence.pop()
+        st.session_state.pending_bet = previous_state.get('pending_bet')
+        st.session_state.advice = "Last result undone."
+        st.session_state.insights = previous_state.get('insights', {})
+        pred, conf, insights = predict_next()
+        bet_amount, advice = calculate_bet_amount(pred, conf)
+        st.session_state.pending_bet = (bet_amount, pred) if bet_amount else None
+        st.session_state.advice = advice
+        st.session_state.insights = insights
+        if st.session_state.strategy == 'T3':
+            update_t3_level()
+
 def place_result(result: str):
     if st.session_state.target_hit:
         reset_session()
@@ -839,18 +857,34 @@ def render_setup_form():
                     st.session_state.pattern_success['markov'] = 0
                     st.session_state.pattern_attempts['markov'] = 0
                     st.success(f"Session started with {betting_strategy} strategy! AI Automation: Enabled")
-                    # Run automatic shoe simulation
-                    result = simulate_shoe()
-                    st.session_state.shoe_completed = True
                     st.rerun()
 
 def render_result_input():
-    with st.expander("Shoe Results", expanded=True):
+    with st.expander("Enter Shoe Results", expanded=True):
         if st.session_state.shoe_completed:
             st.success(f"Shoe of {SHOE_SIZE} hands completed!")
-        else:
-            st.info("Simulating shoe... Please wait.")
-        if st.button("Reset and Start New Shoe", key="new_shoe_btn"):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            if st.button("Player", key="player_btn", help="Record a Player win", disabled=st.session_state.shoe_completed):
+                place_result('P')
+                st.rerun()
+        with col2:
+            if st.button("Banker", key="banker_btn", help="Record a Banker win", disabled=st.session_state.shoe_completed):
+                place_result('B')
+                st.rerun()
+        with col3:
+            if st.button("Tie", key="tie_btn", help="Record a Tie", disabled=st.session_state.shoe_completed):
+                place_result('T')
+                st.rerun()
+        with col4:
+            if st.button("Undo", key="undo_btn", help="Undo the last result", disabled=not st.session_state.history or st.session_state.shoe_completed):
+                undo_last_result()
+                st.rerun()
+        if st.button("Run Automated Shoe Simulation", key="auto_shoe_btn", disabled=st.session_state.shoe_completed):
+            result = simulate_shoe()
+            st.session_state.shoe_completed = True
+            st.rerun()
+        if st.session_state.shoe_completed and st.button("Reset and Start New Shoe", key="new_shoe_btn"):
             reset_session()
             st.session_state.shoe_completed = False
             st.rerun()
@@ -885,7 +919,7 @@ def render_prediction():
         if st.session_state.pending_bet:
             amount, pred = st.session_state.pending_bet
             color = '#3182ce' if pred == 'P' else '#e53e3e'
-            st.markdown(f"<div style='background-color: #cdf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
         else:
             st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", unsafe_allow_html=True)
         st.info(st.session_state.advice)
