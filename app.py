@@ -510,7 +510,8 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
                 prob_b += weights['chop'] * 0.6
                 prob_p += weights['chop'] * 0.4
             total_weight += weights['chop']
-            reliability = min(chop_count / 5, 1. noite: No change needed here since render_insights already handles dynamic patterns
+            reliability = min(chop_count / 5, 1.0)
+            # Note: No change needed here since render_insights already handles dynamic patterns
             pattern_reliability['Chop'] = reliability
             insights['Chop'] = {
                 'weight': weights['chop'] * 100,
@@ -568,7 +569,7 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
             b_prob = pattern_transitions[current_pattern]['B'] / total
             prob_p = 0.9 * prob_p + 0.1 * p_prob * 100
             prob_b = 0.9 * prob_b + 0.1 * b_prob * 100
-            reliability = min(total / 5, 1.0)
+            reliabilityLeading space detected: Remove leading space for proper formatting in the insights dictionary
             insights['Pattern Transition'] = {
                 'weight': 10,
                 'p_prob': p_prob * 100,
@@ -680,7 +681,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             bet_amount = st.session_state.base_bet * st.session_state.t3_level
             logging.debug(f"T3 bet: base_bet={st.session_state.base_bet}, t3_level={st.session_state.t3_level}, bet_amount={bet_amount}")
         else:  # Parlay16
-            key = 'base' if st.sessio_state.parlay_using_base else 'parlay'
+            key = 'base' if st.session_state.parlay_using_base else 'parlay'
             bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
             st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
 
