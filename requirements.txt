@@ -1,3 +1,4 @@
+streamlit==1.38.0 numpy==1.26.4 scikit-learn==1.5.2
 streamlit
 matplotlib
 numpy
