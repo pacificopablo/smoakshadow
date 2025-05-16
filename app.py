@@ -27,9 +27,6 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
-STOP_LOSS_PERCENTAGE = 15.0
-PROFIT_LOCK_PERCENTAGE = 10.0
-SESSION_TIME_LIMIT = 2700
 MIN_CONFIDENCE_THRESHOLD = 40.0
 BANKER_BIAS = 0.10
 PAUSE_DURATION = 30
@@ -133,7 +130,7 @@ def track_user_session() -> int:
 # --- Session State Management ---
 def initialize_session_state():
     defaults = {
-        'bankroll': 0.0,
+        'bankroll': 1000.0,  # For tracking only
         'base_bet': 0.10,
         'initial_base_bet': 0.10,
         'sequence': [],
@@ -156,10 +153,6 @@ def initialize_session_state():
         'history': [],
         'wins': 0,
         'losses': 0,
-        'target_mode': 'Profit %',
-        'target_value': 10.0,
-        'initial_bankroll': 0.0,
-        'target_hit': False,
         'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
         'consecutive_losses': 0,
         'loss_log': [],
@@ -168,11 +161,8 @@ def initialize_session_state():
         'pattern_volatility': 0.0,
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
-        'safety_net_percentage': 10.0,
-        'safety_net_enabled': True,
         'learning_mode': False,
-        'pause_until': 0.0,
-        'locked_profit': 0.0
+        'pause_until': 0.0
     }
     defaults['pattern_success']['bigram'] = 0
     defaults['pattern_success']['trigram'] = 0
@@ -192,7 +182,7 @@ def initialize_session_state():
     if st.session_state.strategy not in STRATEGIES:
         st.session_state.strategy = 'T3'
 
-def reset_session(reason: str = "target_or_stop_loss"):
+def reset_session(reason: str = "new_shoe"):
     current_bankroll = st.session_state.bankroll
     current_base_bet = st.session_state.base_bet
     current_initial_base_bet = st.session_state.initial_base_bet
@@ -200,16 +190,12 @@ def reset_session(reason: str = "target_or_stop_loss"):
     current_session_start_time = st.session_state.get('session_start_time', time.time())
     initialize_session_state()
     advice_message = (
-        f"Session reset: Target or stop-loss hit. Bankroll (${current_bankroll:.2f}) carried forward."
-        if reason == "target_or_stop_loss"
-        else f"New shoe started. Bankroll (${current_bankroll:.2f}) and base bet (${current_base_bet:.2f}) carried forward. Patterns reset to fight the house edge."
+        f"New shoe started. Base bet (${current_base_bet:.2f}) carried forward. Patterns reset to fight the house edge."
     )
-    base_bet = 0.10 if reason == "target_or_stop_loss" else current_base_bet
-    initial_base_bet = 0.10 if reason == "target_or_stop_loss" else current_initial_base_bet
     st.session_state.update({
         'bankroll': current_bankroll,
-        'base_bet': base_bet,
-        'initial_base_bet': initial_base_bet,
+        'base_bet': current_base_bet,
+        'initial_base_bet': current_initial_base_bet,
         'sequence': [],
         'pending_bet': None,
         'strategy': 'T3',
@@ -230,10 +216,6 @@ def reset_session(reason: str = "target_or_stop_loss"):
         'history': [],
         'wins': 0,
         'losses': 0,
-        'target_mode': 'Profit %',
-        'target_value': 10.0,
-        'initial_bankroll': current_bankroll,
-        'target_hit': False,
         'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
         'consecutive_losses': 0,
         'loss_log': [],
@@ -242,11 +224,8 @@ def reset_session(reason: str = "target_or_stop_loss"):
         'pattern_volatility': 0.0,
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
-        'safety_net_percentage': 10.0,
-        'safety_net_enabled': True,
         'learning_mode': False,
         'pause_until': 0.0,
-        'locked_profit': 0.0,
         'session_id': current_session_id,
         'session_start_time': current_session_start_time
     })
@@ -265,7 +244,7 @@ def reset_session(reason: str = "target_or_stop_loss"):
 
 def start_new_shoe():
     reset_session(reason="new_shoe")
-    st.success("New shoe started! Sequence and patterns reset, bankroll and base bet carried forward.")
+    st.success("New shoe started! Sequence and patterns reset, base bet carried forward.")
 
 # --- Prediction Logic ---
 def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, int, int, float, float]:
@@ -288,7 +267,7 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
             next_outcome = sequence[i+2]
             bigram_transitions[bigram][next_outcome] += 1
             if i < len(sequence) - 3:
-                trigram_transitions[trigram][next_outcome] += 1
+                trigram_transitions[trigram][next_outcome] = 1
                 if i < len(sequence) - 4:
                     fourgram = tuple(sequence[i:i+4])
                     fourgram_transitions[fourgram][next_outcome] += 1
@@ -341,7 +320,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
         if success_ratios['fourgram'] > 0.6:
             success_ratios['fourgram'] *= 1.2
         weights = {k: np.exp(v) / (1 + np.exp(v)) + 0.01 for k, v in success_ratios.items()}
-        logging.debug(f"Success ratios: {success_ratios}, Initial weights: {weights}, Shoe bias: {shoe_bias}")
+        logging.debug(f"Success ratios: {success_r “‘bigram’]:.2f}, Initial weights: {weights}, Shoe bias: {shoe_bias}")
         if shoe_bias > 0.1:
             weights['bigram'] *= 1.1
             weights['trigram'] *= 1.1
@@ -484,25 +463,6 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
     return None, max(prob_p, prob_b), insights
 
 # --- Betting Logic ---
-def check_target_hit() -> bool:
-    if st.session_state.target_mode == "Profit %":
-        target_profit = st.session_state.initial_bankroll * (st.session_state.target_value / 100)
-        return st.session_state.bankroll >= st.session_state.initial_bankroll + target_profit
-    unit_profit = (st.session_state.bankroll - st.session_state.initial_bankroll) / st.session_state.initial_base_bet
-    return unit_profit >= st.session_state.target_value
-
-def check_stop_loss() -> bool:
-    loss_percentage = ((st.session_state.initial_bankroll - st.session_state.bankroll) / st.session_state.initial_bankroll) * 100
-    return loss_percentage >= STOP_LOSS_PERCENTAGE
-
-def lock_profit():
-    profit = st.session_state.bankroll - st.session_state.initial_bankroll
-    if profit >= st.session_state.initial_bankroll * (PROFIT_LOCK_PERCENTAGE / 100):
-        locked_amount = profit * 0.75
-        st.session_state.locked_profit += locked_amount
-        st.session_state.bankroll -= locked_amount
-        st.session_state.advice = f"Locked ${locked_amount:.2f} of profit. Protect gains from the house edge!"
-
 def update_t3_level():
     if len(st.session_state.t3_results) == 3:
         wins = st.session_state.t3_results.count('W')
@@ -540,11 +500,10 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     base_unit = st.session_state.initial_base_bet if st.session_state.strategy == 'Parlay16' else st.session_state.base_bet
     multiplier = 1
     advice_suffix = ""
-    
+
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
             return None, "No bet: Stopped after three losses (Z1003.1 rule). Reset to fight the house edge."
-        # Convert Z1003.1 to multiplier: base_bet + (z1003_loss_count * 25) ≈ base_bet * (1 + z1003_loss_count * 250/base_bet)
         multiplier = 1 + (st.session_state.z1003_loss_count * 25 / base_unit)
         multiplier = round(multiplier)  # Ensure integer multiplier
     elif st.session_state.strategy == 'Flatbet':
@@ -555,106 +514,15 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
         multiplier = PARLAY_TABLE[st.session_state.parlay_step][key]
         st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
-    
-    # Calculate raw bet
+
+    # Calculate bet
     bet_amount = base_unit * multiplier
-    
-    # Apply max bet cap as largest integer multiplier
-    max_bet = st.session_state.bankroll * 0.02
-    max_multiplier = int(max_bet // base_unit)
-    if multiplier > max_multiplier:
-        if st.session_state.strategy == 'T3':
-            old_level = st.session_state.t3_level
-            st.session_state.t3_level = max(1, max_multiplier)
-            if old_level != st.session_state.t3_level:
-                st.session_state.t3_level_changes += 1
-            st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, old_level)
-            multiplier = st.session_state.t3_level
-            advice_suffix = f" (T3 level reduced to {multiplier} due to 2% bankroll cap)"
-        elif st.session_state.strategy == 'Parlay16':
-            old_step = st.session_state.parlay_step
-            # Find largest step where multiplier <= max_multiplier
-            for step in range(st.session_state.parlay_step, 0, -1):
-                step_multiplier = PARLAY_TABLE[step][key]
-                if step_multiplier <= max_multiplier:
-                    st.session_state.parlay_step = step
-                    multiplier = step_multiplier
-                    break
-            else:
-                st.session_state.parlay_step = 1
-                multiplier = PARLAY_TABLE[1]['base']
-            if old_step != st.session_state.parlay_step:
-                st.session_state.parlay_step_changes += 1
-            st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
-            advice_suffix = f" (Parlay step reduced to {st.session_state.parlay_step} due to 2% bankroll cap)"
-        elif st.session_state.strategy == 'Z1003.1':
-            old_loss_count = st.session_state.z1003_loss_count
-            # Adjust loss count to fit max_multiplier
-            new_loss_count = max(0, int((max_multiplier * base_unit - base_unit) / 25))
-            st.session_state.z1003_loss_count = new_loss_count
-            multiplier = 1 + (new_loss_count * 25 / base_unit)
-            multiplier = round(multiplier)
-            if old_loss_count != new_loss_count:
-                st.session_state.z1003_level_changes += 1
-            advice_suffix = f" (Z1003.1 loss count reduced to {new_loss_count} due to 2% bankroll cap)"
-        else:  # Flatbet
-            multiplier = 1  # Flatbet always uses base_bet
-        bet_amount = base_unit * multiplier
-    
-    # Safety net checks
-    if st.session_state.safety_net_enabled:
-        safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
-        if (bet_amount > st.session_state.bankroll or
-            st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
-            bet_amount > st.session_state.bankroll * 0.05):
-            if st.session_state.strategy == 'T3':
-                old_level = st.session_state.t3_level
-                st.session_state.t3_level = 1
-                if old_level != st.session_state.t3_level:
-                    st.session_state.t3_level_changes += 1
-                st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, old_level)
-                multiplier = 1
-                bet_amount = base_unit
-                advice_suffix = f" (T3 level reset to 1 due to safety net)"
-            elif st.session_state.strategy == 'Parlay16':
-                old_step = st.session_state.parlay_step
-                st.session_state.parlay_step = 1
-                st.session_state.parlay_using_base = True
-                if old_step != st.session_state.parlay_step:
-                    st.session_state.parlay_step_changes += 1
-                st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
-                multiplier = PARLAY_TABLE[1]['base']
-                bet_amount = base_unit * multiplier
-                advice_suffix = f" (Parlay step reset to 1 due to safety net)"
-            elif st.session_state.strategy == 'Z1003.1':
-                old_loss_count = st.session_state.z1003_loss_count
-                st.session_state.z1003_loss_count = 0
-                st.session_state.z1003_bet_factor = 1.0
-                if old_loss_count != st.session_state.z1003_loss_count:
-                    st.session_state.z1003_level_changes += 1
-                multiplier = 1
-                bet_amount = base_unit
-                advice_suffix = f" (Z1003.1 loss count reset to 0 due to safety net)"
-            else:  # Flatbet
-                multiplier = 1
-                bet_amount = base_unit
-            return None, f"No bet: Risk too high. Level/step reset to minimize house edge impact{advice_suffix}."
-    
-    # Final bet check
-    if bet_amount > st.session_state.bankroll:
-        return None, f"No bet: Bet amount (${bet_amount:.2f}) exceeds bankroll (${st.session_state.bankroll:.2f})."
-    
+
     if st.session_state.learning_mode:
         return bet_amount, f"Next Bet: ${bet_amount:.2f} on {pred}. Small bets reduce the house edge’s bite{advice_suffix}."
-    if bet_amount > st.session_state.bankroll * 0.015:
-        st.session_state.pending_bet = (bet_amount, pred)
-        return None, f"Confirm bet of ${bet_amount:.2f} on {pred}? High bets feed the house edge{advice_suffix}."
     return bet_amount, f"Next Bet: ${bet_amount:.2f} on {pred}{advice_suffix}"
 
 def place_result(result: str):
-    if st.session_state.target_hit or check_stop_loss():
-        reset_session(reason="target_or_stop_loss")
-        return
     st.session_state.last_was_tie = (result == 'T')
     bet_amount = 0
     bet_placed = False
@@ -681,11 +549,8 @@ def place_result(result: str):
         "pattern_volatility": st.session_state.pattern_volatility,
         "pattern_success": st.session_state.pattern_success.copy(),
         "pattern_attempts": st.session_state.pattern_attempts.copy(),
-        "safety_net_percentage": st.session_state.safety_net_percentage,
-        "safety_net_enabled": st.session_state.safety_net_enabled,
         "learning_mode": st.session_state.learning_mode,
-        "pause_until": st.session_state.pause_until,
-        "locked_profit": st.session_state.locked_profit
+        "pause_until": st.session_state.pause_until
     }
     if st.session_state.pending_bet and result != 'T':
         bet_amount, selection = st.session_state.pending_bet
@@ -693,7 +558,6 @@ def place_result(result: str):
         bet_placed = True
         if win:
             st.session_state.bankroll += bet_amount * (0.95 if selection == 'B' else 1.0)
-            lock_profit()
             if st.session_state.strategy == 'T3':
                 st.session_state.t3_results.append('W')
             elif st.session_state.strategy == 'Parlay16':
@@ -769,11 +633,6 @@ def place_result(result: str):
     })
     if len(st.session_state.history) > HISTORY_LIMIT:
         st.session_state.history = st.session_state.history[-HISTORY_LIMIT:]
-    if check_target_hit():
-        st.session_state.target_hit = True
-        lock_profit()
-        reset_session(reason="target_or_stop_loss")
-        return
     pred, conf, insights = predict_next()
     if st.session_state.strategy == 'Z1003.1' and st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
         bet_amount, advice = None, "No bet: Stopped after three losses (Z1003.1 rule)"
@@ -832,46 +691,27 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
 
 # --- UI Components ---
 def render_setup_form():
-    with st.expander("Session Setup", expanded=st.session_state.bankroll == 0):
+    with st.expander("Session Setup", expanded=st.session_state.base_bet == 0.10):
         with st.form("setup_form"):
             col1, col2 = st.columns(2)
             with col1:
-                bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll, step=10.0,
-                                          help="Set a bankroll you can afford to lose. The house edge (1.06% Banker, 1.24% Player) means risk is inevitable.")
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10,
-                                          help="Keep bets at 1-2% of bankroll to fight the house edge.")
+                                          help="Set the base unit for your betting strategy.")
             with col2:
                 betting_strategy = st.selectbox(
                     "Betting Strategy", STRATEGIES,
                     index=STRATEGIES.index(st.session_state.strategy),
-                    help="T3: Dynamic bets. Flatbet: Low variance. Parlay16: Progressive. Z1003.1: Aggressive but risky. All face the house edge.")
-                target_mode = st.radio("Target Type", ["Profit %", "Units"], index=0,
-                                      help="Set small targets (5-10%) to lock profits before the house edge erodes gains.")
-                target_value = st.number_input("Target Value", min_value=1.0, value=float(st.session_state.target_value), step=1.0)
-            safety_net_enabled = st.checkbox(
-                "Enable Safety Net",
-                value=st.session_state.safety_net_enabled,
-                help="Protects your bankroll from the house edge by preserving a percentage.")
-            safety_net_percentage = st.session_state.safety_net_percentage
-            if safety_net_enabled:
-                safety_net_percentage = st.number_input(
-                    "Safety Net Percentage (%)",
-                    min_value=0.0, max_value=50.0, value=st.session_state.safety_net_percentage, step=5.0,
-                    help="Set 15-25% to shield against the house edge.")
+                    help="T3: Dynamic bets. Flatbet: Low variance. Parlay16: Progressive. Z1003.1: Aggressive but risky.")
             learning_mode = st.checkbox(
                 "Enable Learning Mode",
                 value=st.session_state.learning_mode,
                 help="Explains predictions and house edge impact to build knowledge.")
             if st.form_submit_button("Start Session"):
-                if bankroll <= 0:
-                    st.error("Bankroll must be positive.")
-                elif base_bet < 0.10:
+                if base_bet < 0.10:
                     st.error("Base bet must be at least $0.10.")
-                elif base_bet > bankroll * 0.02:
-                    st.error("Base bet should not exceed 2% of bankroll to fight the house edge.")
                 else:
                     st.session_state.update({
-                        'bankroll': bankroll,
+                        'bankroll': 1000.0,  # For tracking only
                         'base_bet': base_bet,
                         'initial_base_bet': base_bet,
                         'strategy': betting_strategy,
@@ -894,10 +734,6 @@ def render_setup_form():
                         'history': [],
                         'wins': 0,
                         'losses': 0,
-                        'target_mode': target_mode,
-                        'target_value': target_value,
-                        'initial_bankroll': bankroll,
-                        'target_hit': False,
                         'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
                         'consecutive_losses': 0,
                         'loss_log': [],
@@ -906,11 +742,8 @@ def render_setup_form():
                         'pattern_volatility': 0.0,
                         'pattern_success': defaultdict(int),
                         'pattern_attempts': defaultdict(int),
-                        'safety_net_percentage': safety_net_percentage,
-                        'safety_net_enabled': safety_net_enabled,
                         'learning_mode': learning_mode,
-                        'pause_until': 0.0,
-                        'locked_profit': 0.0
+                        'pause_until': 0.0
                     })
                     st.session_state.pattern_success['bigram'] = 0
                     st.session_state.pattern_success['trigram'] = 0
@@ -928,7 +761,7 @@ def render_setup_form():
 
 def render_result_input():
     with st.expander("Enter Result", expanded=True):
-        cols = st.columns(6)
+        cols = st.columns(5)
         with cols[0]:
             if st.button("Player", key="player_btn", help="Record a Player win (1.24% house edge)"):
                 place_result("P")
@@ -975,13 +808,6 @@ def render_result_input():
                     except Exception as e:
                         st.error(f"Error undoing last action: {str(e)}")
         with cols[4]:
-            if st.session_state.pending_bet and st.session_state.advice.startswith("Confirm bet"):
-                if st.button("Confirm Bet", key="confirm_btn", help="Confirm high-risk bet"):
-                    bet_amount, pred = st.session_state.pending_bet
-                    st.session_state.pending_bet = (bet_amount, pred)
-                    st.session_state.advice = f"Next Bet: ${bet_amount:.2f} on {pred}"
-                    st.rerun()
-        with cols[5]:
             if st.button("New Shoe", key="new_shoe_btn", help="Start a new shoe, resetting sequence and patterns"):
                 start_new_shoe()
                 st.rerun()
@@ -1014,11 +840,11 @@ def render_bead_plate():
 
 def render_prediction():
     with st.expander("Prediction", expanded=True):
-        if st.session_state.pending_bet and not st.session_state.advice.startswith("Confirm bet"):
+        if st.session_state.pending_bet:
             amount, side = st.session_state.pending_bet
             color = '#3182ce' if side == 'P' else '#e53e3e'
             st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>Prediction: {side} | Bet: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
-        elif not st.session_state.target_hit:
+        else:
             st.info(st.session_state.advice)
             if st.session_state.learning_mode and st.session_state.insights:
                 st.markdown("**Why this prediction?** The system favors Banker bets (1.06% house edge) and uses patterns to maximize short-term wins.")
@@ -1030,18 +856,12 @@ def render_insights():
                 st.markdown(f"**{factor}**: {contribution}")
         if st.session_state.pattern_volatility > 0.5:
             st.warning(f"High Pattern Volatility: {st.session_state.pattern_volatility:.2f} (Betting paused)")
-        if st.session_state.locked_profit > 0:
-            st.success(f"Locked Profit: ${st.session_state.locked_profit:.2f}")
 
 def render_status():
     with st.expander("Session Status", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
-            st.markdown(f"**Safety Net**: {'Enabled' if st.session_state.safety_net_enabled else 'Disabled'}"
-                        f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
-            st.markdown(f"**Locked Profit**: ${st.session_state.locked_profit:.2f}")
         with col2:
             strategy_status = f"**Strategy**: {st.session_state.strategy}"
             if st.session_state.strategy == 'T3':
@@ -1053,16 +873,6 @@ def render_status():
             st.markdown(strategy_status, unsafe_allow_html=True)
         st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
         st.markdown(f"**Online Users**: {track_user_session()}")
-        if st.session_state.initial_base_bet > 0 and st.session_state.initial_bankroll > 0:
-            profit = st.session_state.bankroll - st.session_state.initial_bankroll
-            units_profit = profit / st.session_state.initial_base_bet
-            st.markdown(f"**Profit**: {units_profit:.2f} units (${profit:.2f})")
-            total_bets = sum(h['Amount'] for h in st.session_state.history if h['Bet_Placed'])
-            expected_loss = total_bets * (0.0106 if st.session_state.history and st.session_state.history[-1]['Bet'] == 'B' else 0.0124)
-            st.markdown(f"**Est. House Edge Loss**: ${expected_loss:.2f} (based on total bets)")
-        else:
-            st.markdown("**Profit**: 0.00 units ($0.00)")
-            st.markdown("**Est. House Edge Loss**: $0.00")
         time_elapsed = time.time() - st.session_state.session_start_time
         st.markdown(f"**Session Time**: {int(time_elapsed // 60)}m {int(time_elapsed % 60)}s")
         current_time = time.time()
@@ -1129,9 +939,9 @@ def render_history():
 def render_export():
     with st.expander("Export Session"):
         if st.button("Download Session Data"):
-            csv_data = "Bet,Result,Amount,Win,T3_Level,Parlay_Step,Z1003_Loss_Count,Locked_Profit\n"
+            csv_data = "Bet,Result,Amount,Win,T3_Level,Parlay_Step,Z1003_Loss_Count\n"
             for h in st.session_state.history:
-                csv_data += f"{h['Bet'] or '-'},{h['Result']},${h['Amount']:.2f},{h['Win']},{h['T3_Level']},{h['Parlay_Step']},{h['Z1003_Loss_Count']},{st.session_state.locked_profit:.2f}\n"
+                csv_data += f"{h['Bet'] or '-'},{h['Result']},${h['Amount']:.2f},{h['Win']},{h['T3_Level']},{h['Parlay_Step']},{h['Z1003_Loss_Count']}\n"
             st.download_button("Download CSV", csv_data, "session_data.csv", "text/csv")
 
 def render_simulation():
@@ -1156,7 +966,7 @@ def main():
     st.set_page_config(layout="wide", page_title="MANG Baccarat")
     apply_custom_css()
     st.title("MANG Baccarat")
-    st.markdown("**Welcome to MANG Baccarat!** Fight the house edge (1.06% Banker, 1.24% Player) with disciplined betting, small bets, and early profit locking.")
+    st.markdown("**Welcome to MANG Baccarat!** Use betting strategies to fight the house edge (1.06% Banker, 1.24% Player).")
     initialize_session_state()
     col1, col2 = st.columns([2, 1])
     with col1:
