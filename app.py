@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -229,7 +230,7 @@ def initialize_session_state():
             'pattern_attempts': defaultdict(int),
             'safety_net_percentage': 10.0,
             'safety_net_enabled': True,
-            'ai_automation_enabled': True,
+            'ai_aut Automation_enabled': True,
             'shoe_completed': False
         }
         defaults['pattern_success']['fourgram'] = 0
@@ -247,14 +248,28 @@ def initialize_session_state():
 
 def reset_session():
     try:
+        # Store current setup values before reset
+        setup_values = {
+            'initial_bankroll': st.session_state.initial_bankroll,
+            'base_bet': st.session_state.base_bet,
+            'initial_base_bet': st.session_state.initial_base_bet,
+            'strategy': st.session_state.strategy,
+            'target_mode': st.session_state.target_mode,
+            'target_value': st.session_state.target_value,
+            'safety_net_enabled': st.session_state.safety_net_enabled,
+            'safety_net_percentage': st.session_state.safety_net_percentage,
+            'ai_automation_enabled': st.session_state.ai_automation_enabled
+        }
+
+        # Reset session state to defaults
         initialize_session_state()
         st.session_state.update({
-            'bankroll': st.session_state.initial_bankroll,
-            'base_bet': 0.10,
-            'initial_base_bet': 0.10,
+            'bankroll': setup_values['initial_bankroll'],
+            'base_bet': setup_values['base_bet'],
+            'initial_base_bet': setup_values['initial_base_bet'],
+            'strategy': setup_values['strategy'],
             'sequence': [],
             'pending_bet': None,
-            'strategy': 'T3',
             't3_level': 1,
             't3_results': [],
             't3_level_changes': 0,
@@ -268,11 +283,15 @@ def reset_session():
             'z1003_bet_factor': 1.0,
             'z1003_continue': False,
             'z1003_level_changes': 0,
-            'advice': "Session reset: Target reached.",
+            'advice': "Session reset: Target or stop loss reached.",
             'history': [],
             'wins': 0,
             'losses': 0,
+            'target_mode': setup_values['target_mode'],
+            'target_value': setup_values['target_value'],
+            'initial_bankroll': setup_values['initial_bankroll'],
             'target_hit': False,
+            'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
             'consecutive_losses': 0,
             'loss_log': [],
             'last_was_tie': False,
@@ -280,13 +299,15 @@ def reset_session():
             'pattern_volatility': 0.0,
             'pattern_success': defaultdict(int),
             'pattern_attempts': defaultdict(int),
-            'safety_net_percentage': 10.0,
-            'safety_net_enabled': True,
-            'ai_automation_enabled': True,
+            'safety_net_percentage': setup_values['safety_net_percentage'],
+            'safety_net_enabled': setup_values['safety_net_enabled'],
+            'ai_automation_enabled': setup_values['ai_automation_enabled'],
             'shoe_completed': False
         })
         st.session_state.pattern_success['markov'] = 0
         st.session_state.pattern_attempts['markov'] = 0
+        st.session_state.pattern_success['fourgram'] = 0
+        st.session_state.pattern_attempts['fourgram'] = 0
     except Exception as e:
         logger.error(f"Session reset failed: {e}")
         st.error("Error resetting session. Please refresh.")
@@ -650,6 +671,14 @@ def place_result(result: str):
         if st.session_state.target_hit:
             reset_session()
             return
+        # Check stop loss
+        if st.session_state.safety_net_enabled:
+            safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
+            if st.session_state.bankroll <= safe_bankroll:
+                st.session_state.advice = "Session reset: Stop loss reached."
+                reset_session()
+                return
+
         st.session_state.last_was_tie = (result == 'T')
         bet_amount = 0
         bet_placed = False
@@ -769,7 +798,15 @@ def place_result(result: str):
             st.session_state.history = st.session_state.history[-HISTORY_LIMIT:]
         if check_target_hit():
             st.session_state.target_hit = True
+            reset_session()
             return
+        # Recheck stop loss after updating bankroll
+        if st.session_state.safety_net_enabled:
+            safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
+            if st.session_state.bankroll <= safe_bankroll:
+                st.session_state.advice = "Session reset: Stop loss reached."
+                reset_session()
+                return
         pred, conf, insights = predict_next()
         bet_amount, advice = calculate_bet_amount(pred, conf)
         st.session_state.pending_bet = (bet_amount, pred) if bet_amount else None
@@ -845,15 +882,15 @@ def render_setup_form():
             with st.form("setup_form"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll, step=10.0)
-                    base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10)
+                    bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.initial_bankroll or 100.0, step=10.0)
+                    base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=st.session_state.initial_base_bet or 0.10, step=0.10)
                 with col2:
                     betting_strategy = st.selectbox(
                         "Betting Strategy", STRATEGIES,
                         index=STRATEGIES.index(st.session_state.strategy),
                         help="T3: Adjusts bet size based on wins/losses. Flatbet: Fixed bet size. Parlay16: 16-step progression. Z1003.1: Resets after first win, stops after three losses."
                     )
-                    target_mode = st.radio("Target Type", ["Profit %", "Units"], index=0)
+                    target_mode = st.radio("Target Type", ["Profit %", "Units"], index=["Profit %", "Units"].index(st.session_state.target_mode))
                     target_value = st.number_input("Target Value", min_value=1.0, value=float(st.session_state.target_value), step=1.0)
                 safety_net_enabled = st.checkbox(
                     "Enable Safety Net",
@@ -1169,3 +1206,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
