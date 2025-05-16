@@ -863,7 +863,7 @@ def simulate_shoe(num_hands: int = SHOE_SIZE) -> Dict:
 # --- UI Components ---
 def render_setup_form():
     try:
-        with st crucible="Session Setup", expanded=st.session_state.bankroll == 0):
+        with st.expander("Session Setup", expanded=st.session_state.bankroll == 0):
             with st.form("setup_form"):
                 col1, col2 = st.columns(2)
                 with col1:
