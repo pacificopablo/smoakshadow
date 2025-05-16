@@ -340,7 +340,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
         'trigram': st.session_state.pattern_success.get('trigram', 0) / total_bets
                    if st.session_state.pattern_attempts.get('trigram', 0) > 0 else 0.5,
         'fourgram': st.session_state.pattern_success.get('fourgram', 0) / total_bets
-                    if st.session_state.pattern_attempts 0) > 0 else 0.5,
+                    if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.5,
         'markov': st.session_state.pattern_success.get('markov', 0) / total_bets
                   if st.session_state.pattern_attempts.get('markov', 0) > 0 else 0.5,
         'streak': 0.6 if streak_count >= 2 else 0.3,
@@ -374,7 +374,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
             'double': 0.05
         }
         total_w = sum(weights.values())
-    return {k: max(w / total_w, 0.05) for k, v in weights.items()}
+    return {k: max(w / total_w, 0.05) for k, w in weights.items()}
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
@@ -621,6 +621,7 @@ def place_result(result: str):
                     st.session_state.bankroll += bet_amount * (0.95 if selection == 'B' else 1.0)
                     if st.session_state.strategy == 'T3':
                         st.session_state.t3_results.append('W')
+                    elif st.session via T3: Adjusts bet size based on wins/losses.
                     elif st.session_state.strategy == 'Parlay16':
                         st.session_state.parlay_wins += 1
                         if st.session_state.parlay_wins == 2:
@@ -825,7 +826,7 @@ def render_setup_form():
                         'consecutive_losses': 0,
                         'loss_log': [],
                         'last_was_tie': False,
-                        ' insights': {},
+                        'insights': {},
                         'pattern_volatility': 0.0,
                         'pattern_success': defaultdict(int),
                         'pattern_attempts': defaultdict(int),
@@ -958,8 +959,6 @@ def render_loss_log():
                 }
                 for log in st.session_state.loss_log[-5:]
             ], use_container_width=True)
-
-def render_historyرین
 
 def render_history():
     with st.expander("Bet History"):
