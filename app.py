@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -8,18 +7,34 @@ import numpy as np
 from typing import Tuple, Dict, Optional, List
 import uuid
 import logging
-from profit_enhancements import (
-    adjust_safety_net, recommend_strategy, enhanced_z1003_bet,
-    calculate_roi, render_profit_dashboard
-)
+import tempfile
+
+# Placeholder for profit_enhancements module
+def adjust_safety_net():
+    return st.session_state.safety_net_percentage  # Return current safety net percentage
+
+def recommend_strategy(sequence):
+    return "T3"  # Default recommendation
+
+def enhanced_z1003_bet(loss_count, base_bet):
+    factors = [1.0, 2.0, 3.0]  # Simple progression
+    return base_bet * factors[min(loss_count, len(factors) - 1)]
+
+def calculate_roi():
+    profit = st.session_state.bankroll - st.session_state.initial_bankroll
+    return (profit / st.session_state.initial_bankroll * 100) if st.session_state.initial_bankroll > 0 else 0.0
+
+def render_profit_dashboard():
+    st.markdown("**Profit Dashboard**")
+    st.markdown(f"ROI: {calculate_roi():.2f}%")
 
 # Set up logging for debugging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Constants ---
-SESSION_FILE = "online_users.txt"
-SIMULATION_LOG = "simulation_log.txt"
+SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
+SIMULATION_LOG = os.path.join(tempfile.gettempdir(), "simulation_log.txt")
 PARLAY_TABLE = {
     i: {'base': b, 'parlay': p} for i, (b, p) in enumerate([
         (1, 2), (1, 2), (1, 2), (2, 4), (3, 6), (4, 8), (6, 12), (8, 16),
@@ -39,7 +54,7 @@ def apply_custom_css():
         st.markdown("""
         <style>
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: 'Inter', sans-serif;
             background-color: #f7f9fc;
         }
         .stApp {
@@ -57,7 +72,7 @@ def apply_custom_css():
             text-align: center;
             margin-bottom: 1.5rem;
         }
-        h2, .st-emotion-cache-1rtdyac {
+        h2 {
             color: #2c5282;
             font-size: 1.5rem;
             font-weight: 600;
@@ -79,16 +94,13 @@ def apply_custom_css():
             transform: translateY(-2px);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
-        .stButton > button:active {
-            transform: translateY(0);
-        }
-        .stNumberInput > div > div > input, .stSelectbox > div > div > select {
+        .stNumberInput input, .stSelectbox select {
             border-radius: 8px;
             border: 1px solid #e2e8f0;
             padding: 10px;
             font-size: 14px;
         }
-        .stRadio > div > label, .stCheckbox > div > label {
+        .stRadio label, .stCheckbox label {
             font-size: 14px;
             color: #4a5568;
         }
@@ -97,41 +109,9 @@ def apply_custom_css():
             border-radius: 8px;
             margin-bottom: 1rem;
         }
-        .st-expander > div > div {
-            background-color: #f7fafc;
-            border-radius: 8px;
-        }
         .stMarkdown, .stDataFrame {
             font-size: 14px;
             color: #2d3748;
-        }
-        .result-button-player {
-            background: linear-gradient(to bottom, #3182ce, #2b6cb0);
-            color: white;
-        }
-        .result-button-player:hover {
-            background: linear-gradient(to bottom, #63b3ed, #3182ce);
-        }
-        .result-button-banker {
-            background: linear-gradient(to bottom, #e53e3e, #c53030);
-            color: white;
-        }
-        .result-button-banker:hover {
-            background: linear-gradient(to bottom, #fc8181, #e53e3e);
-        }
-        .result-button-tie {
-            background: linear-gradient(to bottom, #38a169, #2f855a);
-            color: white;
-        }
-        .result-button-tie:hover {
-            background: linear-gradient(to bottom, #68d391, #38a169);
-        }
-        .result-button-undo {
-            background: linear-gradient(to bottom, #718096, #5a667f);
-            color: white;
-        }
-        .result-button-undo:hover {
-            background: linear-gradient(to bottom, #a0aec0, #718096);
         }
         .bead-plate {
             background-color: #edf2f7;
@@ -146,15 +126,12 @@ def apply_custom_css():
             h1 {
                 font-size: 2rem;
             }
-            h2, .st-emotion-cache-1rtdyac {
+            h2 {
                 font-size: 1.25rem;
             }
             .stButton > button {
                 width: 100%;
                 padding: 12px;
-            }
-            .stNumberInput, .stSelectbox {
-                margin-bottom: 1rem;
             }
         }
         </style>
@@ -171,19 +148,27 @@ def track_user_session() -> int:
         sessions = {}
         current_time = datetime.now()
         if os.path.exists(SESSION_FILE):
-            with open(SESSION_FILE, 'r', encoding='utf-8') as f:
-                for line in f:
-                    try:
-                        session_id, timestamp = line.strip().split(',')
-                        last_seen = datetime.fromisoformat(timestamp)
-                        if current_time - last_seen <= timedelta(seconds=30):
-                            sessions[session_id] = last_seen
-                    except ValueError:
-                        continue
+            try:
+                with open(SESSION_FILE, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            session_id, timestamp = line.strip().split(',')
+                            last_seen = datetime.fromisoformat(timestamp)
+                            if current_time - last_seen <= timedelta(seconds=30):
+                                sessions[session_id] = last_seen
+                        except ValueError:
+                            continue
+            except PermissionError:
+                st.warning("Unable to read session file. Session tracking may be limited.")
+                return 0
         sessions[st.session_state.session_id] = current_time
-        with open(SESSION_FILE, 'w', encoding='utf-8') as f:
-            for session_id, last_seen in sessions.items():
-                f.write(f"{session_id},{last_seen.isoformat()}\n")
+        try:
+            with open(SESSION_FILE, 'w', encoding='utf-8') as f:
+                for session_id, last_seen in sessions.items():
+                    f.write(f"{session_id},{last_seen.isoformat()}\n")
+        except PermissionError:
+            st.warning("Unable to write to session file. Session tracking may be limited.")
+            return len(sessions)
         return len(sessions)
     except Exception as e:
         logger.error(f"Session tracking failed: {e}")
@@ -230,7 +215,7 @@ def initialize_session_state():
             'pattern_attempts': defaultdict(int),
             'safety_net_percentage': 10.0,
             'safety_net_enabled': True,
-            'ai_aut Automation_enabled': True,
+            'ai_automation_enabled': True,
             'shoe_completed': False
         }
         defaults['pattern_success']['fourgram'] = 0
@@ -626,7 +611,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                 elif st.session_state.strategy == 'Parlay16':
                     old_step = st.session_state.parlay_step
                     st.session_state.parlay_step = 1
-                    st.session_state.parlay_using_base = True
+                    st.session_state.parlay_using contraddistinto_base = True
                     if old_step != st.session_state.parlay_step:
                         st.session_state.parlay_step_changes += 1
                     st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
@@ -869,7 +854,7 @@ def simulate_shoe(num_hands: int = SHOE_SIZE) -> Dict:
                         f"Markov={result['pattern_success'].get('markov', 0)}/{result['pattern_attempts'].get('markov', 0)}, "
                         f"Final Bankroll=${result['final_bankroll']:.2f}, Wins={result['wins']}, Losses={result['losses']}\n")
         except PermissionError:
-            st.error("Unable to write to simulation log.")
+            st.warning("Unable to write to simulation log. Results not saved to file.")
         return result
     except Exception as e:
         logger.error(f"Simulation failed: {e}")
@@ -1206,4 +1191,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
