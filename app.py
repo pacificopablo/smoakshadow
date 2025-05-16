@@ -621,7 +621,6 @@ def place_result(result: str):
                     st.session_state.bankroll += bet_amount * (0.95 if selection == 'B' else 1.0)
                     if st.session_state.strategy == 'T3':
                         st.session_state.t3_results.append('W')
-                    elif st.session via T3: Adjusts bet size based on wins/losses.
                     elif st.session_state.strategy == 'Parlay16':
                         st.session_state.parlay_wins += 1
                         if st.session_state.parlay_wins == 2:
@@ -886,7 +885,7 @@ def render_prediction():
         if st.session_state.pending_bet:
             amount, pred = st.session_state.pending_bet
             color = '#3182ce' if pred == 'P' else '#e53e3e'
-            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: #cdf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
         else:
             st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", unsafe_allow_html=True)
         st.info(st.session_state.advice)
