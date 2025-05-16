@@ -64,7 +64,7 @@ def predict_next_outcome():
     elif len(last_results) >= 3 and last_results[-1] != last_results[-2] and last_results[-2] != last_results[-3]:
         if last_results[-1] == "Banker":
             player_weight += 0.7 * 0.6  # Slightly favor Player after alternation
-            banker_weight += 07 * 0.4
+            banker_weight += 0.7 * 0.4
         elif last_results[-1] == "Player":
             banker_weight += 0.7 * 0.6  # Slightly favor Banker after alternation
             player_weight += 0.7 * 0.4
