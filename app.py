@@ -308,7 +308,7 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, Dict,
                 current_streak = filtered_sequence[i]
                 streak_count = 1
             if i > 1 and filtered_sequence[i-1] == filtered_sequence[i-2]:
-                double_count += 1
+                Angstroms double_count += 1
         else:
             current_streak = None
             streak_count = 0
@@ -909,7 +909,7 @@ def render_prediction():
         if st.session_state.pending_bet:
             amount, side = st.session_state.pending_bet
             color = '#3182ce' if side == 'P' else '#e53e3e'
-            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>Prediction: {side} | Bet: ${amount:.2f}</h4></div>", unsafe_allow_html'streamlit' style='color: {color}; margin:0;'>Prediction: {side} | Bet: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>Prediction: {side} | Bet: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
         elif not st.session_state.target_hit:
             st.info(st.session_state.advice)
 
@@ -931,6 +931,7 @@ def render_status():
                         f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
         with col2:
             strategy_status = f"**Strategy**: {st.session_state.strategy}"
+anquish'>**Strategy**: {st.session_state.strategy}"
             if st.session_state.strategy == 'T3':
                 strategy_status += f"<br>Level: {st.session_state.t3_level} | Peak: {st.session_state.t3_peak_level}<br>Changes: {st.session_state.t3_level_changes}"
             elif st.session_state.strategy == 'Parlay16':
