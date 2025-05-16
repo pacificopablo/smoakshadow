@@ -35,7 +35,7 @@ def track_user_session() -> int:
     """Track active user sessions with fallback for file errors."""
     logging.debug("Entering track_user_session")
     if 'session_id' not in st.session_state:
-        st.session_state.session_id = str(uuid.uuid4())  # Use UUID for unique session IDs
+        st.session_state.session_id = str(uuid.uuid4())
 
     sessions = {st.session_state.session_id: datetime.now()}
     current_time = datetime.now()
@@ -119,13 +119,12 @@ def initialize_session_state():
         if key not in st.session_state:
             st.session_state[key] = value
 
-    # Explicitly initialize defaultdicts
     st.session_state.pattern_success = defaultdict(int)
     st.session_state.pattern_attempts = defaultdict(int)
     st.session_state.pattern_success['fourgram'] = 0
     st.session_state.pattern_attempts['fourgram'] = 0
     st.session_state.pattern_success['markov'] = 0
-    st.session_state.pattern_attempts['markov'] = 0
+    st.session_state.*pattern_attempts['markov'] = 0
 
     if st.session_state.strategy not in STRATEGIES:
         st.session_state.strategy = 'T3'
@@ -201,7 +200,6 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, Dict,
             elif sequence[i] == 'B':
                 banker_count += 1
 
-            # Markov transitions (first-order)
             if i < len(sequence) - 1 and sequence[i] in ['P', 'B', 'T']:
                 next_outcome = sequence[i+1]
                 markov_transitions[sequence[i]][next_outcome] += 1
@@ -212,7 +210,6 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, Dict,
                 next_outcome = sequence[i+2]
                 bigram_transitions[bigram][next_outcome] += 1
                 if i < len(sequence) - 3:
-                    trig Oldest trick
                     trigram_transitions[trigram][next_outcome] += 1
                     if i < len(sequence) - 4:
                         fourgram = tuple(sequence[i:i+4])
@@ -395,7 +392,6 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
             attempts = sum(1 for h in recent_bets if h.get('Bet_Placed', False) and pattern in h.get('Previous_State', {}).get('insights', {}))
             recent_performance[pattern] = success / max(attempts, 1) if attempts > 0 else 0.0
 
-        # Markov model prediction
         if sequence:
             last_state = sequence[-1]
             total = sum(markov_transitions[last_state].values())
@@ -469,11 +465,142 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
                     'p_prob': p_prob * 100,
                     'b_prob': b_prob * 100,
                     'reliability': reliability * 100,
-                    'recent_performance': recent_performance['fourgram']部分性問題：
-                    由於您的程式碼片段中缺少了 `render_setup_form()`、`place_result()` 和 `simulate_shoe()` 函數的實現，我將為您提供這些缺失部分的簡單實現，以便程式碼能夠運行。以下是完整的程式碼，包括這些函數的實現：
+                    'recent_performance': recent_performance['fourgram'] * 100
+                }
 
-```python
-# ... [您的原始程式碼直到 predict_next() 函數結束] ...
+        if streak_count >= 2:
+            streak_prob = min(0.7, 0.5 + streak_count * 0.05) * (0.8 if streak_count > 4 else 1.0)
+            current_streak = recent_sequence[-1]
+            if current_streak == 'P':
+                prob_p += weights['streak'] * streak_prob
+                prob_b += weights['streak'] * (1 - streak_prob)
+            else:
+                prob_b += weights['streak'] * streak_prob
+                prob_p += weights['streak'] * (1 - streak_prob)
+            total_weight += weights['streak']
+            reliability = min(streak_count / 5, 1.0)
+            pattern_reliability['Streak'] = reliability
+            insights['Streak'] = {
+                'weight': weights['streak'] * 100,
+                'streak_type': current_streak,
+                'streak_count': streak_count,
+                'reliability': reliability * 100,
+                'recent_performance': recent_performance['streak'] * 100
+            }
+
+        if chop_count >= 2:
+            next_pred = 'B' if recent_sequence[-1] == 'P' else 'P'
+            if next_pred == 'P':
+                prob_p += weights['chop'] * 0.6
+                prob_b += weights['chop'] * 0.4
+            else:
+                prob_b += weights['chop'] * 0.6
+                prob_p += weights['chop'] * 0.4
+            total_weight += weights['chop']
+            reliability = min(chop_count / 5, 1.0)
+            pattern_reliability['Chop'] = reliability
+            insights['Chop'] = {
+                'weight': weights['chop'] * 100,
+                'chop_count': chop_count,
+                'next_pred': next_pred,
+                'reliability': reliability * 100,
+                'recent_performance': recent_performance['chop'] * 100
+            }
+
+        if double_count >= 1 and len(recent_sequence) >= 2 and recent_sequence[-1] == recent_sequence[-2]:
+            double_prob = 0.6
+            if recent_sequence[-1] == 'P':
+                prob_p += weights['double'] * double_prob
+                prob_b += weights['double'] * (1 - double_prob)
+            else:
+                prob_b += weights['double'] * double_prob
+                prob_p += weights['double'] * (1 - double_prob)
+            total_weight += weights['double']
+            reliability = min(double_count / 3, 1.0)
+            pattern_reliability['Double'] = reliability
+            insights['Double'] = {
+                'weight': weights['double'] * 100,
+                'double_type': recent_sequence[-1],
+                'reliability': reliability * 100,
+                'recent_performance': recent_performance['double'] * 100
+            }
+
+        if total_weight > 0:
+            prob_p = (prob_p / total_weight) * 100
+            prob_b = (prob_b / total_weight) * 100
+        else:
+            prob_p, prob_b = 44.62, 45.86
+
+        if shoe_bias > 0.1:
+            prob_p *= 1.05
+            prob_b *= 0.95
+            insights['Shoe Bias'] = {'bias': 'Player', 'adjustment': '+5% P, -5% B'}
+        elif shoe_bias < -0.1:
+            prob_b *= 1.05
+            prob_p *= 0.95
+            insights['Shoe Bias'] = {'bias': 'Banker', 'adjustment': '+5% B, -5% P'}
+
+        if abs(prob_p - prob_b) < 2:
+            prob_p += 0.5
+            prob_b -= 0.5
+
+        current_pattern = (
+            'streak' if streak_count >= 2 else
+            'chop' if chop_count >= 2 else
+            'double' if double_count >= 1 else 'other'
+        )
+        total = sum(pattern_transitions[current_pattern].values())
+        if total > 0:
+            p_prob = pattern_transitions[current_pattern]['P'] / total
+            b_prob = pattern_transitions[current_pattern]['B'] / total
+            prob_p = 0.9 * prob_p + 0.1 * p_prob * 100
+            prob_b = 0.9 * prob_b + 0.1 * b_prob * 100
+            reliability = min(total / 5, 1.0)
+            insights['Pattern Transition'] = {
+                'weight': 10,
+                'p_prob': p_prob * 100,
+                'b_prob': b_prob * 100,
+                'current_pattern': current_pattern,
+                'reliability': reliability * 100,
+                'recent_performance': 0.0
+            }
+
+        recent_accuracy = (st.session_state.prediction_accuracy['P'] + st.session_state.prediction_accuracy['B']) / max(st.session_state.prediction_accuracy['total'], 1)
+        threshold = 32.0 + (st.session_state.consecutive_losses * 2.0) - (recent_accuracy * 0.8)
+        threshold = min(max(threshold, 32.0), 48.0)
+        if recent_performance.get('fourgram', 0) > 0.7 or recent_performance.get('markov', 0) > 0.7:
+            threshold -= 2.0
+        elif recent_performance.get('fourgram', 0) < 0.3 or recent_performance.get('markov', 0) < 0.3:
+            threshold += 2.0
+        insights['Threshold'] = {'value': threshold, 'adjusted': f'{threshold:.1f}%'}
+
+        if st.session_state.pattern_volatility > 0.5:
+            threshold += 1.5
+            insights['Volatility'] = {
+                'level': 'High',
+                'value': st.session_state.pattern_volatility,
+                'adjustment': '+1.5% threshold'
+            }
+
+        if prob_p > prob_b and prob_p >= threshold:
+            prediction = 'P'
+            confidence = prob_p
+        elif prob_b >= threshold:
+            prediction = 'B'
+            confidence = prob_b
+        else:
+            prediction = None
+            confidence = max(prob_p, prob_b)
+            insights['No Bet'] = {'reason': f'Confidence below threshold ({confidence:.1f}% < {threshold:.1f}%)'}
+
+        st.session_state.insights = insights
+        st.session_state.last_win_confidence = confidence
+        logging.debug("predict_next completed")
+        return prediction, confidence, insights
+    except Exception as e:
+        logging.error(f"predict_next error: {str(e)}\n{traceback.format_exc()}")
+        st.error("Error predicting next outcome. Try resetting the session.")
+        return None, 0.0, {'Error': f'Prediction failed: {str(e)}'}
 
 def render_setup_form():
     """Render the setup form for bankroll, strategy, and target settings."""
@@ -506,14 +633,12 @@ def place_result(result: str):
             st.error("Invalid result. Use P (Player), B (Banker), or T (Tie).")
             return
 
-        # Save previous state for undo
         previous_state = {k: v for k, v in st.session_state.items() if k != 'history'}
         bet_placed = False
         win = False
         bet_amount = 0.0
         bet_side = None
 
-        # Check if there's a pending bet
         if st.session_state.pending_bet:
             bet_amount, bet_side = st.session_state.pending_bet
             bet_placed = True
@@ -522,15 +647,13 @@ def place_result(result: str):
                 st.session_state.wins += 1
                 st.session_state.consecutive_wins += 1
                 st.session_state.consecutive_losses = 0
-                # Simple payout: Player pays 1:1, Banker pays 0.95:1
                 payout = bet_amount * (1.0 if bet_side == 'P' else 0.95)
                 st.session_state.bankroll += payout
-            else:
+            elif result != 'T':
                 st.session_state.losses += 1
                 st.session_state.consecutive_losses += 1
                 st.session_state.consecutive_wins = 0
                 st.session_state.bankroll -= bet_amount
-                # Log loss
                 if len(st.session_state.loss_log) < LOSS_LOG_LIMIT:
                     st.session_state.loss_log.append({
                         'sequence': st.session_state.sequence[-4:],
@@ -540,12 +663,10 @@ def place_result(result: str):
                         'insights': st.session_state.insights
                     })
 
-        # Update sequence
         st.session_state.sequence.append(result)
         if len(st.session_state.sequence) > SEQUENCE_LIMIT:
             st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
 
-        # Update history
         st.session_state.history.append({
             'Result': result,
             'Bet_Placed': bet_placed,
@@ -558,7 +679,6 @@ def place_result(result: str):
         if len(st.session_state.history) > HISTORY_LIMIT:
             st.session_state.history = st.session_state.history[-HISTORY_LIMIT:]
 
-        # Check target
         profit_loss = st.session_state.bankroll - st.session_state.initial_bankroll
         if st.session_state.target_mode == "Profit %":
             target_profit = st.session_state.initial_bankroll * (st.session_state.target_value / 100)
@@ -572,27 +692,24 @@ def place_result(result: str):
                 st.session_state.target_hit = True
                 st.session_state.advice = "Target reached! Reset session to continue."
 
-        # Check safety net
         if st.session_state.safety_net_enabled:
             safety_threshold = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
             if st.session_state.bankroll <= st.session_state.initial_bankroll - safety_threshold:
                 st.session_state.advice = "Safety net triggered! Consider resetting session."
                 st.session_state.target_hit = True
 
-        # Update prediction and bet
         if not st.session_state.target_hit:
             prediction, confidence, insights = predict_next()
             st.session_state.last_win_confidence = confidence
             st.session_state.insights = insights
             if prediction and st.session_state.bankroll >= st.session_state.base_bet:
-                # Simple betting strategy for T3
                 if st.session_state.strategy == 'T3':
                     bet_amount = st.session_state.base_bet * (2 ** (st.session_state.t3_level - 1))
                     if bet_amount <= st.session_state.bankroll:
                         st.session_state.pending_bet = (bet_amount, prediction)
                         if win:
                             st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
-                        else:
+                        elif result != 'T':
                             st.session_state.t3_level += 1
                             st.session_state.t3_level_changes += 1
                             st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, st.session_state.t3_level)
@@ -609,7 +726,7 @@ def place_result(result: str):
                             st.session_state.parlay_wins += 1
                             st.session_state.parlay_step = min(st.session_state.parlay_step + 1, 16)
                             st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
-                        else:
+                        elif result != 'T':
                             st.session_state.parlay_step = 1
                             st.session_state.parlay_step_changes += 1
                     else:
@@ -622,7 +739,7 @@ def place_result(result: str):
                         if win:
                             st.session_state.z1003_loss_count = 0
                             st.session_state.z1003_bet_factor = 1.0
-                        else:
+                        elif result != 'T':
                             st.session_state.z1003_loss_count += 1
                             st.session_state.z1003_bet_factor *= 2
                             st.session_state.z1003_level_changes += 1
@@ -672,11 +789,10 @@ def simulate_shoe() -> Dict:
                         pattern_success[pattern] += 1
                 if result == prediction:
                     correct += 1
-                place_result(result)
+            place_result(result)
 
         accuracy = (correct / total * 100) if total > 0 else 0.0
 
-        # Restore original state
         st.session_state.sequence = original_sequence
         st.session_state.history = original_history
         st.session_state.bankroll = original_bankroll
@@ -735,13 +851,10 @@ def render_result_input():
                         if last.get('Bet_Placed', False):
                             if last.get('Win', False):
                                 logging.debug(f"Undo win: Reducing wins from {st.session_state.wins} to {st.session_state.wins - 1}")
-                                st.session_state.wins -= 1
                             else:
                                 logging.debug(f"Undo loss: Reducing losses from {st.session_state.losses} to {st.session_state.losses - 1}")
-                                st.session_state.losses -= 1
                     else:
                         st.session_state.sequence.pop()
-                    st.session_state.pending removed:
                     st.session_state.pending_bet = None
                     st.session_state.advice = "No bet pending."
                     st.session_state.last_was_tie = False
