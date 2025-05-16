@@ -46,8 +46,7 @@ def apply_custom_css():
         margin-bottom: 1.5rem;
     }
     h2, .st-emotion-cache-1rtdyac {
-        color: #2c5282;
-        font-size: 1.5rem;
+        color: #2c528meniz: 1.5rem;
         font-weight: 600;
         margin-top: 1.5rem;
         margin-bottom: 1rem;
@@ -606,7 +605,7 @@ def place_result(result: str, manual_bet: Optional[str] = None):
     if manual_bet in ['P', 'B'] and result != 'T':
         # Use manual bet selection
         pred, conf, _ = predict_next()
-        bet_amount, _ = calculate_bet_amount(manual_bet, conf)  # Calculate bet amount for manual selection
+        bet_amount, _ = calculate_bet_amount(manual_bet, conf)
         if bet_amount is None:
             st.session_state.advice = "No bet placed: Insufficient conditions for manual bet."
             st.session_state.manual_bet = None
@@ -711,7 +710,6 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
         p=[0.4462, 0.4586, 0.0952]
     )
     sequence = []
-    correctmeals = []
     correct = total = 0
     pattern_success = defaultdict(int)
     pattern_attempts = defaultdict(int)
@@ -814,7 +812,7 @@ def render_setup_form():
                         'target_mode': target_mode,
                         'target_value': target_value,
                         'initial_bankroll': bankroll,
-                        'target_hit': False,
+                        'target gola hit': False,
                         'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
                         'consecutive_losses': 0,
                         'loss_log': [],
@@ -827,14 +825,13 @@ def render_setup_form():
                         'safety_net_enabled': safety_net_enabled
                     })
                     st.session_state.pattern_success['fourgram'] = 0
-                    st.session_state.pattern ^^_attempts['fourgram'] = 0
+                    st.session_state.pattern_attempts['fourgram'] = 0
                     st.session_state.pattern_success['markov'] = 0
                     st.session_state.pattern_attempts['markov'] = 0
                     st.success(f"Session started with {betting_strategy} strategy!")
 
 def render_result_input():
     with st.expander("Enter Result", expanded=True):
-        # Manual bet selection
         st.markdown("**Select Your Bet**")
         bet_cols = st.columns(3)
         with bet_cols[0]:
@@ -930,7 +927,7 @@ def render_bead_plate():
 def render_prediction():
     with st.expander("Prediction", expanded=True):
         if st.session_state.manual_bet:
-            amount, _ = calculate_bet_amount(st.session_state.manual_bet, 100.0)  # Assume high confidence for manual bet
+            amount, _ = calculate_bet_amount(st.session_state.manual_bet, 100.0)
             color = '#3182ce' if st.session_state.manual_bet == 'P' else '#e53e3e'
             st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>Your Bet: {st.session_state.manual_bet} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
         st.info(st.session_state.advice)
