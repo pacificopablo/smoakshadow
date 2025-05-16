@@ -19,6 +19,8 @@ HOUSE_EDGE = {"Banker": 0.0106, "Player": 0.0124, "Tie": 0.144}
 BASE_BET = 10
 STOP_WIN = 300
 STOP_LOSS = -200
+# Baccarat outcome probabilities (standard 8-deck, no commission considered)
+OUTCOME_PROBS = {"Banker": 0.4586, "Player": 0.4462, "Tie": 0.0952}
 
 # --- T3 STAKING ---
 def get_t3_bet():
@@ -90,42 +92,30 @@ def predict_next_outcome():
 
     return random.choices(["Banker", "Player"], weights=[banker_weight, player_weight])[0]
 
-# --- SIDEBAR OPTIONS ---
-st.sidebar.title("Settings")
-ai_toggle = st.sidebar.checkbox("Enable AI Prediction", value=st.session_state.ai_enabled)
-t3_toggle = st.sidebar.checkbox("Use T3 Strategy", value=True)
+# --- RANDOM GAME RESULT ---
+def get_random_result():
+    """Generate random game result based on Baccarat probabilities."""
+    return random.choices(
+        ["Banker", "Player", "Tie"],
+        weights=[OUTCOME_PROBS["Banker"], OUTCOME_PROBS["Player"], OUTCOME_PROBS["Tie"]]
+    )[0]
 
-st.session_state.ai_enabled = ai_toggle
+# --- RECORD RESULT LOGIC ---
+def record_result(result):
+    """Record a game result without placing a bet."""
+    st.session_state.history.append({
+        "Bet On": None,  # No bet placed
+        "Game Result": result,
+        "Result": None,  # No win/loss
+        "Wager": 0,
+        "Net": 0,
+        "Balance": st.session_state.bankroll[-1]
+    })
+    st.success(f"Recorded Game Result: **{result}**")
 
-# New Shoe Button
-if st.sidebar.button("New Shoe"):
-    st.session_state.history = []
-    st.session_state.bankroll = [1000]
-    st.session_state.t3_level = 1
-    st.sidebar.success("New shoe started!")
-
-# --- MAIN UI ---
-st.title("Baccarat Predictor — Optimized for Profit per Shoe")
-
-col1, col2, col3 = st.columns([2, 2, 2])
-
-with col1:
-    if ai_toggle:
-        selected_bet = predict_next_outcome()
-        st.info(f"AI predicts: **{selected_bet}**")
-        st.caption("Prediction based on historical patterns and 55% Banker bias.")
-    else:
-        selected_bet = st.radio("Your Bet:", ["Banker", "Player", "Tie"])
-
-with col2:
-    actual_result = st.radio("Actual Game Result:", ["Banker", "Player", "Tie"])
-
-with col3:
-    bet_amount = get_t3_bet() if t3_toggle else BASE_BET
-    st.metric("Current Bet", f"${bet_amount}")
-
-# --- PLACE BET BUTTON ---
-if st.button("Place Bet"):
+# --- PLACE BET LOGIC ---
+def place_bet(selected_bet, bet_amount, t3_toggle):
+    actual_result = get_random_result()
     win = selected_bet == actual_result
     net = bet_amount if win else -bet_amount
     new_balance = st.session_state.bankroll[-1] + net
@@ -148,6 +138,13 @@ if st.button("Place Bet"):
             wins = sum(1 for r in round_results if r["Result"] == "Win")
             update_t3(wins)
 
+    # Display result
+    result_text = f"Bet: **{selected_bet}**, Game Result: **{actual_result}**, You **{'Win' if win else 'Lose'}**!"
+    if win:
+        st.success(result_text)
+    else:
+        st.error(result_text)
+
     # Banker streak alert
     if len(st.session_state.history) >= 3:
         last3 = [r["Game Result"] for r in st.session_state.history[-3:]]
@@ -161,13 +158,63 @@ if st.button("Place Bet"):
     elif profit <= STOP_LOSS:
         st.error(f"Loss limit hit: ${profit}. Stop and reassess.")
 
+# --- SIDEBAR OPTIONS ---
+st.sidebar.title("Settings")
+ai_toggle = st.sidebar.checkbox("Enable AI Prediction", value=st.session_state.ai_enabled)
+t3_toggle = st.sidebar.checkbox("Use T3 Strategy", value=True)
+
+st.session_state.ai_enabled = ai_toggle
+
+# New Shoe Button
+if st.sidebar.button("New Shoe"):
+    st.session_state.history = []
+    st.session_state.bankroll = [1000]
+    st.session_state.t3_level = 1
+    st.sidebar.success("New shoe started!")
+
+# --- MAIN UI ---
+st.title("Baccarat Predictor — Optimized for Profit per Shoe")
+
+col1, col2, col3 = st.columns([2, 2, 2])
+
+with col1:
+    if ai_toggle:
+        ai_bet = predict_next_outcome()
+        st.info(f"AI predicts: **{ai_bet}**")
+        st.caption("Prediction based on historical patterns and 55% Banker bias.")
+    else:
+        st.write("Enable AI Prediction to see suggestions.")
+
+with col2:
+    st.subheader("Record Game Result")
+    if st.button("Record Player"):
+        record_result("Player")
+    if st.button("Record Banker"):
+        record_result("Banker")
+    if st.button("Record Tie"):
+        record_result("Tie")
+
+    st.subheader("Place Your Bet")
+    bet_amount = get_t3_bet() if t3_toggle else BASE_BET
+    if ai_toggle and st.button("Bet AI Prediction"):
+        place_bet(ai_bet, bet_amount, t3_toggle)
+    if st.button("Bet Player"):
+        place_bet("Player", bet_amount, t3_toggle)
+    if st.button("Bet Banker"):
+        place_bet("Banker", bet_amount, t3_toggle)
+    if st.button("Bet Tie"):
+        place_bet("Tie", bet_amount, t3_toggle)
+
+with col3:
+    st.metric("Current Bet Amount", f"${bet_amount}")
+
 # --- METRICS ---
 df = pd.DataFrame(st.session_state.history)
-total_bets = len(df)
+total_bets = len(df[df["Bet On"].notnull()])
 wins = df[df["Result"] == "Win"].shape[0] if total_bets > 0 else 0
 user_win_rate = wins / total_bets if total_bets > 0 else 0
-avg_house_edge = df["Bet On"].map(HOUSE_EDGE).mean() if total_bets > 0 else 0
-user_edge = user_win_rate - (1 - avg_house_edge)
+avg_house_edge = df[df["Bet On"].notnull()]["Bet On"].map(HOUSE_EDGE).mean() if total_bets > 0 else 0
+user_edge = user_win_rate - (1 - avg_house_edge) if total_bets > 0 else 0
 
 st.subheader("Performance Metrics")
 col4, col5, col6 = st.columns(3)
@@ -184,8 +231,8 @@ if total_bets >= 3:
     edge_df = pd.DataFrame({
         "Bet #": range(1, total_bets + 1),
         "User Edge": [
-            (df.iloc[:i+1]["Result"].value_counts().get("Win", 0) / (i+1)) - 
-            (1 - df.iloc[:i+1]["Bet On"].map(HOUSE_EDGE).mean())
+            (df[df["Bet On"].notnull()].iloc[:i+1]["Result"].value_counts().get("Win", 0) / (i+1)) - 
+            (1 - df[df["Bet On"].notnull()].iloc[:i+1]["Bet On"].map(HOUSE_EDGE).mean())
             for i in range(total_bets)
         ]
     })
