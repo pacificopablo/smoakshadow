@@ -1,5 +1,2 @@
-streamlit==1.38.0 numpy==1.26.4
-scikit-learn
-streamlit
-matplotlib
-numpy
+streamlit==1.38.0 n
+numpy==1.26.4
