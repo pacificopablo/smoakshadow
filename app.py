@@ -21,6 +21,7 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
+SHOE_SIZE = 100
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -186,7 +187,6 @@ def initialize_session_state():
         'initial_base_bet': 0.10,
         'sequence': [],
         'pending_bet': None,
-        'manual_bet': None,
         'strategy': 'T3',
         't3_level': 1,
         't3_results': [],
@@ -219,7 +219,8 @@ def initialize_session_state():
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
-        'ai_automation_enabled': False
+        'ai_automation_enabled': True,
+        'shoe_completed': False
     }
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
@@ -239,7 +240,6 @@ def reset_session():
         'initial_base_bet': 0.10,
         'sequence': [],
         'pending_bet': None,
-        'manual_bet': None,
         'strategy': 'T3',
         't3_level': 1,
         't3_results': [],
@@ -268,7 +268,8 @@ def reset_session():
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
-        'ai_automation_enabled': False
+        'ai_automation_enabled': True,
+        'shoe_completed': False
     })
     st.session_state.pattern_success['markov'] = 0
     st.session_state.pattern_attempts['markov'] = 0
@@ -339,7 +340,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
         'trigram': st.session_state.pattern_success.get('trigram', 0) / total_bets
                    if st.session_state.pattern_attempts.get('trigram', 0) > 0 else 0.5,
         'fourgram': st.session_state.pattern_success.get('fourgram', 0) / total_bets
-                    if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.5,
+                    if st.session_state.pattern_attempts 0) > 0 else 0.5,
         'markov': st.session_state.pattern_success.get('markov', 0) / total_bets
                   if st.session_state.pattern_attempts.get('markov', 0) > 0 else 0.5,
         'streak': 0.6 if streak_count >= 2 else 0.3,
@@ -373,7 +374,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
             'double': 0.05
         }
         total_w = sum(weights.values())
-    return {k: max(w / total_w, 0.05) for k, w in weights.items()}
+    return {k: max(w / total_w, 0.05) for k, v in weights.items()}
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
@@ -570,16 +571,16 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                     st.session_state.z1003_level_changes += 1
                 bet_amount = st.session_state.base_bet
             return None, "No bet: Risk too high for current bankroll. Level/step reset to 1."
-    return bet_amount, f"{'Auto ' if st.session_state.ai_automation_enabled else ''}Bet: ${bet_amount:.2f} on {pred}"
+    return bet_amount, f"Auto Bet: ${bet_amount:.2f} on {pred}"
 
-def place_result(result: str, manual_bet: Optional[str] = None):
+def place_result(result: str):
     if st.session_state.target_hit:
         reset_session()
         return
     st.session_state.last_was_tie = (result == 'T')
     bet_amount = 0
     bet_placed = False
-    selection = manual_bet
+    selection = None
     win = False
     previous_state = {
         "bankroll": st.session_state.bankroll,
@@ -593,7 +594,6 @@ def place_result(result: str, manual_bet: Optional[str] = None):
         "z1003_continue": st.session_state.z1003_continue,
         "z1003_level_changes": st.session_state.z1003_level_changes,
         "pending_bet": st.session_state.pending_bet,
-        "manual_bet": st.session_state.manual_bet,
         "wins": st.session_state.wins,
         "losses": st.session_state.losses,
         "prediction_accuracy": st.session_state.prediction_accuracy.copy(),
@@ -608,79 +608,75 @@ def place_result(result: str, manual_bet: Optional[str] = None):
         "ai_automation_enabled": st.session_state.ai_automation_enabled
     }
     if result != 'T':
-        if manual_bet in ['P', 'B'] or (st.session_state.ai_automation_enabled and manual_bet is None):
-            # Use manual bet if provided, otherwise use AI prediction if automation is enabled
-            pred, conf, _ = predict_next()
-            selection = manual_bet if manual_bet in ['P', 'B'] else (pred if st.session_state.ai_automation_enabled else None)
-            if selection in ['P', 'B']:
-                bet_amount, advice = calculate_bet_amount(selection, conf)
-                if bet_amount is None:
-                    st.session_state.advice = advice or "No bet placed: Insufficient conditions."
-                    st.session_state.manual_bet = None
-                else:
-                    win = result == selection
-                    bet_placed = True
-                    if win:
-                        st.session_state.bankroll += bet_amount * (0.95 if selection == 'B' else 1.0)
-                        if st.session_state.strategy == 'T3':
-                            st.session_state.t3_results.append('W')
-                        elif st.session_state.strategy == 'Parlay16':
-                            st.session_state.parlay_wins += 1
-                            if st.session_state.parlay_wins == 2:
-                                old_step = st.session_state.parlay_step
-                                st.session_state.parlay_step = 1
-                                st.session_state.parlay_wins = 0
-                                st.session_state.parlay_using_base = True
-                                if old_step != st.session_state.parlay_step:
-                                    st.session_state.parlay_step_changes += 1
-                                st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
-                            else:
-                                st.session_state.parlay_using_base = False
-                        elif st.session_state.strategy == 'Z1003.1':
-                            st.session_state.z1003_loss_count = 0
-                            st.session_state.z1003_continue = False
-                        st.session_state.wins += 1
-                        st.session_state.prediction_accuracy[selection] += 1
-                        st.session_state.consecutive_losses = 0
-                        for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
-                            if pattern in st.session_state.insights:
-                                st.session_state.pattern_success[pattern] += 1
-                                st.session_state.pattern_attempts[pattern] += 1
-                    else:
-                        st.session_state.bankroll -= bet_amount
-                        if st.session_state.strategy == 'T3':
-                            st.session_state.t3_results.append('L')
-                        elif st.session_state.strategy == 'Parlay16':
-                            st.session_state.parlay_wins = 0
+        pred, conf, _ = predict_next()
+        selection = pred
+        if selection in ['P', 'B']:
+            bet_amount, advice = calculate_bet_amount(selection, conf)
+            if bet_amount is None:
+                st.session_state.advice = advice or "No bet placed: Insufficient conditions."
+            else:
+                win = result == selection
+                bet_placed = True
+                if win:
+                    st.session_state.bankroll += bet_amount * (0.95 if selection == 'B' else 1.0)
+                    if st.session_state.strategy == 'T3':
+                        st.session_state.t3_results.append('W')
+                    elif st.session_state.strategy == 'Parlay16':
+                        st.session_state.parlay_wins += 1
+                        if st.session_state.parlay_wins == 2:
                             old_step = st.session_state.parlay_step
-                            st.session_state.parlay_step = min(st.session_state.parlay_step + 1, 16)
+                            st.session_state.parlay_step = 1
+                            st.session_state.parlay_wins = 0
                             st.session_state.parlay_using_base = True
                             if old_step != st.session_state.parlay_step:
                                 st.session_state.parlay_step_changes += 1
                             st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
-                        elif st.session_state.strategy == 'Z1003.1':
-                            st.session_state.z1003_loss_count += 1
-                            if st.session_state.z1003_loss_count == 2 and st.session_state.history and st.session_state.history[-1]['Win']:
-                                st.session_state.z1003_continue = True
-                            elif st.session_state.z1003_loss_count >= 3:
-                                st.session_state.z1003_continue = False
-                        st.session_state.losses += 1
-                        st.session_state.consecutive_losses += 1
-                        _, conf, _ = predict_next()
-                        st.session_state.loss_log.append({
-                            'sequence': st.session_state.sequence[-10:],
-                            'prediction': selection,
-                            'result': result,
-                            'confidence': f"{conf:.1f}",
-                            'insights': st.session_state.insights.copy()
-                        })
-                        if len(st.session_state.loss_log) > LOSS_LOG_LIMIT:
-                            st.session_state.loss_log = st.session_state.loss_log[-LOSS_LOG_LIMIT:]
-                        for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
-                            if pattern in st.session_state.insights:
-                                st.session_state.pattern_attempts[pattern] += 1
-                    st.session_state.prediction_accuracy['total'] += 1
-                    st.session_state.manual_bet = None
+                        else:
+                            st.session_state.parlay_using_base = False
+                    elif st.session_state.strategy == 'Z1003.1':
+                        st.session_state.z1003_loss_count = 0
+                        st.session_state.z1003_continue = False
+                    st.session_state.wins += 1
+                    st.session_state.prediction_accuracy[selection] += 1
+                    st.session_state.consecutive_losses = 0
+                    for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
+                        if pattern in st.session_state.insights:
+                            st.session_state.pattern_success[pattern] += 1
+                            st.session_state.pattern_attempts[pattern] += 1
+                else:
+                    st.session_state.bankroll -= bet_amount
+                    if st.session_state.strategy == 'T3':
+                        st.session_state.t3_results.append('L')
+                    elif st.session_state.strategy == 'Parlay16':
+                        st.session_state.parlay_wins = 0
+                        old_step = st.session_state.parlay_step
+                        st.session_state.parlay_step = min(st.session_state.parlay_step + 1, 16)
+                        st.session_state.parlay_using_base = True
+                        if old_step != st.session_state.parlay_step:
+                            st.session_state.parlay_step_changes += 1
+                        st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+                    elif st.session_state.strategy == 'Z1003.1':
+                        st.session_state.z1003_loss_count += 1
+                        if st.session_state.z1003_loss_count == 2 and st.session_state.history and st.session_state.history[-1]['Win']:
+                            st.session_state.z1003_continue = True
+                        elif st.session_state.z1003_loss_count >= 3:
+                            st.session_state.z1003_continue = False
+                    st.session_state.losses += 1
+                    st.session_state.consecutive_losses += 1
+                    _, conf, _ = predict_next()
+                    st.session_state.loss_log.append({
+                        'sequence': st.session_state.sequence[-10:],
+                        'prediction': selection,
+                        'result': result,
+                        'confidence': f"{conf:.1f}",
+                        'insights': st.session_state.insights.copy()
+                    })
+                    if len(st.session_state.loss_log) > LOSS_LOG_LIMIT:
+                        st.session_state.loss_log = st.session_state.loss_log[-LOSS_LOG_LIMIT:]
+                    for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
+                        if pattern in st.session_state.insights:
+                            st.session_state.pattern_attempts[pattern] += 1
+                st.session_state.prediction_accuracy['total'] += 1
     st.session_state.sequence.append(result)
     if len(st.session_state.sequence) > SEQUENCE_LIMIT:
         st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
@@ -708,9 +704,11 @@ def place_result(result: str, manual_bet: Optional[str] = None):
     st.session_state.insights = insights
     if st.session_state.strategy == 'T3':
         update_t3_level()
+    if len(st.session_state.sequence) >= SHOE_SIZE:
+        st.session_state.shoe_completed = True
 
 # --- Simulation Logic ---
-def simulate_shoe(num_hands: int = 80) -> Dict:
+def simulate_shoe(num_hands: int = SHOE_SIZE) -> Dict:
     outcomes = np.random.choice(
         ['P', 'B', 'T'],
         size=num_hands,
@@ -723,6 +721,7 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
     for outcome in outcomes:
         sequence.append(outcome)
         pred, conf, insights = predict_next()
+        place_result(outcome)
         if pred and outcome in ['P', 'B']:
             total += 1
             if pred == outcome:
@@ -744,13 +743,17 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
         'total': total,
         'pattern_success': dict(pattern_success),
         'pattern_attempts': dict(pattern_attempts),
-        'sequence': sequence
+        'sequence': sequence,
+        'final_bankroll': st.session_state.bankroll,
+        'wins': st.session_state.wins,
+        'losses': st.session_state.losses
     }
     try:
         with open(SIMULATION_LOG, 'a', encoding='utf-8') as f:
             f.write(f"{datetime.now().isoformat()}: Accuracy={accuracy:.1f}%, Correct={correct}/{total}, "
                     f"Fourgram={result['pattern_success'].get('fourgram', 0)}/{result['pattern_attempts'].get('fourgram', 0)}, "
-                    f"Markov={result['pattern_success'].get('markov', 0)}/{result['pattern_attempts'].get('markov', 0)}\n")
+                    f"Markov={result['pattern_success'].get('markov', 0)}/{result['pattern_attempts'].get('markov', 0)}, "
+                    f"Final Bankroll=${result['final_bankroll']:.2f}, Wins={result['wins']}, Losses={result['losses']}\n")
     except PermissionError:
         st.error("Unable to write to simulation log.")
     return result
@@ -782,11 +785,6 @@ def render_setup_form():
                     "Safety Net Percentage (%)",
                     min_value=0.0, max_value=50.0, value=st.session_state.safety_net_percentage, step=5.0
                 )
-            ai_automation_enabled = st.checkbox(
-                "Enable AI Automation",
-                value=st.session_state.ai_automation_enabled,
-                help="When enabled, the AI automatically places bets based on its predictions."
-            )
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
@@ -802,7 +800,6 @@ def render_setup_form():
                         'strategy': betting_strategy,
                         'sequence': [],
                         'pending_bet': None,
-                        'manual_bet': None,
                         't3_level': 1,
                         't3_results': [],
                         't3_level_changes': 0,
@@ -817,7 +814,6 @@ def render_setup_form():
                         'z1003_continue': False,
                         'z1003_level_changes': 0,
                         'advice': "",
-                        'return_to_start': False,
                         'history': [],
                         'wins': 0,
                         'losses': 0,
@@ -829,92 +825,35 @@ def render_setup_form():
                         'consecutive_losses': 0,
                         'loss_log': [],
                         'last_was_tie': False,
-                        'insights': {},
+                        ' insights': {},
                         'pattern_volatility': 0.0,
                         'pattern_success': defaultdict(int),
                         'pattern_attempts': defaultdict(int),
                         'safety_net_percentage': safety_net_percentage,
                         'safety_net_enabled': safety_net_enabled,
-                        'ai_automation_enabled': ai_automation_enabled
+                        'ai_automation_enabled': True,
+                        'shoe_completed': False
                     })
                     st.session_state.pattern_success['fourgram'] = 0
                     st.session_state.pattern_attempts['fourgram'] = 0
                     st.session_state.pattern_success['markov'] = 0
                     st.session_state.pattern_attempts['markov'] = 0
-                    st.success(f"Session started with {betting_strategy} strategy! AI Automation: {'Enabled' if ai_automation_enabled else 'Disabled'}")
+                    st.success(f"Session started with {betting_strategy} strategy! AI Automation: Enabled")
+                    # Run automatic shoe simulation
+                    result = simulate_shoe()
+                    st.session_state.shoe_completed = True
+                    st.rerun()
 
 def render_result_input():
-    with st.expander("Enter Result", expanded=True):
-        if not st.session_state.ai_automation_enabled:
-            st.markdown("**Select Your Bet**")
-            bet_cols = st.columns(3)
-            with bet_cols[0]:
-                if st.button("Bet Player", key="bet_player_btn", help="Place a bet on Player"):
-                    st.session_state.manual_bet = 'P'
-                    st.rerun()
-            with bet_cols[1]:
-                if st.button("Bet Banker", key="bet_banker_btn", help="Place a bet on Banker"):
-                    st.session_state.manual_bet = 'B'
-                    st.rerun()
-            with bet_cols[2]:
-                if st.button("No Bet", key="no_bet_btn", help="Skip betting this round"):
-                    st.session_state.manual_bet = None
-                    st.rerun()
+    with st.expander("Shoe Results", expanded=True):
+        if st.session_state.shoe_completed:
+            st.success(f"Shoe of {SHOE_SIZE} hands completed!")
         else:
-            st.markdown("**AI Automation Enabled**")
-            st.info("The AI is automatically placing bets based on its predictions.")
-        
-        st.markdown("**Enter Result**")
-        result_cols = st.columns(4)
-        with result_cols[0]:
-            if st.button("Player", key="player_btn", help="Record a Player win"):
-                place_result("P", st.session_state.manual_bet)
-                st.rerun()
-        with result_cols[1]:
-            if st.button("Banker", key="banker_btn", help="Record a Banker win"):
-                place_result("B", st.session_state.manual_bet)
-                st.rerun()
-        with result_cols[2]:
-            if st.button("Tie", key="tie_btn", help="Record a Tie"):
-                place_result("T", st.session_state.manual_bet)
-                st.rerun()
-        with result_cols[3]:
-            if st.button("Undo Last", key="undo_btn", help="Undo the last action"):
-                if not st.session_state.sequence:
-                    st.warning("No results to undo.")
-                else:
-                    try:
-                        if st.session_state.history:
-                            last = st.session_state.history.pop()
-                            previous_state = last['Previous_State']
-                            for key, value in previous_state.items():
-                                st.session_state[key] = value
-                            st.session_state.sequence.pop()
-                            if last['Bet_Placed'] and not last['Win'] and st.session_state.loss_log:
-                                if st.session_state.loss_log[-1]['result'] == last['Result']:
-                                    st.session_state.loss_log.pop()
-                            pred, conf, insights = predict_next()
-                            bet_amount, advice = calculate_bet_amount(pred, conf)
-                            st.session_state.pending_bet = (bet_amount, pred) if bet_amount else None
-                            st.session_state.advice = advice
-                            st.session_state.insights = insights
-                            st.session_state.last_was_tie = False
-                            st.success("Undone last action.")
-                            st.rerun()
-                        else:
-                            st.session_state.sequence.pop()
-                            st.session_state.pending_bet = None
-                            st.session_state.manual_bet = None
-                            pred, conf, insights = predict_next()
-                            bet_amount, advice = calculate_bet_amount(pred, conf)
-                            st.session_state.pending_bet = (bet_amount, pred) if bet_amount else None
-                            st.session_state.advice = advice
-                            st.session_state.insights = insights
-                            st.session_state.last_was_tie = False
-                            st.success("Undone last result.")
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Error undoing last action: {str(e)}")
+            st.info("Simulating shoe... Please wait.")
+        if st.button("Reset and Start New Shoe", key="new_shoe_btn"):
+            reset_session()
+            st.session_state.shoe_completed = False
+            st.rerun()
 
 def render_bead_plate():
     with st.expander("Bead Plate", expanded=True):
@@ -942,18 +881,13 @@ def render_bead_plate():
         st.markdown(bead_plate_html, unsafe_allow_html=True)
 
 def render_prediction():
-    with st.expander("Prediction", expanded=True):
-        if st.session_state.ai_automation_enabled and not st.session_state.manual_bet:
-            if st.session_state.pending_bet:
-                amount, pred = st.session_state.pending_bet
-                color = '#3182ce' if pred == 'P' else '#e53e3e'
-                st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
-            else:
-                st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", unsafe_allow_html=True)
-        elif st.session_state.manual_bet:
-            amount, _ = calculate_bet_amount(st.session_state.manual_bet, 100.0)
-            color = '#3182ce' if st.session_state.manual_bet == 'P' else '#e53e3e'
-            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>Your Bet: {st.session_state.manual_bet} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
+    with st.expander("Latest Prediction", expanded=True):
+        if st.session_state.pending_bet:
+            amount, pred = st.session_state.pending_bet
+            color = '#3182ce' if pred == 'P' else '#e53e3e'
+            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
+        else:
+            st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", unsafe_allow_html=True)
         st.info(st.session_state.advice)
 
 def render_insights():
@@ -981,7 +915,7 @@ def render_status():
             elif st.session_state.strategy == 'Z1003.1':
                 strategy_status += f"<br>Loss Count: {st.session_state.z1003_loss_count}<br>Changes: {st.session_state.z1003_level_changes} | Continue: {st.session_state.z1003_continue}"
             st.markdown(strategy_status, unsafe_allow_html=True)
-        st.markdown(f"**AI Automation**: {'Enabled' if st.session_state.ai_automation_enabled else 'Disabled'}")
+        st.markdown(f"**AI Automation**: Enabled")
         st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
         st.markdown(f"**Online Users**: {track_user_session()}")
         if st.session_state.initial_base_bet > 0 and st.session_state.initial_bankroll > 0:
@@ -1025,6 +959,8 @@ def render_loss_log():
                 for log in st.session_state.loss_log[-5:]
             ], use_container_width=True)
 
+def render_historyرین
+
 def render_history():
     with st.expander("Bet History"):
         if st.session_state.history:
@@ -1051,12 +987,14 @@ def render_export():
             st.download_button("Download CSV", csv_data, "session_data.csv", "text/csv")
 
 def render_simulation():
-    with st.expander("Run Simulation"):
-        num_hands = st.number_input("Number of Hands to Simulate", min_value=10, max_value=200, value=80, step=10)
+    with st.expander("Run Additional Simulation"):
+        num_hands = st.number_input("Number of Hands to Simulate", min_value=10, max_value=200, value=SHOE_SIZE, step=10)
         if st.button("Run Simulation"):
             result = simulate_shoe(num_hands)
             st.write(f"**Simulation Results**")
             st.write(f"Accuracy: {result['accuracy']:.1f}% ({result['correct']}/{result['total']} correct)")
+            st.write(f"Final Bankroll: ${result['final_bankroll']:.2f}")
+            st.write(f"Wins: {result['wins']} | Losses: {result['losses']}")
             st.write("**Pattern Performance**:")
             for pattern in result['pattern_success']:
                 success = result['pattern_success'][pattern]
