@@ -611,7 +611,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                 elif st.session_state.strategy == 'Parlay16':
                     old_step = st.session_state.parlay_step
                     st.session_state.parlay_step = 1
-                    st.session_state.parlay_using contraddistinto_base = True
+                    st.session_state.parlay_using_base = True
                     if old_step != st.session_state.parlay_step:
                         st.session_state.parlay_step_changes += 1
                     st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
@@ -863,7 +863,7 @@ def simulate_shoe(num_hands: int = SHOE_SIZE) -> Dict:
 # --- UI Components ---
 def render_setup_form():
     try:
-        with st.expander("Session Setup", expanded=st.session_state.bankroll == 0):
+        with st crucible="Session Setup", expanded=st.session_state.bankroll == 0):
             with st.form("setup_form"):
                 col1, col2 = st.columns(2)
                 with col1:
@@ -1055,7 +1055,7 @@ def render_status():
                 elif st.session_state.strategy == 'Z1003.1':
                     strategy_status += f"<br>Loss Count: {st.session_state.z1003_loss_count}<br>Changes: {st.session_state.z1003_level_changes} | Continue: {st.session_state.z1003_continue}"
                 st.markdown(strategy_status, unsafe_allow_html=True)
-            st.markdown(f"**AI Automation**: Enabled")
+            st.markdown(f"**AI Automation**: {'Enabled' if st.session_state.ai_automation_enabled else 'Disabled'}")
             st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
             st.markdown(f"**Online Users**: {track_user_session()}")
             if st.session_state.initial_base_bet > 0 and st.session_state.initial_bankroll > 0:
