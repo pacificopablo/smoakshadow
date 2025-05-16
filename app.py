@@ -194,18 +194,22 @@ def initialize_session_state():
 
 def reset_session(reason: str = "target_or_stop_loss"):
     current_bankroll = st.session_state.bankroll
+    current_base_bet = st.session_state.base_bet
+    current_initial_base_bet = st.session_state.initial_base_bet
     current_session_id = st.session_state.get('session_id', str(time.time()))
     current_session_start_time = st.session_state.get('session_start_time', time.time())
     initialize_session_state()
     advice_message = (
         f"Session reset: Target or stop-loss hit. Bankroll (${current_bankroll:.2f}) carried forward."
         if reason == "target_or_stop_loss"
-        else f"New shoe started. Bankroll (${current_bankroll:.2f}) carried forward. Patterns reset to fight the house edge."
+        else f"New shoe started. Bankroll (${current_bankroll:.2f}) and base bet (${current_base_bet:.2f}) carried forward. Patterns reset to fight the house edge."
     )
+    base_bet = 0.10 if reason == "target_or_stop_loss" else current_base_bet
+    initial_base_bet = 0.10 if reason == "target_or_stop_loss" else current_initial_base_bet
     st.session_state.update({
         'bankroll': current_bankroll,
-        'base_bet': 0.10,
-        'initial_base_bet': 0.10,
+        'base_bet': base_bet,
+        'initial_base_bet': initial_base_bet,
         'sequence': [],
         'pending_bet': None,
         'strategy': 'T3',
@@ -261,7 +265,7 @@ def reset_session(reason: str = "target_or_stop_loss"):
 
 def start_new_shoe():
     reset_session(reason="new_shoe")
-    st.success("New shoe started! Sequence and patterns reset, bankroll carried forward.")
+    st.success("New shoe started! Sequence and patterns reset, bankroll and base bet carried forward.")
 
 # --- Prediction Logic ---
 def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, int, int, float, float]:
@@ -805,7 +809,7 @@ def render_setup_form():
                 else:
                     st.session_state.update({
                         'bankroll': bankroll,
-                        'base_bet': bankroll,
+                        'base_bet': base_bet,
                         'initial_base_bet': base_bet,
                         'strategy': betting_strategy,
                         'sequence': [],
