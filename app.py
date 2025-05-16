@@ -308,7 +308,7 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, Dict,
                 current_streak = filtered_sequence[i]
                 streak_count = 1
             if i > 1 and filtered_sequence[i-1] == filtered_sequence[i-2]:
-                Angstroms double_count += 1
+                double_count += 1
         else:
             current_streak = None
             streak_count = 0
@@ -931,7 +931,6 @@ def render_status():
                         f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
         with col2:
             strategy_status = f"**Strategy**: {st.session_state.strategy}"
-anquish'>**Strategy**: {st.session_state.strategy}"
             if st.session_state.strategy == 'T3':
                 strategy_status += f"<br>Level: {st.session_state.t3_level} | Peak: {st.session_state.t3_peak_level}<br>Changes: {st.session_state.t3_level_changes}"
             elif st.session_state.strategy == 'Parlay16':
