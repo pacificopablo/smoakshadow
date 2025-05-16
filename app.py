@@ -34,9 +34,61 @@ def update_t3(wins):
     else:
         st.session_state.t3_level += 2
 
-# --- AI PREDICTION (Banker Bias 55%) ---
+# --- PREDICTION LOGIC ---
 def ai_predict():
+    """Simple AI prediction with 55% Banker bias."""
     return random.choices(["Banker", "Player"], weights=[0.55, 0.45])[0]
+
+def predict_next_outcome():
+    """Advanced predictor using historical patterns and Banker bias."""
+    if len(st.session_state.history) < 3:
+        return ai_predict()  # Fallback to simple AI if not enough history
+
+    history = st.session_state.history
+    last_results = [r["Game Result"] for r in history[-10:]]  # Last 10 results
+
+    # Initialize weights
+    banker_weight = 0.3 * 0.55  # 30% from simple AI's Banker bias
+    player_weight = 0.3 * 0.45  # 30% from simple AI's Player bias
+
+    # Pattern 1: Streak detection (3+ same results)
+    if len(last_results) >= 3 and all(x == last_results[-1] for x in last_results[-3:]):
+        if last_results[-1] == "Banker":
+            banker_weight += 0.7 * 0.8  # 70% pattern weight, 80% to continue streak
+            player_weight += 0.7 * 0.2
+        elif last_results[-1] == "Player":
+            player_weight += 0.7 * 0.8
+            banker_weight += 0.7 * 0.2
+
+    # Pattern 2: Alternation detection (e.g., B-P-B or P-B-P)
+    elif len(last_results) >= 3 and last_results[-1] != last_results[-2] and last_results[-2] != last_results[-3]:
+        if last_results[-1] == "Banker":
+            player_weight += 0.7 * 0.6  # Slightly favor Player after alternation
+            banker_weight += 07 * 0.4
+        elif last_results[-1] == "Player":
+            banker_weight += 0.7 * 0.6  # Slightly favor Banker after alternation
+            player_weight += 0.7 * 0.4
+
+    # Pattern 3: Recent bias (proportion in last 10 results)
+    else:
+        banker_count = last_results.count("Banker")
+        player_count = last_results.count("Player")
+        total = banker_count + player_count
+        if total > 0:
+            banker_weight += 0.7 * (banker_count / total)
+            player_weight += 0.7 * (player_count / total)
+        else:
+            banker_weight += 0.7 * 0.5  # Neutral if no Banker/Player results
+            player_weight += 0.7 * 0.5
+
+    # Normalize weights and predict
+    total_weight = banker_weight + player_weight
+    if total_weight == 0:
+        total_weight = 1  # Avoid division by zero
+    banker_weight /= total_weight
+    player_weight /= total_weight
+
+    return random.choices(["Banker", "Player"], weights=[banker_weight, player_weight])[0]
 
 # --- SIDEBAR OPTIONS ---
 st.sidebar.title("Settings")
@@ -52,8 +104,9 @@ col1, col2, col3 = st.columns([2, 2, 2])
 
 with col1:
     if ai_toggle:
-        selected_bet = ai_predict()
+        selected_bet = predict_next_outcome()
         st.info(f"AI predicts: **{selected_bet}**")
+        st.caption("Prediction based on historical patterns and 55% Banker bias.")
     else:
         selected_bet = st.radio("Your Bet:", ["Banker", "Player", "Tie"])
 
