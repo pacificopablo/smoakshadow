@@ -46,7 +46,8 @@ def apply_custom_css():
         margin-bottom: 1.5rem;
     }
     h2, .st-emotion-cache-1rtdyac {
-        color: #2c528meniz: 1.5rem;
+        color: #2c5282;
+        font-size: 1.5rem;
         font-weight: 600;
         margin-top: 1.5rem;
         margin-bottom: 1rem;
@@ -217,7 +218,8 @@ def initialize_session_state():
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
-        'safety_net_enabled': True
+        'safety_net_enabled': True,
+        'ai_automation_enabled': False
     }
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
@@ -238,6 +240,7 @@ def reset_session():
         'sequence': [],
         'pending_bet': None,
         'manual_bet': None,
+        'strategy': 'T3',
         't3_level': 1,
         't3_results': [],
         't3_level_changes': 0,
@@ -264,7 +267,8 @@ def reset_session():
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
-        'safety_net_enabled': True
+        'safety_net_enabled': True,
+        'ai_automation_enabled': False
     })
     st.session_state.pattern_success['markov'] = 0
     st.session_state.pattern_attempts['markov'] = 0
@@ -566,7 +570,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                     st.session_state.z1003_level_changes += 1
                 bet_amount = st.session_state.base_bet
             return None, "No bet: Risk too high for current bankroll. Level/step reset to 1."
-    return bet_amount, f"AI Recommendation: ${bet_amount:.2f} on {pred}"
+    return bet_amount, f"{'Auto ' if st.session_state.ai_automation_enabled else ''}Bet: ${bet_amount:.2f} on {pred}"
 
 def place_result(result: str, manual_bet: Optional[str] = None):
     if st.session_state.target_hit:
@@ -600,80 +604,83 @@ def place_result(result: str, manual_bet: Optional[str] = None):
         "pattern_success": st.session_state.pattern_success.copy(),
         "pattern_attempts": st.session_state.pattern_attempts.copy(),
         "safety_net_percentage": st.session_state.safety_net_percentage,
-        "safety_net_enabled": st.session_state.safety_net_enabled
+        "safety_net_enabled": st.session_state.safety_net_enabled,
+        "ai_automation_enabled": st.session_state.ai_automation_enabled
     }
-    if manual_bet in ['P', 'B'] and result != 'T':
-        # Use manual bet selection
-        pred, conf, _ = predict_next()
-        bet_amount, _ = calculate_bet_amount(manual_bet, conf)
-        if bet_amount is None:
-            st.session_state.advice = "No bet placed: Insufficient conditions for manual bet."
-            st.session_state.manual_bet = None
-        else:
-            selection = manual_bet
-            win = result == selection
-            bet_placed = True
-            if win:
-                st.session_state.bankroll += bet_amount * (0.95 if selection == 'B' else 1.0)
-                if st.session_state.strategy == 'T3':
-                    st.session_state.t3_results.append('W')
-                elif st.session_state.strategy == 'Parlay16':
-                    st.session_state.parlay_wins += 1
-                    if st.session_state.parlay_wins == 2:
-                        old_step = st.session_state.parlay_step
-                        st.session_state.parlay_step = 1
-                        st.session_state.parlay_wins = 0
-                        st.session_state.parlay_using_base = True
-                        if old_step != st.session_state.parlay_step:
-                            st.session_state.parlay_step_changes += 1
-                        st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+    if result != 'T':
+        if manual_bet in ['P', 'B'] or (st.session_state.ai_automation_enabled and manual_bet is None):
+            # Use manual bet if provided, otherwise use AI prediction if automation is enabled
+            pred, conf, _ = predict_next()
+            selection = manual_bet if manual_bet in ['P', 'B'] else (pred if st.session_state.ai_automation_enabled else None)
+            if selection in ['P', 'B']:
+                bet_amount, advice = calculate_bet_amount(selection, conf)
+                if bet_amount is None:
+                    st.session_state.advice = advice or "No bet placed: Insufficient conditions."
+                    st.session_state.manual_bet = None
+                else:
+                    win = result == selection
+                    bet_placed = True
+                    if win:
+                        st.session_state.bankroll += bet_amount * (0.95 if selection == 'B' else 1.0)
+                        if st.session_state.strategy == 'T3':
+                            st.session_state.t3_results.append('W')
+                        elif st.session_state.strategy == 'Parlay16':
+                            st.session_state.parlay_wins += 1
+                            if st.session_state.parlay_wins == 2:
+                                old_step = st.session_state.parlay_step
+                                st.session_state.parlay_step = 1
+                                st.session_state.parlay_wins = 0
+                                st.session_state.parlay_using_base = True
+                                if old_step != st.session_state.parlay_step:
+                                    st.session_state.parlay_step_changes += 1
+                                st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+                            else:
+                                st.session_state.parlay_using_base = False
+                        elif st.session_state.strategy == 'Z1003.1':
+                            st.session_state.z1003_loss_count = 0
+                            st.session_state.z1003_continue = False
+                        st.session_state.wins += 1
+                        st.session_state.prediction_accuracy[selection] += 1
+                        st.session_state.consecutive_losses = 0
+                        for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
+                            if pattern in st.session_state.insights:
+                                st.session_state.pattern_success[pattern] += 1
+                                st.session_state.pattern_attempts[pattern] += 1
                     else:
-                        st.session_state.parlay_using_base = False
-                elif st.session_state.strategy == 'Z1003.1':
-                    st.session_state.z1003_loss_count = 0
-                    st.session_state.z1003_continue = False
-                st.session_state.wins += 1
-                st.session_state.prediction_accuracy[selection] += 1
-                st.session_state.consecutive_losses = 0
-                for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
-                    if pattern in st.session_state.insights:
-                        st.session_state.pattern_success[pattern] += 1
-                        st.session_state.pattern_attempts[pattern] += 1
-            else:
-                st.session_state.bankroll -= bet_amount
-                if st.session_state.strategy == 'T3':
-                    st.session_state.t3_results.append('L')
-                elif st.session_state.strategy == 'Parlay16':
-                    st.session_state.parlay_wins = 0
-                    old_step = st.session_state.parlay_step
-                    st.session_state.parlay_step = min(st.session_state.parlay_step + 1, 16)
-                    st.session_state.parlay_using_base = True
-                    if old_step != st.session_state.parlay_step:
-                        st.session_state.parlay_step_changes += 1
-                    st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
-                elif st.session_state.strategy == 'Z1003.1':
-                    st.session_state.z1003_loss_count += 1
-                    if st.session_state.z1003_loss_count == 2 and st.session_state.history and st.session_state.history[-1]['Win']:
-                        st.session_state.z1003_continue = True
-                    elif st.session_state.z1003_loss_count >= 3:
-                        st.session_state.z1003_continue = False
-                st.session_state.losses += 1
-                st.session_state.consecutive_losses += 1
-                _, conf, _ = predict_next()
-                st.session_state.loss_log.append({
-                    'sequence': st.session_state.sequence[-10:],
-                    'prediction': selection,
-                    'result': result,
-                    'confidence': f"{conf:.1f}",
-                    'insights': st.session_state.insights.copy()
-                })
-                if len(st.session_state.loss_log) > LOSS_LOG_LIMIT:
-                    st.session_state.loss_log = st.session_state.loss_log[-LOSS_LOG_LIMIT:]
-                for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
-                    if pattern in st.session_state.insights:
-                        st.session_state.pattern_attempts[pattern] += 1
-            st.session_state.prediction_accuracy['total'] += 1
-            st.session_state.manual_bet = None
+                        st.session_state.bankroll -= bet_amount
+                        if st.session_state.strategy == 'T3':
+                            st.session_state.t3_results.append('L')
+                        elif st.session_state.strategy == 'Parlay16':
+                            st.session_state.parlay_wins = 0
+                            old_step = st.session_state.parlay_step
+                            st.session_state.parlay_step = min(st.session_state.parlay_step + 1, 16)
+                            st.session_state.parlay_using_base = True
+                            if old_step != st.session_state.parlay_step:
+                                st.session_state.parlay_step_changes += 1
+                            st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+                        elif st.session_state.strategy == 'Z1003.1':
+                            st.session_state.z1003_loss_count += 1
+                            if st.session_state.z1003_loss_count == 2 and st.session_state.history and st.session_state.history[-1]['Win']:
+                                st.session_state.z1003_continue = True
+                            elif st.session_state.z1003_loss_count >= 3:
+                                st.session_state.z1003_continue = False
+                        st.session_state.losses += 1
+                        st.session_state.consecutive_losses += 1
+                        _, conf, _ = predict_next()
+                        st.session_state.loss_log.append({
+                            'sequence': st.session_state.sequence[-10:],
+                            'prediction': selection,
+                            'result': result,
+                            'confidence': f"{conf:.1f}",
+                            'insights': st.session_state.insights.copy()
+                        })
+                        if len(st.session_state.loss_log) > LOSS_LOG_LIMIT:
+                            st.session_state.loss_log = st.session_state.loss_log[-LOSS_LOG_LIMIT:]
+                        for pattern in ['bigram', 'trigram', 'fourgram', 'markov', 'streak', 'chop', 'double']:
+                            if pattern in st.session_state.insights:
+                                st.session_state.pattern_attempts[pattern] += 1
+                    st.session_state.prediction_accuracy['total'] += 1
+                    st.session_state.manual_bet = None
     st.session_state.sequence.append(result)
     if len(st.session_state.sequence) > SEQUENCE_LIMIT:
         st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
@@ -775,6 +782,11 @@ def render_setup_form():
                     "Safety Net Percentage (%)",
                     min_value=0.0, max_value=50.0, value=st.session_state.safety_net_percentage, step=5.0
                 )
+            ai_automation_enabled = st.checkbox(
+                "Enable AI Automation",
+                value=st.session_state.ai_automation_enabled,
+                help="When enabled, the AI automatically places bets based on its predictions."
+            )
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
@@ -812,7 +824,7 @@ def render_setup_form():
                         'target_mode': target_mode,
                         'target_value': target_value,
                         'initial_bankroll': bankroll,
-                        'target gola hit': False,
+                        'target_hit': False,
                         'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
                         'consecutive_losses': 0,
                         'loss_log': [],
@@ -822,30 +834,35 @@ def render_setup_form():
                         'pattern_success': defaultdict(int),
                         'pattern_attempts': defaultdict(int),
                         'safety_net_percentage': safety_net_percentage,
-                        'safety_net_enabled': safety_net_enabled
+                        'safety_net_enabled': safety_net_enabled,
+                        'ai_automation_enabled': ai_automation_enabled
                     })
                     st.session_state.pattern_success['fourgram'] = 0
                     st.session_state.pattern_attempts['fourgram'] = 0
                     st.session_state.pattern_success['markov'] = 0
                     st.session_state.pattern_attempts['markov'] = 0
-                    st.success(f"Session started with {betting_strategy} strategy!")
+                    st.success(f"Session started with {betting_strategy} strategy! AI Automation: {'Enabled' if ai_automation_enabled else 'Disabled'}")
 
 def render_result_input():
     with st.expander("Enter Result", expanded=True):
-        st.markdown("**Select Your Bet**")
-        bet_cols = st.columns(3)
-        with bet_cols[0]:
-            if st.button("Bet Player", key="bet_player_btn", help="Place a bet on Player"):
-                st.session_state.manual_bet = 'P'
-                st.rerun()
-        with bet_cols[1]:
-            if st.button("Bet Banker", key="bet_banker_btn", help="Place a bet on Banker"):
-                st.session_state.manual_bet = 'B'
-                st.rerun()
-        with bet_cols[2]:
-            if st.button("No Bet", key="no_bet_btn", help="Skip betting this round"):
-                st.session_state.manual_bet = None
-                st.rerun()
+        if not st.session_state.ai_automation_enabled:
+            st.markdown("**Select Your Bet**")
+            bet_cols = st.columns(3)
+            with bet_cols[0]:
+                if st.button("Bet Player", key="bet_player_btn", help="Place a bet on Player"):
+                    st.session_state.manual_bet = 'P'
+                    st.rerun()
+            with bet_cols[1]:
+                if st.button("Bet Banker", key="bet_banker_btn", help="Place a bet on Banker"):
+                    st.session_state.manual_bet = 'B'
+                    st.rerun()
+            with bet_cols[2]:
+                if st.button("No Bet", key="no_bet_btn", help="Skip betting this round"):
+                    st.session_state.manual_bet = None
+                    st.rerun()
+        else:
+            st.markdown("**AI Automation Enabled**")
+            st.info("The AI is automatically placing bets based on its predictions.")
         
         st.markdown("**Enter Result**")
         result_cols = st.columns(4)
@@ -926,7 +943,14 @@ def render_bead_plate():
 
 def render_prediction():
     with st.expander("Prediction", expanded=True):
-        if st.session_state.manual_bet:
+        if st.session_state.ai_automation_enabled and not st.session_state.manual_bet:
+            if st.session_state.pending_bet:
+                amount, pred = st.session_state.pending_bet
+                color = '#3182ce' if pred == 'P' else '#e53e3e'
+                st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", unsafe_allow_html=True)
+        elif st.session_state.manual_bet:
             amount, _ = calculate_bet_amount(st.session_state.manual_bet, 100.0)
             color = '#3182ce' if st.session_state.manual_bet == 'P' else '#e53e3e'
             st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>Your Bet: {st.session_state.manual_bet} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
@@ -957,6 +981,7 @@ def render_status():
             elif st.session_state.strategy == 'Z1003.1':
                 strategy_status += f"<br>Loss Count: {st.session_state.z1003_loss_count}<br>Changes: {st.session_state.z1003_level_changes} | Continue: {st.session_state.z1003_continue}"
             st.markdown(strategy_status, unsafe_allow_html=True)
+        st.markdown(f"**AI Automation**: {'Enabled' if st.session_state.ai_automation_enabled else 'Disabled'}")
         st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
         st.markdown(f"**Online Users**: {track_user_session()}")
         if st.session_state.initial_base_bet > 0 and st.session_state.initial_bankroll > 0:
