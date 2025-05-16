@@ -1,7 +1,6 @@
 import streamlit as st
 import numpy as np
 from collections import defaultdict
-from sklearn.linear_model import LogisticRegression
 from typing import Dict, List, Optional, Tuple
 
 # Constants from app.py
@@ -18,68 +17,31 @@ def adjust_safety_net() -> float:
     
     base_percentage = st.session_state.safety_net_percentage
     if consecutive_losses >= 3:
-        return min(base_percentage + 10, 50.0)  # Increase protection after losses
+        return min(base_percentage + 10, 50.0)
     elif win_rate > 0.6 and volatility < 0.3:
-        return max(base_percentage - 5, 5.0)  # Reduce protection in stable wins
+        return max(base_percentage - 5, 5.0)
     return base_percentage
 
 def recommend_strategy(sequence: List[str]) -> str:
     """Recommend a betting strategy based on shoe patterns."""
     if len(sequence) < 4:
-        return "Flatbet"  # Default to safe strategy for short sequences
+        return "Flatbet"
     
     _, _, _, _, _, streak_count, chop_count, double_count, volatility, shoe_bias = st.session_state.analyze_patterns(sequence[-WINDOW_SIZE:])
     
     if volatility > 0.5 or abs(shoe_bias) < 0.1:
-        return "Flatbet"  # Stable betting in volatile or balanced shoes
+        return "Flatbet"
     elif streak_count >= 3:
-        return "Parlay16"  # Progressive betting for streaky shoes
+        return "Parlay16"
     elif chop_count >= 3:
-        return "Z1003.1"  # Recovery betting for alternating patterns
-    return "T3"  # Default for balanced patterns
-
-def train_ml_model(sequence: List[str]) -> Optional[LogisticRegression]:
-    """Train a lightweight logistic regression model for outcome prediction."""
-    if len(sequence) < 10:
-        return None
-    
-    X, y = [], []
-    for i in range(len(sequence) - 4):
-        features = [
-            1 if sequence[i] == 'P' else 0,
-            1 if sequence[i+1] == 'P' else 0,
-            1 if sequence[i+2] == 'P' else 0,
-            1 if sequence[i+3] == 'P' else 0
-        ]
-        target = 1 if sequence[i+4] == 'P' else 0
-        X.append(features)
-        y.append(target)
-    
-    model = LogisticRegression()
-    model.fit(X, y)
-    return model
-
-def predict_with_ml(model: Optional[LogisticRegression], sequence: List[str]) -> Tuple[Optional[str], float]:
-    """Use ML model to predict next outcome."""
-    if not model or len(sequence) < 4:
-        return None, 0.0
-    
-    features = [
-        1 if sequence[-4] == 'P' else 0,
-        1 if sequence[-3] == 'P' else 0,
-        1 if sequence[-2] == 'P' else 0,
-        1 if sequence[-1] == 'P' else 0
-    ]
-    prob = model.predict_proba([features])[0]
-    pred = 'P' if prob[1] > prob[0] else 'B'
-    confidence = max(prob[1], prob[0]) * 100
-    return pred, confidence
+        return "Z1003.1"
+    return "T3"
 
 def enhanced_z1003_bet(loss_count: int, base_bet: float) -> float:
     """Modified Z1003.1 with loss recovery mode."""
     if loss_count == 0:
         return base_bet
-    recovery_factor = min(1.5 ** loss_count, 4.0)  # Cap at 4x base bet
+    recovery_factor = min(1.5 ** loss_count, 4.0)
     return base_bet * recovery_factor
 
 def calculate_roi() -> Dict[str, float]:
