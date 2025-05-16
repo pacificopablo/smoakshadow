@@ -97,6 +97,13 @@ t3_toggle = st.sidebar.checkbox("Use T3 Strategy", value=True)
 
 st.session_state.ai_enabled = ai_toggle
 
+# New Shoe Button
+if st.sidebar.button("New Shoe"):
+    st.session_state.history = []
+    st.session_state.bankroll = [1000]
+    st.session_state.t3_level = 1
+    st.sidebar.success("New shoe started!")
+
 # --- MAIN UI ---
 st.title("Baccarat Predictor — Optimized for Profit per Shoe")
 
