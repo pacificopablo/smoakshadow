@@ -1,4 +1,4 @@
-# Version: 2025-05-14-fix-v12-markov
+# Version: 2025-05-16-fix-v13-bead-plate
 import streamlit as st
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -25,7 +25,7 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
-APP_VERSION = "2025-05-14-fix-v12-markov"
+APP_VERSION = "2025-05-16-fix-v13-bead-plate"
 
 # --- Logging Setup ---
 logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
@@ -750,176 +750,6 @@ def place_result(result: str):
             else:
                 st.session_state.pending_bet = None
                 st.session_state.advice = "No bet recommended (low confidence or insufficient bankroll)."
-
-        st.session_state.last_was_tie = (result == 'T')
-        logging.debug("place_result completed")
-        st.rerun()
-    except Exception as e:
-        logging.error(f"place_result error: {str(e)}\n{traceback.format_exc()}")
-        st.error(f"Error processing result: {str(e)}")
-
-def simulate_shoe() -> Dict:
-    """Simulate a shoe of 80 hands and evaluate prediction accuracy."""
-    logging.debug("Entering simulate_shoe")
-    try:
-        original_sequence = st.session_state.sequence.copy()
-        original_history = st.session_state.history.copy()
-        original_bankroll = st.session_state.bankroll
-        original_wins = st.session_state.wins
-        original_losses = st.session_state.losses
-        original_pending_bet = st.session_state.pending_bet
-        original_insights = st.session_state.insights.copy()
-        original_advice = st.session_state.advice
-        original_pattern_success = st.session_state.pattern_success.copy()
-        original_pattern_attempts = st.session_state.pattern_attempts.copy()
-
-        results = np.random.choice(['P', 'B', 'T'], size=80, p=[0.4462, 0.4586, 0.0952])
-        correct = 0
-        total = 0
-        pattern_success = defaultdict(int)
-        pattern_attempts = defaultdict(int)
-
-        for result in results:
-            prediction, confidence, insights = predict_next()
-            if prediction:
-                total += 1
-                for pattern in insights:
-                    pattern_attempts[pattern] += 1
-                    if result == prediction:
-                        pattern_success[pattern] += 1
-                if result == prediction:
-                    correct += 1
-            place_result(result)
-
-        accuracy = (correct / total * 100) if total > 0 else 0.0
-
-        st.session_state.sequence = original_sequence
-        st.session_state.history = original_history
-        st.session_state.bankroll = original_bankroll
-        st.session_state.wins = original_wins
-        st.session_state.losses = original_losses
-        st.session_state.pending_bet = original_pending_bet
-        st.session_state.insights = original_insights
-        st.session_state.advice = original_advice
-        st.session_state.pattern_success = original_pattern_success
-        st.session_state.pattern_attempts = original_pattern_attempts
-
-        logging.debug("simulate_shoe completed")
-        return {
-            'accuracy': accuracy,
-            'correct': correct,
-            'total': total,
-            'sequence': list(results),
-            'pattern_success': dict(pattern_success),
-            'pattern_attempts': dict(pattern_attempts)
-        }
-    except Exception as e:
-        logging.error(f"simulate_shoe error: {str(e)}\n{traceback.format_exc()}")
-        st.error("Error running simulation. Try resetting the session.")
-        return {'accuracy': 0.0, 'correct': 0, 'total': 0, 'sequence': [], 'pattern_success': {}, 'pattern_attempts': {}}
-
-def render_result_input():
-    """Render buttons for entering game results."""
-    logging.debug("Entering render_result_input")
-    try:
-        st.subheader("Enter Result")
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            if st.button("Player", key="player_btn"):
-                place_result("P")
-        with col2:
-            if st.button("Banker", key="banker_btn"):
-                place_result("B")
-        with col3:
-            if st.button("Tie", key="tie_btn"):
-                place_result("T")
-        with col4:
-            if st.button("Undo Last", key="undo_btn"):
-                try:
-                    if not st.session_state.sequence:
-                        st.warning("No results to undo.")
-                        return
-                    if st.session_state.history:
-                        last = st.session_state.history.pop()
-                        previous_state = last['Previous_State']
-                        for key, value in previous_state.items():
-                            st.session_state[key] = value
-                        st.session_state.sequence.pop()
-                        if last.get('Bet_Placed', False) and not last.get('Win', False) and st.session_state.loss_log:
-                            if st.session_state.loss_log and st.session_state.loss_log[-1]['result'] == last['Result']:
-                                st.session_state.loss_log.pop()
-                        if last.get('Bet_Placed', False):
-                            if last.get('Win', False):
-                                logging.debug(f"Undo win: Reducing wins from {st.session_state.wins} to {st.session_state.wins - 1}")
-                                st.session_state.wins -= 1
-                            else:
-                                logging.debug(f"Undo loss: Reducing losses from {st.session_state.losses} to {st.session_state.losses - 1}")
-                                st.session_state.losses -= 1
-                    else:
-                        st.session_state.sequence.pop()
-                    st.session_state.pending_bet = None
-                    st.session_state.advice = "No bet pending."
-                    st.session_state.last_was_tie = False
-                    st.success("Undone last action.")
-                    st.rerun()
-                except Exception as e:
-                    logging.error(f"Undo error: {str(e)}\n{traceback.format_exc()}")
-                    st.error(f"Error undoing last action: {str(e)}")
-        logging.debug("render_result_input completed")
-    except Exception as e:
-        logging.error(f"render_result_input error: {str(e)}\n{traceback.format_exc()}")
-        st.error("Error rendering result input. Try resetting the session.")
-
-def render_bead_plate():
-    """Render the current sequence as a bead plate."""
-    logging.debug("Entering render_bead_plate")
-    try:
-        st.subheader("Current Sequence (Bead Plate)")
-        sequence = st.session_state.sequence[-90:]
-        grid = [[] for _ in range(15)]
-        for i, result in enumerate(sequence):
-            col_index = i // 6
-            if col_index < 15:
-                grid[col_index].append(result)
-        for col in grid:
-            while len(col) < 6:
-                col.append('')
-
-        bead_plate_html = "<div style='display: flex; flex-direction: row; gap: 5px; max-width: 100%; overflow-x: auto;'>"
-        for col in grid:
-            col_html = "<div style='display: flex; flex=-x: auto; st.session_state.bankroll >= st.session_state.base_bet:
-                bet_amount = PARLAY_TABLE[st.session_state.parlay_step]['base'] * st.session_state[A:1,1] st.session_state.base_bet
-                if bet_amount <= st.session_state.bankroll:
-                    st.session_state.pending_bet = (bet_amount, prediction)
-                    if win:
-                        st.session_state inanimate = True
-                        st.session_state.parlay_wins += 1
-                        st.session_list.state.parlay_step = min(st.session_state.parlay_step + 1, 16)
-                        st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
-                    elif result != 'T':
-                        st.session_state.parlay_step = 1
-                        st.session_state.parlay_step_changes += 1
-                else:
-                    st.session_state.pending_bet = None
-                    st.session_state.advice = "Insufficient bankroll for Parlay bet."
-            elif st.session_state.strategy == 'Z1003.1':
-                bet_amount = st.session_state.base_bet * st.session_state.z1003_bet_factor
-                if bet_amount <= st663 st.session_state.bankroll:
-                    st.session_state.pending_bet = (bet_amount, prediction)
-                    if win:
-                        st.session_state.z1003_loss_count = 0
-                        st.session_state.z1003_bet_factor = 1.0
-                    elif result != 'T':
-                        st.session_state.z1003_loss_count += 1
-                        st.session_state.z1003_bet_factor *= 2
-                        st.session_state.z1003_level_changes += 1
-                else:
-                    st.session_state.pending_bet = None
-                    st.session_state.advice = "Insufficient bankroll for Z1003 bet."
-            st.session_state.advice = f"Next Bet: ${bet_amount:.2f} on {'Player' if prediction == 'P' else 'Banker'} (Confidence: {confidence:.1f}%)"
-        else:
-            st.session_state.pending_bet = None
-            st.session_state.advice = "No bet recommended (low confidence or insufficient bankroll)."
 
         st.session_state.last_was_tie = (result == 'T')
         logging.debug("place_result completed")
