@@ -114,7 +114,6 @@ def apply_custom_css():
         background: linear-gradient(to bottom, #fc8181, #e53e3e);
     }
     .result-button-tie {
-        background: linear-gradient(to bottom, #38a169, # SDI: https://cdn.pixabay.com/photo/2017/09/25/16/14/poker-2785708_1280.jpg
         background: linear-gradient(to bottom, #38a169, #2f855a);
         color: white;
     }
@@ -244,8 +243,9 @@ def initialize_session_state():
         'grok_t3_model': None,
         'grok_t3_le': None
     }
-    defaults['pattern_success']['fourgram'] = 0
-    defaults['pattern_attempts']['fourgram'] = 0
+    for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double', 'LB 6 Rep']:
+        defaults['pattern_success'][pattern] = 0
+        defaults['pattern_attempts'][pattern] = 0
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
@@ -290,6 +290,9 @@ def reset_session():
         'grok_t3_model': None,
         'grok_t3_le': None
     })
+    for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double', 'LB 6 Rep']:
+        st.session_state.pattern_success[pattern] = 0
+        st.session_state.pattern_attempts[pattern] = 0
 
 # --- Prediction Logic for Grok T3 ---
 def predict_grok_t3() -> Tuple[Optional[str], float, Dict]:
@@ -300,6 +303,7 @@ def predict_grok_t3() -> Tuple[Optional[str], float, Dict]:
     if st.session_state.grok_t3_model is None or st.session_state.grok_t3_le is None:
         return None, 0.0, {'Status': 'Model not initialized'}
     
+    # Model Prediction
     encoded_input = st.session_state.grok_t3_le.transform(sequence[-GROK_T3_SEQUENCE_LENGTH:])
     input_array = np.array([encoded_input])
     prediction_probs = st.session_state.grok_t3_model.predict_proba(input_array)[0]
@@ -307,21 +311,179 @@ def predict_grok_t3() -> Tuple[Optional[str], float, Dict]:
     predicted_outcome = st.session_state.grok_t3_le.inverse_transform([predicted_class])[0]
     confidence = np.max(prediction_probs) * 100
 
-    # LB 6 Rep: Bet same as 6th prior result
+    # Initialize bet selection and pattern confidences
     bet_selection = None
-    if len(sequence) >= GROK_T3_SEQUENCE_LENGTH + 5:  # Need 6 prior results after sequence
+    pattern_confidences = []
+
+    # LB 6 Rep Logic
+    if len(sequence) >= GROK_T3_SEQUENCE_LENGTH + 5:
         sixth_prior = sequence[-6]
         outcome_index = st.session_state.grok_t3_le.transform([sixth_prior])[0]
         sixth_confidence = prediction_probs[outcome_index] * 100
         if sixth_confidence > 40:
             bet_selection = sixth_prior
+            pattern_confidences.append((sixth_confidence, sixth_prior, 'LB 6 Rep'))
             insights['LB 6 Rep'] = f"Mirroring 6th prior: {sixth_prior} (Confidence: {sixth_confidence:.1f}%)"
         else:
             insights['LB 6 Rep'] = f"Low confidence for 6th prior: {sixth_confidence:.1f}%"
     else:
         insights['LB 6 Rep'] = 'Not enough results for 6th prior'
 
+    # Helper function to get n-grams
+    def get_ngrams(seq, n):
+        return [''.join(seq[i:i+n]) for i in range(len(seq)-n+1)]
+
+    # Bigram Analysis
+    if len(sequence) >= 2:
+        bigrams = get_ngrams(sequence, 2)
+        last_bigram = bigrams[-1]
+        bigram_counts = defaultdict(lambda: defaultdict(int))
+        for i in range(len(bigrams)-1):
+            bigram = bigrams[i]
+            next_outcome = sequence[i+2] if i+2 < len(sequence) else None
+            if next_outcome:
+                bigram_counts[bigram][next_outcome] += 1
+        if last_bigram in bigram_counts:
+            total = sum(bigram_counts[last_bigram].values())
+            if total > 0:
+                p_prob = bigram_counts[last_bigram]['P'] / total * 100
+                b_prob = bigram_counts[last_bigram]['B'] / total * 100
+                bigram_pred = 'P' if p_prob > b_prob else 'B'
+                bigram_conf = max(p_prob, b_prob)
+                if bigram_conf > 50:
+                    pattern_confidences.append((bigram_conf, bigram_pred, 'bigram'))
+                insights['bigram'] = f"Bigram {last_bigram}: P={p_prob:.1f}%, B={b_prob:.1f}%"
+
+    # Trigram Analysis
+    if len(sequence) >= 3:
+        trigrams = get_ngrams(sequence, 3)
+        last_trigram = trigrams[-1]
+        trigram_counts = defaultdict(lambda: defaultdict(int))
+        for i in range(len(trigrams)-1):
+            trigram = trigrams[i]
+            next_outcome = sequence[i+3] if i+3 < len(sequence) else None
+            if next_outcome:
+                trigram_counts[trigram][next_outcome] += 1
+        if last_trigram in trigram_counts:
+            total = sum(trigram_counts[last_trigram].values())
+            if total > 0:
+                p_prob = trigram_counts[last_trigram]['P'] / total * 100
+                b_prob = trigram_counts[last_trigram]['B'] / total * 100
+                trigram_pred = 'P' if p_prob > b_prob else 'B'
+                trigram_conf = max(p_prob, b_prob)
+                if trigram_conf > 50:
+                    pattern_confidences.append((trigram_conf, trigram_pred, 'trigram'))
+                insights['trigram'] = f"Trigram {last_trigram}: P={p_prob:.1f}%, B={b_prob:.1f}%"
+
+    # Fourgram Analysis
+    if len(sequence) >= 4:
+        fourgrams = get_ngrams(sequence, 4)
+        last_fourgram = fourgrams[-1]
+        fourgram_counts = defaultdict(lambda: defaultdict(int))
+        for i in range(len(fourgrams)-1):
+            fourgram = fourgrams[i]
+            next_outcome = sequence[i+4] if i+4 < len(sequence) else None
+            if next_outcome:
+                fourgram_counts[fourgram][next_outcome] += 1
+        if last_fourgram in fourgram_counts:
+            total = sum(fourgram_counts[last_fourgram].values())
+            if total > 0:
+                p_prob = fourgram_counts[last_fourgram]['P'] / total * 100
+                b_prob = fourgram_counts[last_fourgram]['B'] / total * 100
+                fourgram_pred = 'P' if p_prob > b_prob else 'B'
+                fourgram_conf = max(p_prob, b_prob)
+                if fourgram_conf > 50:
+                    pattern_confidences.append((fourgram_conf, fourgram_pred, 'fourgram'))
+                insights['fourgram'] = f"Fourgram {last_fourgram}: P={p_prob:.1f}%, B={b_prob:.1f}%"
+
+    # Streak Analysis
+    if len(sequence) >= 3:
+        last_three = sequence[-3:]
+        if all(x == last_three[0] for x in last_three):  # Streak of 3
+            streak_outcome = last_three[0]
+            streak_counts = defaultdict(int)
+            streak_length = 1
+            for i in range(len(sequence)-2, -1, -1):
+                if sequence[i] == streak_outcome:
+                    streak_length += 1
+                else:
+                    break
+            for i in range(len(sequence)-3):
+                if sequence[i:i+3] == [streak_outcome]*3:
+                    next_outcome = sequence[i+3] if i+3 < len(sequence) else None
+                    if next_outcome:
+                        streak_counts[next_outcome] += 1
+            total = sum(streak_counts.values())
+            if total > 0:
+                p_prob = streak_counts['P'] / total * 100 if 'P' in streak_counts else 0
+                b_prob = streak_counts['B'] / total * 100 if 'B' in streak_counts else 0
+                streak_pred = streak_outcome  # Continue streak
+                streak_conf = p_prob if streak_pred == 'P' else b_prob
+                if streak_conf > 50:
+                    pattern_confidences.append((streak_conf, streak_pred, 'streak'))
+                insights['streak'] = f"Streak of {streak_outcome} (length {streak_length}): P={p_prob:.1f}%, B={b_prob:.1f}%"
+        else:
+            insights['streak'] = "No streak detected (need 3 identical outcomes)"
+
+    # Chop Analysis
+    if len(sequence) >= 4:
+        last_four = sequence[-4:]
+        if last_four == ['P', 'B', 'P', 'B'] or last_four == ['B', 'P', 'B', 'P']:  # Chop pattern
+            chop_counts = defaultdict(int)
+            for i in range(len(sequence)-4):
+                if sequence[i:i+4] in [['P', 'B', 'P', 'B'], ['B', 'P', 'B', 'P']]:
+                    next_outcome = sequence[i+4] if i+4 < len(sequence) else None
+                    if next_outcome:
+                        chop_counts[next_outcome] += 1
+            total = sum(chop_counts.values())
+            if total > 0:
+                p_prob = chop_counts['P'] / total * 100 if 'P' in chop_counts else 0
+                b_prob = chop_counts['B'] / total * 100 if 'B' in chop_counts else 0
+                chop_pred = 'P' if last_four[-1] == 'B' else 'B'  # Continue alternation
+                chop_conf = p_prob if chop_pred == 'P' else b_prob
+                if chop_conf > 50:
+                    pattern_confidences.append((chop_conf, chop_pred, 'chop'))
+                insights['chop'] = f"Chop pattern: P={p_prob:.1f}%, B={b_prob:.1f}%"
+        else:
+            insights['chop'] = "No chop pattern detected (need PBPB or BPBP)"
+
+    # Double Analysis
+    if len(sequence) >= 4:
+        last_four = sequence[-4:]
+        if last_four == ['P', 'P', 'B', 'B'] or last_four == ['B', 'B', 'P', 'P']:  # Double pattern
+            double_counts = defaultdict(int)
+            for i in range(len(sequence)-4):
+                if sequence[i:i+4] in [['P', 'P', 'B', 'B'], ['B', 'B', 'P', 'P']]:
+                    next_outcome = sequence[i+4] if i+4 < len(sequence) else None
+                    if next_outcome:
+                        double_counts[next_outcome] += 1
+            total = sum(double_counts.values())
+            if total > 0:
+                p_prob = double_counts['P'] / total * 100 if 'P' in double_counts else 0
+                b_prob = double_counts['B'] / total * 100 if 'B' in double_counts else 0
+                double_pred = last_four[-2]  # Continue double pattern
+                double_conf = p_prob if double_pred == 'P' else b_prob
+                if double_conf > 50:
+                    pattern_confidences.append((double_conf, double_pred, 'double'))
+                insights['double'] = f"Double pattern: P={p_prob:.1f}%, B={b_prob:.1f}%"
+        else:
+            insights['double'] = "No double pattern detected (need PPBB or BBPP)"
+
+    # Select bet based on highest confidence pattern
+    if pattern_confidences:
+        max_conf, best_pred, best_pattern = max(pattern_confidences, key=lambda x: x[0])
+        bet_selection = best_pred
+        insights['Selected Pattern'] = f"Chose {best_pattern} with confidence {max_conf:.1f}%"
+
     insights['Model Confidence'] = f"P: {prediction_probs[st.session_state.grok_t3_le.transform(['P'])[0]]*100:.1f}%, B: {prediction_probs[st.session_state.grok_t3_le.transform(['B'])[0]]*100:.1f}%"
+    
+    # Update pattern volatility (standard deviation of pattern confidences)
+    if pattern_confidences:
+        confidences = [conf for conf, _, _ in pattern_confidences]
+        st.session_state.pattern_volatility = np.std(confidences) if len(confidences) > 1 else 0.0
+    else:
+        st.session_state.pattern_volatility = 0.0
+
     return bet_selection, confidence, insights
 
 # --- Betting Logic ---
@@ -352,9 +514,9 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     if st.session_state.consecutive_losses >= 3 and conf < 45.0:
         return None, f"No bet: Paused after {st.session_state.consecutive_losses} losses"
     if st.session_state.pattern_volatility > 0.6:
-        return None, f"No bet: High pattern volatility"
+        return None, f"No bet: High pattern volatility ({st.session_state.pattern_volatility:.2f})"
     if pred is None:
-        return None, f"No bet: No valid prediction (LB 6 Rep confidence too low)"
+        return None, f"No bet: No valid prediction (pattern confidences too low)"
     
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
@@ -466,7 +628,7 @@ def place_result(result: str):
             st.session_state.wins += 1
             st.session_state.prediction_accuracy[selection] += 1
             st.session_state.consecutive_losses = 0
-            for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double']:
+            for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double', 'LB 6 Rep']:
                 if pattern in st.session_state.insights:
                     st.session_state.pattern_success[pattern] += 1
                     st.session_state.pattern_attempts[pattern] += 1
@@ -500,7 +662,7 @@ def place_result(result: str):
             })
             if len(st.session_state.loss_log) > LOSS_LOG_LIMIT:
                 st.session_state.loss_log = st.session_state.loss_log[-LOSS_LOG_LIMIT:]
-            for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double']:
+            for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double', 'LB 6 Rep']:
                 if pattern in st.session_state.insights:
                     st.session_state.pattern_attempts[pattern] += 1
         st.session_state.prediction_accuracy['total'] += 1
@@ -555,11 +717,13 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
             if pred == outcome:
                 correct += 1
                 for pattern in insights:
-                    pattern_success[pattern] += 1
-                    pattern_attempts[pattern] += 1
+                    if pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double', 'LB 6 Rep']:
+                        pattern_success[pattern] += 1
+                        pattern_attempts[pattern] += 1
             else:
                 for pattern in insights:
-                    pattern_attempts[pattern] += 1
+                    if pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double', 'LB 6 Rep']:
+                        pattern_attempts[pattern] += 1
         st.session_state.sequence = sequence.copy()
         st.session_state.prediction_accuracy['total'] += 1
         if outcome in ['P', 'B']:
@@ -576,7 +740,13 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
     try:
         with open(SIMULATION_LOG, 'a', encoding='utf-8') as f:
             f.write(f"{datetime.now().isoformat()}: Accuracy={accuracy:.1f}%, Correct={correct}/{total}, "
-                    f"LB_6_Rep={result['pattern_success'].get('LB 6 Rep', 0)}/{result['pattern_attempts'].get('LB 6 Rep', 0)}\n")
+                    f"LB_6_Rep={result['pattern_success'].get('LB 6 Rep', 0)}/{result['pattern_attempts'].get('LB 6 Rep', 0)}, "
+                    f"Bigram={result['pattern_success'].get('bigram', 0)}/{result['pattern_attempts'].get('bigram', 0)}, "
+                    f"Trigram={result['pattern_success'].get('trigram', 0)}/{result['pattern_attempts'].get('trigram', 0)}, "
+                    f"Fourgram={result['pattern_success'].get('fourgram', 0)}/{result['pattern_attempts'].get('fourgram', 0)}, "
+                    f"Streak={result['pattern_success'].get('streak', 0)}/{result['pattern_attempts'].get('streak', 0)}, "
+                    f"Chop={result['pattern_success'].get('chop', 0)}/{result['pattern_attempts'].get('chop', 0)}, "
+                    f"Double={result['pattern_success'].get('double', 0)}/{result['pattern_attempts'].get('double', 0)}\n")
     except PermissionError:
         st.error("Unable to write to simulation log.")
     return result
@@ -593,7 +763,7 @@ def render_setup_form():
                 betting_strategy = st.selectbox(
                     "Betting Strategy", STRATEGIES,
                     index=STRATEGIES.index(st.session_state.strategy),
-                    help="Grok T3: Adjusts bet size based on wins/losses with LB 6 Rep. Flatbet: Fixed bet size. Parlay16: 16-step progression. Z1003.1: Resets after first win, stops after three losses."
+                    help="Grok T3: Adjusts bet size based on wins/losses with pattern analysis. Flatbet: Fixed bet size. Parlay16: 16-step progression. Z1003.1: Resets after first win, stops after three losses."
                 )
                 target_mode = st.radio("Target Type", ["Profit %", "Units"], index=0)
                 target_value = st.number_input("Target Value", min_value=1.0, value=float(st.session_state.target_value), step=1.0)
@@ -664,8 +834,9 @@ def render_setup_form():
                         'grok_t3_model': model,
                         'grok_t3_le': le
                     })
-                    st.session_state.pattern_success['fourgram'] = 0
-                    st.session_state.pattern_attempts['fourgram'] = 0
+                    for pattern in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double', 'LB 6 Rep']:
+                        st.session_state.pattern_success[pattern] = 0
+                        st.session_state.pattern_attempts[pattern] = 0
                     st.success(f"Session started with {betting_strategy} strategy!")
 
 def render_result_input():
@@ -756,7 +927,7 @@ def render_insights():
         if st.session_state.insights:
             for factor, contribution in st.session_state.insights.items():
                 st.markdown(f"**{factor}**: {contribution}")
-        if st.session_state.pattern_volatility > 0.5:
+        if st.session_state.pattern_volatility > 0.6:
             st.warning(f"High Pattern Volatility: {st.session_state.pattern_volatility:.2f} (Betting paused)")
 
 def render_status():
