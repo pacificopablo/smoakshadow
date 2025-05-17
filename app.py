@@ -356,8 +356,9 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
-    if len(sequence) < 4:
-        return 'B', 45.86, {}
+    # Skip prediction until the 6th hand (sequence length >= 5)
+    if len(sequence) < 5:
+        return None, 0.0, {'Status': 'Waiting for 6th hand'}
     recent_sequence = sequence[-WINDOW_SIZE:]
     (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
      streak_count, chop_count, double_count, volatility, shoe_bias) = analyze_patterns(recent_sequence)
@@ -493,6 +494,9 @@ def update_t3_level():
         st.session_state.t3_results = []
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
+    # Skip betting until the 6th hand (sequence length >= 5)
+    if len(st.session_state.sequence) < 5:
+        return None, "No bet: Waiting for 6th hand"
     if st.session_state.consecutive_losses >= 3 and conf < 45.0:
         return None, f"No bet: Paused after {st.session_state.consecutive_losses} losses"
     if st.session_state.pattern_volatility > 0.6:
@@ -583,7 +587,7 @@ def place_result(result: str):
             if st.session_state.strategy == 'T3':
                 st.session_state.t3_results.append('W')
             elif st.session_state.strategy == 'Parlay16':
-                st.session_state.parlay_wins += 1
+                st.session_state.parlay_w    st.session_state.parlay_wins += 1
                 if st.session_state.parlay_wins == 2:
                     old_step = st.session_state.parlay_step
                     st.session_state.parlay_step = 1
