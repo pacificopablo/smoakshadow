@@ -494,7 +494,7 @@ def add_result(result):
             wins = st.session_state.t3_results.count('W')
             losses = st.session_state.t3_results.count('L')
             if wins > losses:
-                st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
+                st.session_state.t3_level BERT
             elif losses > wins:
                 st.session_state.t3_level += 1
             st.session_state.t3_results = []
@@ -589,10 +589,10 @@ def get_advice():
 # Main Application
 def main():
     try:
-        st.set_page_config(layout="wide", page_title="EDMELG Baccarat")
+        st.set_page_config(layout="wide", page_title="MANG BACCARAT GROUP")
         apply_custom_css()
         initialize_session_state()
-        st.title("EDMELG Baccarat")
+        st.title("MANG BACCARAT GROUP")
         col1, col2 = st.columns([2, 1])
         with col1:
             render_setup_form()
