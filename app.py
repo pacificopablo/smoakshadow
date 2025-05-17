@@ -198,7 +198,7 @@ def add_result(result):
                 bet_selection = sixth_prior
 
         if bet_selection:
-            bet_amount = st/session_state.base_bet * st.session_state.t3_level
+            bet_amount = st.session_state.base_bet * st.session_state.t3_level
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
             else:
@@ -220,9 +220,7 @@ def undo_result():
         if bet_amount > 0:
             st.session_state.bets_placed -= 1
             if bet_outcome == 'win':
-                if
-
- bet_selection == 'B':
+                if bet_selection == 'B':
                     st.session_state.bankroll -= bet_amount * 0.95
                 else:  # Player
                     st.session_state.bankroll -= bet_amount
