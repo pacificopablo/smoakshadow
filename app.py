@@ -34,8 +34,9 @@ def calculate_roi():
 
 # Simulate Baccarat game data for training
 def generate_baccarat_data(num_games=10000):
-    outcomes = ['P', 'B']
-    return [random.choice(outcomes) for _ in range(num_games)]
+    outcomes = ['P', 'B', 'T']
+    # Approximate real-world probabilities: P=45.86%, B=44.62%, T=9.52%
+    return np.random.choice(outcomes, size=num_games, p=[0.4586, 0.4462, 0.0952]).tolist()
 
 # Preprocess data: Create sequences for prediction
 def prepare_data(outcomes, sequence_length=10):
@@ -103,89 +104,8 @@ def initialize_session_state():
 def apply_custom_css():
     try:
         st.markdown("""
-        <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f7f9fc;
-        }
-        .stApp {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-        }
-        h1 {
-            color: #1a3c6e;
-            font-size: 2.5rem;
-            font-weight: 700;
-            text-align: center;
-            margin-bottom: 1.5rem;
-        }
-        h2 {
-            color: #2c5282;
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-top: 1.5rem;
-            margin-bottom: 1rem;
-        }
-        .stButton > button {
-            background-color: #1a3c6e;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 10px 20px;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        .stButton > button:hover {
-            background-color: #2b6cb0;
-            transform: translateY(-2px);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-        .stNumberInput input, .stSelectbox select {
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            padding: 10px;
-            font-size: 14px;
-        }
-        .stRadio label, .stCheckbox label {
-            font-size: 14px;
-            color: #4a5568;
-        }
-        .st-expander {
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-        }
-        .stMarkdown, .stDataFrame {
-            font-size: 14px;
-            color: #2d3748;
-        }
-        .bead-plate {
-            background-color: #edf2f7;
-            padding: 10px;
-            border-radius: 8px;
-            overflow-x: auto;
-        }
-        @media (max-width: 768px) {
-            .stApp {
-                padding: 10px;
-            }
-            h1 {
-                font-size: 2rem;
-            }
-            h2 {
-                font-size: 1.25rem;
-            }
-            .stButton > button {
-                width: 100%;
-                padding: 12px;
-            }
-        }
-        </style>
+       ._
+
         """, unsafe_allow_html=True)
     except Exception as e:
         logger.error(f"CSS rendering failed: {e}")
@@ -201,7 +121,7 @@ def render_setup_form():
                     bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.initial_bankroll or 100.0, step=10.0)
                     base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=st.session_state.initial_base_bet or 0.10, step=0.10)
                 with col2:
-                    betting_strategy = st.selectbox("Betting Strategy", STRATEGIES, index=STRATEGIES.index(st.session_state.strategy), help="T3: Adjusts bet size based on wins/losses. Flatbet: Fixed bet size. Parlay16: 16-step progression.")
+                    betting_strategy = st.selectbox("Betting Strategy", STRATEGIES, index=STRATEGIES.index(st.session_state.strategy))
                     target_mode = st.radio("Target Type", ["Profit %", "Units"], index=0)
                     target_value = st.number_input("Target Value", min_value=1.0, value=10.0, step=1.0)
                 safety_net_enabled = st.checkbox("Enable Safety Net", value=st.session_state.safety_net_enabled)
@@ -258,7 +178,7 @@ def render_setup_form():
 def render_result_input():
     try:
         with st.expander("Enter Shoe Results", expanded=True):
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
                 if st.button("Player", key="player_btn", help="Record a Player win"):
                     add_result('P')
@@ -268,6 +188,10 @@ def render_result_input():
                     add_result('B')
                     st.rerun()
             with col3:
+                if st.button("Tie", key="tie_btn", help="Record a Tie"):
+                    add_result('T')
+                    st.rerun()
+            with col4:
                 if st.button("Undo", key="undo_btn", help="Undo the last result", disabled=not st.session_state.bet_history):
                     undo_result()
                     st.rerun()
@@ -312,7 +236,9 @@ def render_prediction():
                 color = '#3182ce' if pred == 'P' else '#e53e3e'
                 st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
             else:
-                st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", unsafe_allow_html=True)
+                st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", “
+
+                unsafe_allow_html=True)
             st.info(st.session_state.advice)
     except Exception as e:
         logger.error(f"Prediction rendering failed: {e}")
@@ -436,7 +362,7 @@ def render_simulation():
         with st.expander("Run Simulation"):
             num_hands = st.number_input("Number of Hands to Simulate", min_value=10, max_value=200, value=100, step=10)
             if st.button("Run Simulation"):
-                outcomes = np.random.choice(['P', 'B'], size=num_hands, p=[0.5, 0.5])
+                outcomes = np.random.choice(['P', 'B', 'T'], size=num_hands, p=[0.4586, 0.4462, 0.0952])
                 initial_bankroll = st.session_state.bankroll
                 wins = losses = 0
                 for outcome in outcomes:
@@ -487,7 +413,7 @@ def add_result(result):
     bet_amount = 0
     bet_selection = None
     bet_outcome = None
-    if st.session_state.pending_bet:
+    if result != 'T' and st.session_state.pending_bet:
         bet_amount, bet_selection = st.session_state.pending_bet
         st.session_state.bets_placed += 1
         if result == bet_selection:
@@ -558,10 +484,11 @@ def add_result(result):
         bet_selection = None
         if len(st.session_state.user_sequence) >= 6:
             sixth_prior = st.session_state.user_sequence[-6]
-            outcome_index = st.session_state.le.transform([sixth_prior])[0]
-            sixth_confidence = st.session_state.model.predict_proba(np.array([st.session_state.le.transform(st.session_state.user_sequence[-st.session_state.sequence_length:])]))[0][outcome_index] * 100
-            if sixth_confidence > 40:
-                bet_selection = sixth_prior
+            if sixth_prior != 'T':
+                outcome_index = st.session_state.le.transform([sixth_prior])[0]
+                sixth_confidence = st.session_state.model.predict_proba(np.array([st.session_state.le.transform(st.session_state.user_sequence[-st.session_state.sequence_length:])]))[0][outcome_index] * 100
+                if sixth_confidence > 40:
+                    bet_selection = sixth_prior
         if bet_selection:
             if st.session_state.strategy == 'Flatbet':
                 bet_amount = st.session_state.base_bet
@@ -588,14 +515,15 @@ def undo_result():
     if not st.session_state.user_sequence:
         st.warning("No results to undo.")
         return
-    st.session_state.user_sequence.pop()
+    last_result = st.session_state.user_sequence.pop()
     if st.session_state.bet_history:
         last_bet = st.session_state.bet_history.pop()
         result, bet_amount, bet_selection, bet_outcome, t3_level, parlay_step = last_bet
-        if bet_amount > 0:
+        if last_result != 'T' and bet_amount > 0:
             st.session_state.bets_placed -= 1
             if bet_outcome == 'win':
                 if bet_selection == 'B':
+                    st.session",
                     st.session_state.bankroll -= bet_amount * 0.95
                 else:
                     st.session_state.bankroll -= bet_amount
@@ -626,10 +554,11 @@ def undo_result():
         bet_selection = None
         if len(st.session_state.user_sequence) >= 6:
             sixth_prior = st.session_state.user_sequence[-6]
-            outcome_index = st.session_state.le.transform([sixth_prior])[0]
-            sixth_confidence = st.session_state.model.predict_proba(np.array([st.session_state.le.transform(st.session_state.user_sequence[-st.session_state.sequence_length:])]))[0][outcome_index] * 100
-            if sixth_confidence > 40:
-                bet_selection = sixth_prior
+            if sixth_prior != 'T':
+                outcome_index = st.session_state.le.transform([sixth_prior])[0]
+                sixth_confidence = st.session_state.model.predict_proba(np.array([st.session_state.le.transform(st.session_state.user_sequence[-st.session_state.sequence_length:])]))[0][outcome_index] * 100
+                if sixth_confidence > 40:
+                    bet_selection = sixth_prior
         if bet_selection:
             if st.session_state.strategy == 'Flatbet':
                 bet_amount = st.session_state.base_bet
