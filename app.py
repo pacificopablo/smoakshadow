@@ -6,6 +6,9 @@ import time
 import numpy as np
 from typing import Tuple, Dict, Optional, List
 import uuid
+import random
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
 
 # --- Constants ---
 SESSION_FILE = "online_users.txt"
@@ -16,11 +19,12 @@ PARLAY_TABLE = {
         (12, 24), (16, 32), (22, 44), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
     ], 1)
 }
-STRATEGIES = ["T3", "Flatbet", "Parlay16", "Z1003.1"]
+STRATEGIES = ["Grok T3", "Flatbet", "Parlay16", "Z1003.1"]
 SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
+GROK_T3_SEQUENCE_LENGTH = 10
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -110,6 +114,7 @@ def apply_custom_css():
         background: linear-gradient(to bottom, #fc8181, #e53e3e);
     }
     .result-button-tie {
+        background: linear-gradient(to bottom, #38a169, # SDI: https://cdn.pixabay.com/photo/2017/09/25/16/14/poker-2785708_1280.jpg
         background: linear-gradient(to bottom, #38a169, #2f855a);
         color: white;
     }
@@ -152,6 +157,20 @@ def apply_custom_css():
     </style>
     """, unsafe_allow_html=True)
 
+# --- Grok T3 Functions ---
+def generate_baccarat_data(num_games=10000):
+    outcomes = ['P', 'B']
+    return [random.choice(outcomes) for _ in range(num_games)]
+
+def prepare_data(outcomes, sequence_length=10):
+    le = LabelEncoder()
+    encoded_outcomes = le.fit_transform(outcomes)
+    X, y = [], []
+    for i in range(len(encoded_outcomes) - sequence_length):
+        X.append(encoded_outcomes[i:i + sequence_length])
+        y.append(encoded_outcomes[i + sequence_length])
+    return np.array(X), np.array(y), le
+
 # --- Session Tracking ---
 def track_user_session() -> int:
     if 'session_id' not in st.session_state:
@@ -190,7 +209,7 @@ def initialize_session_state():
         'initial_base_bet': 0.10,
         'sequence': [],
         'pending_bet': None,
-        'strategy': 'T3',
+        'strategy': 'Grok T3',
         't3_level': 1,
         't3_results': [],
         't3_level_changes': 0,
@@ -221,7 +240,9 @@ def initialize_session_state():
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
-        'safety_net_enabled': True
+        'safety_net_enabled': True,
+        'grok_t3_model': None,
+        'grok_t3_le': None
     }
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
@@ -229,7 +250,7 @@ def initialize_session_state():
         if key not in st.session_state:
             st.session_state[key] = value
     if st.session_state.strategy not in STRATEGIES:
-        st.session_state.strategy = 'T3'
+        st.session_state.strategy = 'Grok T3'
 
 def reset_session():
     initialize_session_state()
@@ -265,207 +286,43 @@ def reset_session():
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
-        'safety_net_enabled': True
+        'safety_net_enabled': True,
+        'grok_t3_model': None,
+        'grok_t3_le': None
     })
 
-# --- Prediction Logic ---
-def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, int, int, float, float]:
-    bigram_transitions = defaultdict(lambda: defaultdict(int))
-    trigram_transitions = defaultdict(lambda: defaultdict(int))
-    fourgram_transitions = defaultdict(lambda: defaultdict(int))
-    pattern_transitions = defaultdict(lambda: defaultdict(int))
-    streak_count = chop_count = double_count = pattern_changes = 0
-    current_streak = last_pattern = None
-    player_count = banker_count = 0
-    filtered_sequence = [x for x in sequence if x in ['P', 'B']]
-    for i in range(len(sequence) - 1):
-        if sequence[i] == 'P':
-            player_count += 1
-        elif sequence[i] == 'B':
-            banker_count += 1
-        if i < len(sequence) - 2:
-            bigram = tuple(sequence[i:i+2])
-            trigram = tuple(sequence[i:i+3])
-            next_outcome = sequence[i+2]
-            bigram_transitions[bigram][next_outcome] += 1
-            if i < len(sequence) - 3:
-                trigram_transitions[trigram][next_outcome] += 1
-                if i < len(sequence) - 4:
-                    fourgram = tuple(sequence[i:i+4])
-                    fourgram_transitions[fourgram][next_outcome] += 1
-    for i in range(1, len(filtered_sequence)):
-        if filtered_sequence[i] == filtered_sequence[i-1]:
-            if current_streak == filtered_sequence[i]:
-                streak_count += 1
-            else:
-                current_streak = filtered_sequence[i]
-                streak_count = 1
-            if i > 1 and filtered_sequence[i-1] == filtered_sequence[i-2]:
-                double_count += 1
-        else:
-            current_streak = None
-            streak_count = 0
-            if i > 1 and filtered_sequence[i] != filtered_sequence[i-2]:
-                chop_count += 1
-        if i < len(filtered_sequence) - 1:
-            current_pattern = (
-                'streak' if streak_count >= 2 else
-                'chop' if chop_count >= 2 else
-                'double' if double_count >= 1 else 'other'
-            )
-            if last_pattern and last_pattern != current_pattern:
-                pattern_changes += 1
-            last_pattern = current_pattern
-            next_outcome = filtered_sequence[i+1]
-            pattern_transitions[current_pattern][next_outcome] += 1
-    volatility = pattern_changes / max(len(filtered_sequence) - 2, 1)
-    total_outcomes = max(player_count + banker_count, 1)
-    shoe_bias = player_count / total_outcomes if player_count > banker_count else -banker_count / total_outcomes
-    return (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
-            streak_count, chop_count, double_count, volatility, shoe_bias)
-
-def calculate_weights(streak_count: int, chop_count: int, double_count: int, shoe_bias: float) -> Dict[str, float]:
-    total_bets = max(st.session_state.pattern_attempts.get('fourgram', 1), 1)
-    success_ratios = {
-        'bigram': st.session_state.pattern_success.get('bigram', 0) / total_bets
-                  if st.session_state.pattern_attempts.get('bigram', 0) > 0 else 0.5,
-        'trigram': st.session_state.pattern_success.get('trigram', 0) / total_bets
-                   if st.session_state.pattern_attempts.get('trigram', 0) > 0 else 0.5,
-        'fourgram': st.session_state.pattern_success.get('fourgram', 0) / total_bets
-                    if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.5,
-        'streak': 0.6 if streak_count >= 2 else 0.3,
-        'chop': 0.4 if chop_count >= 2 else 0.2,
-        'double': 0.4 if double_count >= 1 else 0.2
-    }
-    if success_ratios['fourgram'] > 0.6:
-        success_ratios['fourgram'] *= 1.2
-    weights = {k: np.exp(v) / (1 + np.exp(v)) for k, v in success_ratios.items()}
-    if shoe_bias > 0.1:
-        weights['bigram'] *= 1.1
-        weights['trigram'] *= 1.1
-        weights['fourgram'] *= 1.15
-    elif shoe_bias < -0.1:
-        weights['bigram'] *= 0.9
-        weights['trigram'] *= 0.9
-        weights['fourgram'] *= 0.85
-    total_w = sum(weights.values())
-    if total_w == 0:
-        weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
-        total_w = sum(weights.values())
-    return {k: max(w / total_w, 0.05) for k, w in weights.items()}
-
-def predict_next() -> Tuple[Optional[str], float, Dict]:
-    sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
-    # Skip prediction until the 6th hand (sequence length >= 5)
-    if len(sequence) < 5:
-        return None, 0.0, {'Status': 'Waiting for 6th hand'}
-    recent_sequence = sequence[-WINDOW_SIZE:]
-    (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
-     streak_count, chop_count, double_count, volatility, shoe_bias) = analyze_patterns(recent_sequence)
-    st.session_state.pattern_volatility = volatility
-    prior_p, prior_b = 44.62 / 100, 45.86 / 100
-    weights = calculate_weights(streak_count, chop_count, double_count, shoe_bias)
-    prob_p = prob_b = total_weight = 0
+# --- Prediction Logic for Grok T3 ---
+def predict_grok_t3() -> Tuple[Optional[str], float, Dict]:
+    sequence = [x for x in st.session_state.sequence if x in ['P', 'B']]
     insights = {}
-    if len(recent_sequence) >= 2:
-        bigram = tuple(recent_sequence[-2:])
-        total = sum(bigram_transitions[bigram].values())
-        if total > 0:
-            p_prob = bigram_transitions[bigram]['P'] / total
-            b_prob = bigram_transitions[bigram]['B'] / total
-            prob_p += weights['bigram'] * (prior_p + p_prob) / (1 + total)
-            prob_b += weights['bigram'] * (prior_b + b_prob) / (1 + total)
-            total_weight += weights['bigram']
-            insights['Bigram'] = f"{weights['bigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    if len(recent_sequence) >= 3:
-        trigram = tuple(recent_sequence[-3:])
-        total = sum(trigram_transitions[trigram].values())
-        if total > 0:
-            p_prob = trigram_transitions[trigram]['P'] / total
-            b_prob = trigram_transitions[trigram]['B'] / total
-            prob_p += weights['trigram'] * (prior_p + p_prob) / (1 + total)
-            prob_b += weights['trigram'] * (prior_b + b_prob) / (1 + total)
-            total_weight += weights['trigram']
-            insights['Trigram'] = f"{weights['trigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    if len(recent_sequence) >= 4:
-        fourgram = tuple(recent_sequence[-4:])
-        total = sum(fourgram_transitions[fourgram].values())
-        if total > 0:
-            p_prob = fourgram_transitions[fourgram]['P'] / total
-            b_prob = fourgram_transitions[fourgram]['B'] / total
-            prob_p += weights['fourgram'] * (prior_p + p_prob) / (1 + total)
-            prob_b += weights['fourgram'] * (prior_b + b_prob) / (1 + total)
-            total_weight += weights['fourgram']
-            insights['Fourgram'] = f"{weights['fourgram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    if streak_count >= 2:
-        streak_prob = min(0.7, 0.5 + streak_count * 0.05) * (0.8 if streak_count > 4 else 1.0)
-        current_streak = recent_sequence[-1]
-        if current_streak == 'P':
-            prob_p += weights['streak'] * streak_prob
-            prob_b += weights['streak'] * (1 - streak_prob)
+    if len(sequence) < GROK_T3_SEQUENCE_LENGTH:
+        return None, 0.0, {'Status': f'Waiting for {GROK_T3_SEQUENCE_LENGTH - len(sequence)} more results'}
+    if st.session_state.grok_t3_model is None or st.session_state.grok_t3_le is None:
+        return None, 0.0, {'Status': 'Model not initialized'}
+    
+    encoded_input = st.session_state.grok_t3_le.transform(sequence[-GROK_T3_SEQUENCE_LENGTH:])
+    input_array = np.array([encoded_input])
+    prediction_probs = st.session_state.grok_t3_model.predict_proba(input_array)[0]
+    predicted_class = np.argmax(prediction_probs)
+    predicted_outcome = st.session_state.grok_t3_le.inverse_transform([predicted_class])[0]
+    confidence = np.max(prediction_probs) * 100
+
+    # LB 6 Rep: Bet same as 6th prior result
+    bet_selection = None
+    if len(sequence) >= GROK_T3_SEQUENCE_LENGTH + 5:  # Need 6 prior results after sequence
+        sixth_prior = sequence[-6]
+        outcome_index = st.session_state.grok_t3_le.transform([sixth_prior])[0]
+        sixth_confidence = prediction_probs[outcome_index] * 100
+        if sixth_confidence > 40:
+            bet_selection = sixth_prior
+            insights['LB 6 Rep'] = f"Mirroring 6th prior: {sixth_prior} (Confidence: {sixth_confidence:.1f}%)"
         else:
-            prob_b += weights['streak'] * streak_prob
-            prob_p += weights['streak'] * (1 - streak_prob)
-        total_weight += weights['streak']
-        insights['Streak'] = f"{weights['streak']*100:.0f}% ({streak_count} {current_streak})"
-    if chop_count >= 2:
-        next_pred = 'B' if recent_sequence[-1] == 'P' else 'P'
-        if next_pred == 'P':
-            prob_p += weights['chop'] * 0.6
-            prob_b += weights['chop'] * 0.4
-        else:
-            prob_b += weights['chop'] * 0.6
-            prob_p += weights['chop'] * 0.4
-        total_weight += weights['chop']
-        insights['Chop'] = f"{weights['chop']*100:.0f}% ({chop_count} alternations)"
-    if double_count >= 1 and len(recent_sequence) >= 2 and recent_sequence[-1] == recent_sequence[-2]:
-        double_prob = 0.6
-        if recent_sequence[-1] == 'P':
-            prob_p += weights['double'] * double_prob
-            prob_b += weights['double'] * (1 - double_prob)
-        else:
-            prob_b += weights['double'] * double_prob
-            prob_p += weights['double'] * (1 - double_prob)
-        total_weight += weights['double']
-        insights['Double'] = f"{weights['double']*100:.0f}% ({recent_sequence[-1]}{recent_sequence[-1]})"
-    if total_weight > 0:
-        prob_p = (prob_p / total_weight) * 100
-        prob_b = (prob_b / total_weight) * 100
+            insights['LB 6 Rep'] = f"Low confidence for 6th prior: {sixth_confidence:.1f}%"
     else:
-        prob_p, prob_b = 44.62, 45.86
-    if shoe_bias > 0.1:
-        prob_p *= 1.05
-        prob_b *= 0.95
-    elif shoe_bias < -0.1:
-        prob_b *= 1.05
-        prob_p *= 0.95
-    if abs(prob_p - prob_b) < 2:
-        prob_p += 0.5
-        prob_b -= 0.5
-    current_pattern = (
-        'streak' if streak_count >= 2 else
-        'chop' if chop_count >= 2 else
-        'double' if double_count >= 1 else 'other'
-    )
-    total = sum(pattern_transitions[current_pattern].values())
-    if total > 0:
-        p_prob = pattern_transitions[current_pattern]['P'] / total
-        b_prob = pattern_transitions[current_pattern]['B'] / total
-        prob_p = 0.9 * prob_p + 0.1 * p_prob * 100
-        prob_b = 0.9 * prob_b + 0.1 * b_prob * 100
-        insights['Pattern Transition'] = f"10% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    recent_accuracy = (st.session_state.prediction_accuracy['P'] + st.session_state.prediction_accuracy['B']) / max(st.session_state.prediction_accuracy['total'], 1)
-    threshold = 32.0 + (st.session_state.consecutive_losses * 0.5) - (recent_accuracy * 0.8)
-    threshold = min(max(threshold, 32.0), 42.0)
-    insights['Threshold'] = f"{threshold:.1f}%"
-    if st.session_state.pattern_volatility > 0.5:
-        threshold += 1.5
-        insights['Volatility'] = f"High (Adjustment: +1.5% threshold)"
-    if prob_p > prob_b and prob_p >= threshold:
-        return 'P', prob_p, insights
-    elif prob_b >= threshold:
-        return 'B', prob_b, insights
-    return None, max(prob_p, prob_b), insights
+        insights['LB 6 Rep'] = 'Not enough results for 6th prior'
+
+    insights['Model Confidence'] = f"P: {prediction_probs[st.session_state.grok_t3_le.transform(['P'])[0]]*100:.1f}%, B: {prediction_probs[st.session_state.grok_t3_le.transform(['B'])[0]]*100:.1f}%"
+    return bet_selection, confidence, insights
 
 # --- Betting Logic ---
 def check_target_hit() -> bool:
@@ -475,52 +332,49 @@ def check_target_hit() -> bool:
     unit_profit = (st.session_state.bankroll - st.session_state.initial_bankroll) / st.session_state.initial_base_bet
     return unit_profit >= st.session_state.target_value
 
-def update_t3_level():
+def update_grok_t3_level():
     if len(st.session_state.t3_results) == 3:
         wins = st.session_state.t3_results.count('W')
         losses = st.session_state.t3_results.count('L')
         old_level = st.session_state.t3_level
-        if wins == 3:
-            st.session_state.t3_level = max(1, st.session_state.t3_level - 2)
-        elif wins == 2 and losses == 1:
+        if wins > losses:
             st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
-        elif losses == 2 and wins == 1:
-            st.session_state.t3_level = st.session_state.t3_level + 1
-        elif losses == 3:
-            st.session_state.t3_level = st.session_state.t3_level + 2
+        elif losses > wins:
+            st.session_state.t3_level += 1
         if old_level != st.session_state.t3_level:
             st.session_state.t3_level_changes += 1
         st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, st.session_state.t3_level)
         st.session_state.t3_results = []
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
-    # Skip betting until the 6th hand (sequence length >= 5)
-    if len(st.session_state.sequence) < 5:
-        return None, "No bet: Waiting for 6th hand"
+    if len(st.session_state.sequence) < GROK_T3_SEQUENCE_LENGTH:
+        return None, f"No bet: Need {GROK_T3_SEQUENCE_LENGTH - len(st.session_state.sequence)} more results"
     if st.session_state.consecutive_losses >= 3 and conf < 45.0:
         return None, f"No bet: Paused after {st.session_state.consecutive_losses} losses"
     if st.session_state.pattern_volatility > 0.6:
         return None, f"No bet: High pattern volatility"
-    if pred is None or conf < 32.0:
-        return None, f"No bet: Confidence too low"
+    if pred is None:
+        return None, f"No bet: No valid prediction (LB 6 Rep confidence too low)"
+    
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
             return None, "No bet: Stopped after three losses (Z1003.1 rule)"
         bet_amount = st.session_state.base_bet + (st.session_state.z1003_loss_count * 100)
     elif st.session_state.strategy == 'Flatbet':
         bet_amount = st.session_state.base_bet
-    elif st.session_state.strategy == 'T3':
+    elif st.session_state.strategy == 'Grok T3':
         bet_amount = st.session_state.base_bet * st.session_state.t3_level
     else:  # Parlay16
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
         bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
         st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
+    
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if (bet_amount > st.session_state.bankroll or
             st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
             bet_amount > st.session_state.bankroll * 0.10):
-            if st.session_state.strategy == 'T3':
+            if st.session_state.strategy == 'Grok T3':
                 old_level = st.session_state.t3_level
                 st.session_state.t3_level = 1
                 if old_level != st.session_state.t3_level:
@@ -576,7 +430,9 @@ def place_result(result: str):
         "pattern_success": st.session_state.pattern_success.copy(),
         "pattern_attempts": st.session_state.pattern_attempts.copy(),
         "safety_net_percentage": st.session_state.safety_net_percentage,
-        "safety_net_enabled": st.session_state.safety_net_enabled
+        "safety_net_enabled": st.session_state.safety_net_enabled,
+        "grok_t3_model": st.session_state.grok_t3_model,
+        "grok_t3_le": st.session_state.grok_t3_le
     }
     if st.session_state.pending_bet and result != 'T':
         bet_amount, selection = st.session_state.pending_bet
@@ -584,8 +440,14 @@ def place_result(result: str):
         bet_placed = True
         if win:
             st.session_state.bankroll += bet_amount * (0.95 if selection == 'B' else 1.0)
-            if st.session_state.strategy == 'T3':
+            if st.session_state.strategy == 'Grok T3':
                 st.session_state.t3_results.append('W')
+                if len(st.session_state.t3_results) == 1:  # First-step win
+                    old_level = st.session_state.t3_level
+                    st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
+                    if old_level != st.session_state.t3_level:
+                        st.session_state.t3_level_changes += 1
+                    st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, st.session_state.t3_level)
             elif st.session_state.strategy == 'Parlay16':
                 st.session_state.parlay_wins += 1
                 if st.session_state.parlay_wins == 2:
@@ -610,7 +472,7 @@ def place_result(result: str):
                     st.session_state.pattern_attempts[pattern] += 1
         else:
             st.session_state.bankroll -= bet_amount
-            if st.session_state.strategy == 'T3':
+            if st.session_state.strategy == 'Grok T3':
                 st.session_state.t3_results.append('L')
             elif st.session_state.strategy == 'Parlay16':
                 st.session_state.parlay_wins = 0
@@ -628,7 +490,7 @@ def place_result(result: str):
                     st.session_state.z1003_continue = False
             st.session_state.losses += 1
             st.session_state.consecutive_losses += 1
-            _, conf, _ = predict_next()
+            _, conf, _ = predict_grok_t3()
             st.session_state.loss_log.append({
                 'sequence': st.session_state.sequence[-10:],
                 'prediction': selection,
@@ -663,7 +525,7 @@ def place_result(result: str):
     if check_target_hit():
         st.session_state.target_hit = True
         return
-    pred, conf, insights = predict_next()
+    pred, conf, insights = predict_grok_t3()
     if st.session_state.strategy == 'Z1003.1' and st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
         bet_amount, advice = None, "No bet: Stopped after three losses (Z1003.1 rule)"
     else:
@@ -671,8 +533,8 @@ def place_result(result: str):
     st.session_state.pending_bet = (bet_amount, pred) if bet_amount else None
     st.session_state.advice = advice
     st.session_state.insights = insights
-    if st.session_state.strategy == 'T3':
-        update_t3_level()
+    if st.session_state.strategy == 'Grok T3':
+        update_grok_t3_level()
 
 # --- Simulation Logic ---
 def simulate_shoe(num_hands: int = 80) -> Dict:
@@ -687,7 +549,7 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
     pattern_attempts = defaultdict(int)
     for outcome in outcomes:
         sequence.append(outcome)
-        pred, conf, insights = predict_next()
+        pred, conf, insights = predict_grok_t3()
         if pred and outcome in ['P', 'B']:
             total += 1
             if pred == outcome:
@@ -714,7 +576,7 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
     try:
         with open(SIMULATION_LOG, 'a', encoding='utf-8') as f:
             f.write(f"{datetime.now().isoformat()}: Accuracy={accuracy:.1f}%, Correct={correct}/{total}, "
-                    f"Fourgram={result['pattern_success'].get('fourgram', 0)}/{result['pattern_attempts'].get('fourgram', 0)}\n")
+                    f"LB_6_Rep={result['pattern_success'].get('LB 6 Rep', 0)}/{result['pattern_attempts'].get('LB 6 Rep', 0)}\n")
     except PermissionError:
         st.error("Unable to write to simulation log.")
     return result
@@ -731,7 +593,7 @@ def render_setup_form():
                 betting_strategy = st.selectbox(
                     "Betting Strategy", STRATEGIES,
                     index=STRATEGIES.index(st.session_state.strategy),
-                    help="T3: Adjusts bet size based on wins/losses. Flatbet: Fixed bet size. Parlay16: 16-step progression. Z1003.1: Resets after first win, stops after three losses."
+                    help="Grok T3: Adjusts bet size based on wins/losses with LB 6 Rep. Flatbet: Fixed bet size. Parlay16: 16-step progression. Z1003.1: Resets after first win, stops after three losses."
                 )
                 target_mode = st.radio("Target Type", ["Profit %", "Units"], index=0)
                 target_value = st.number_input("Target Value", min_value=1.0, value=float(st.session_state.target_value), step=1.0)
@@ -754,6 +616,12 @@ def render_setup_form():
                 elif base_bet > bankroll:
                     st.error("Base bet cannot exceed bankroll.")
                 else:
+                    # Train Grok T3 model
+                    outcomes = generate_baccarat_data()
+                    X, y, le = prepare_data(outcomes, GROK_T3_SEQUENCE_LENGTH)
+                    model = RandomForestClassifier(n_estimators=100, random_state=42)
+                    model.fit(X, y)
+                    
                     st.session_state.update({
                         'bankroll': bankroll,
                         'base_bet': base_bet,
@@ -783,7 +651,7 @@ def render_setup_form():
                         'target_value': target_value,
                         'initial_bankroll': bankroll,
                         'target_hit': False,
-                        'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
+                        'Prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
                         'consecutive_losses': 0,
                         'loss_log': [],
                         'last_was_tie': False,
@@ -792,7 +660,9 @@ def render_setup_form():
                         'pattern_success': defaultdict(int),
                         'pattern_attempts': defaultdict(int),
                         'safety_net_percentage': safety_net_percentage,
-                        'safety_net_enabled': safety_net_enabled
+                        'safety_net_enabled': safety_net_enabled,
+                        'grok_t3_model': model,
+                        'grok_t3_le': le
                     })
                     st.session_state.pattern_success['fourgram'] = 0
                     st.session_state.pattern_attempts['fourgram'] = 0
@@ -830,7 +700,7 @@ def render_result_input():
                                     st.session_state.loss_log.pop()
                             if st.session_state.pending_bet:
                                 amount, pred = st.session_state.pending_bet
-                                conf = predict_next()[1]
+                                conf = predict_grok_t3()[1]
                                 st.session_state.advice = f"Next Bet: ${amount:.2f} on {pred}"
                             else:
                                 st.session_state.advice = "No bet pending."
@@ -899,7 +769,7 @@ def render_status():
                         f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
         with col2:
             strategy_status = f"**Strategy**: {st.session_state.strategy}"
-            if st.session_state.strategy == 'T3':
+            if st.session_state.strategy == 'Grok T3':
                 strategy_status += f"<br>Level: {st.session_state.t3_level} | Peak: {st.session_state.t3_peak_level}<br>Changes: {st.session_state.t3_level_changes}"
             elif st.session_state.strategy == 'Parlay16':
                 strategy_status += f"<br>Steps: {st.session_state.parlay_step}/16 | Peak: {st.session_state.parlay_peak_step}<br>Changes: {st.session_state.parlay_step_changes} | Wins: {st.session_state.parlay_wins}"
@@ -959,7 +829,7 @@ def render_history():
                     "Result": h["Result"],
                     "Amount": f"${h['Amount']:.2f}" if h["Bet_Placed"] else "-",
                     "Outcome": "Win" if h["Win"] else "Loss" if h["Bet_Placed"] else "-",
-                    "T3_Level": h["T3_Level"] if st.session_state.strategy == 'T3' else "-",
+                    "T3_Level": h["T3_Level"] if st.session_state.strategy == 'Grok T3' else "-",
                     "Parlay_Step": h["Parlay_Step"] if st.session_state.strategy == 'Parlay16' else "-",
                     "Z1003_Loss_Count": h["Z1003_Loss_Count"] if st.session_state.strategy == 'Z1003.1' else "-",
                 }
