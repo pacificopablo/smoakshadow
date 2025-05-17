@@ -187,7 +187,7 @@ def render_setup_form():
                     bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.initial_bankroll or 100.0, step=10.0)
                     base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=st.session_state.initial_base_bet or 0.10, step=0.10)
                 with col2:
-                    betting_strategy = st.selectbox("Betting Strategy", ["T3"], index=0, help="T3: Adjusts bet size based on wins/losses.")
+                    betting_strategy = st.selectbox("Betting Strategy", ["T3", "Flatbet"], index=0, help="T3: Adjusts bet size based on wins/losses. Flatbet: Fixed bet size.")
                     target_mode = st.radio("Target Type", ["Profit %", "Units"], index=0)
                     target_value = st.number_input("Target Value", min_value=1.0, value=10.0, step=1.0)
                 safety_net_enabled = st.checkbox("Enable Safety Net", value=st.session_state.safety_net_enabled)
@@ -231,7 +231,7 @@ def render_setup_form():
                         X, y, st.session_state.le = prepare_data(outcomes, st.session_state.sequence_length)
                         st.session_state.model = RandomForestClassifier(n_estimators=100, random_state=42)
                         st.session_state.model.fit(X, y)
-                        st.success(f"Session started with T3 strategy! AI Automation: Enabled.")
+                        st.success(f"Session started with {betting_strategy} strategy! AI Automation: Enabled.")
                         st.rerun()
     except Exception as e:
         logger.error(f"Setup form rendering failed: {e}")
@@ -320,7 +320,10 @@ def render_status():
                 st.markdown(f"**Safety Net**: {'Enabled' if st.session_state.safety_net_enabled else 'Disabled'}"
                             f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
             with col2:
-                st.markdown(f"**Strategy**: T3<br>Level: {st.session_state.t3_level}<br>Results: {st.session_state.t3_results}", unsafe_allow_html=True)
+                if st.session_state.strategy == 'T3':
+                    st.markdown(f"**Strategy**: T3<br>Level: {st.session_state.t3_level}<br>Results: {st.session_state.t3_results}", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"**Strategy**: Flatbet", unsafe_allow_html=True)
                 st.markdown(f"**AI Automation**: {'Enabled' if st.session_state.ai_automation_enabled else 'Disabled'}")
             st.markdown(f"**Wins**: {st.session_state.bets_won} | **Losses**: {st.session_state.bets_placed - st.session_state.bets_won}")
             if st.session_state.initial_base_bet > 0 and st.session_state.initial_bankroll > 0:
@@ -385,7 +388,7 @@ def render_history():
                         "Result": h[0],
                         "Amount": f"${h[1]:.2f}" if h[1] > 0 else "-",
                         "Outcome": h[3] if h[3] else "-",
-                        "T3_Level": h[4]
+                        "T3_Level": h[4] if st.session_state.strategy == 'T3' else "-"
                     }
                     for h in st.session_state.bet_history[-n:]
                 ], use_container_width=True)
@@ -399,7 +402,8 @@ def render_export():
             if st.button("Download Session Data"):
                 csv_data = "Result,Bet,Amount,Outcome,T3_Level\n"
                 for h in st.session_state.bet_history:
-                    csv_data += f"{h[0]},{h[2] or '-'},${h[1]:.2f},{h[3] or '-'},{h[4]}\n"
+                    t3_level = h[4] if st.session_state.strategy == 'T3' else '-'
+                    csv_data += f"{h[0]},{h[2] or '-'},${h[1]:.2f},{h[3] or '-'},{t3_level}\n"
                 st.download_button("Download CSV", csv_data, "session_data.csv", "text/csv")
     except Exception as e:
         logger.error(f"Export rendering failed: {e}")
@@ -471,15 +475,17 @@ def add_result(result):
                 st.session_state.bankroll += bet_amount
             st.session_state.bets_won += 1
             bet_outcome = 'win'
-            if len(st.session_state.t3_results) == 0:
+            if st.session_state.strategy == 'T3' and len(st.session_state.t3_results) == 0:
                 st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
-            st.session_state.t3_results.append('W')
+            if st.session_state.strategy == 'T3':
+                st.session_state.t3_results.append('W')
             st.session_state.prediction_accuracy[bet_selection] += 1
             st.session_state.consecutive_losses = 0
         else:
             st.session_state.bankroll -= bet_amount
             bet_outcome = 'loss'
-            st.session_state.t3_results.append('L')
+            if st.session_state.strategy == 'T3':
+                st.session_state.t3_results.append('L')
             st.session_state.consecutive_losses += 1
             st.session_state.loss_log.append({
                 'sequence': st.session_state.user_sequence[-10:],
@@ -490,7 +496,7 @@ def add_result(result):
             if len(st.session_state.loss_log) > 50:
                 st.session_state.loss_log = st.session_state.loss_log[-50:]
         st.session_state.prediction_accuracy['total'] += 1
-        if len(st.session_state.t3_results) == 3:
+        if st.session_state.strategy == 'T3' and len(st.session_state.t3_results) == 3:
             wins = st.session_state.t3_results.count('W')
             losses = st.session_state.t3_results.count('L')
             if wins > losses:
@@ -515,7 +521,10 @@ def add_result(result):
             if sixth_confidence > 40:
                 bet_selection = sixth_prior
         if bet_selection:
-            bet_amount = st.session_state.base_bet * st.session_state.t3_level
+            if st.session_state.strategy == 'Flatbet':
+                bet_amount = st.session_state.base_bet
+            else:  # T3
+                bet_amount = st.session_state.base_bet * st.session_state.t3_level
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
                 st.session_state.advice = f"Auto Bet: ${bet_amount:.2f} on {bet_selection}"
@@ -553,8 +562,9 @@ def undo_result():
                 st.session_state.consecutive_losses -= 1
                 if st.session_state.loss_log and st.session_state.loss_log[-1]['result'] == result:
                     st.session_state.loss_log.pop()
-            st.session_state.t3_level = t3_level
-            st.session_state.t3_results = t3_results[:]
+            if st.session_state.strategy == 'T3':
+                st.session_state.t3_level = t3_level
+                st.session_state.t3_results = t3_results[:]
     if len(st.session_state.user_sequence) >= st.session_state.sequence_length - 1:
         pred, conf, insights = predict_next()
         st.session_state.insights = insights
@@ -566,7 +576,10 @@ def undo_result():
             if sixth_confidence > 40:
                 bet_selection = sixth_prior
         if bet_selection:
-            bet_amount = st.session_state.base_bet * st.session_state.t3_level
+            if st.session_state.strategy == 'Flatbet':
+                bet_amount = st.session_state.base_bet
+            else:  # T3
+                bet_amount = st.session_state.base_bet * st.session_state.t3_level
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
                 st.session_state.advice = f"Auto Bet: ${bet_amount:.2f} on {bet_selection}"
@@ -582,7 +595,10 @@ def get_advice():
         return f"Need {st.session_state.sequence_length - len(st.session_state.user_sequence)} more results"
     elif st.session_state.pending_bet:
         bet_amount, bet_selection = st.session_state.pending_bet
-        return f"Bet ${bet_amount:.2f} on {bet_selection} (T3 Level {st.session_state.t3_level}, mirroring 6th prior)."
+        if st.session_state.strategy == 'Flatbet':
+            return f"Bet ${bet_amount:.2f} on {bet_selection} (Flatbet)."
+        else:
+            return f"Bet ${bet_amount:.2f} on {bet_selection} (T3 Level {st.session_state.t3_level}, mirroring 6th prior)."
     else:
         return "Skip betting (no 6th prior or low confidence)."
 
