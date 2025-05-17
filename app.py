@@ -104,8 +104,89 @@ def initialize_session_state():
 def apply_custom_css():
     try:
         st.markdown("""
-       ._
-
+        <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+        }
+        .stApp {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        }
+        h1 {
+            color: #1a3c6e;
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        h2 {
+            color: #2c5282;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .stButton > button {
+            background-color: #1a3c6e;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .stButton > button:hover {
+            background-color: #2b6cb0;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .stNumberInput input, .stSelectbox select {
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            padding: 10px;
+            font-size: 14px;
+        }
+        .stRadio label, .stCheckbox label {
+            font-size: 14px;
+            color: #4a5568;
+        }
+        .st-expander {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        .stMarkdown, .stDataFrame {
+            font-size: 14px;
+            color: #2d3748;
+        }
+        .bead-plate {
+            background-color: #edf2f7;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        @media (max-width: 768px) {
+            .stApp {
+                padding: 10px;
+            }
+            h1 {
+                font-size: 2rem;
+            }
+            h2 {
+                font-size: 1.25rem;
+            }
+            .stButton > button {
+                width: 100%;
+                padding: 12px;
+            }
+        }
+        </style>
         """, unsafe_allow_html=True)
     except Exception as e:
         logger.error(f"CSS rendering failed: {e}")
@@ -236,9 +317,7 @@ def render_prediction():
                 color = '#3182ce' if pred == 'P' else '#e53e3e'
                 st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
             else:
-                st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", “
-
-                unsafe_allow_html=True)
+                st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", unsafe_allow_html=True)
             st.info(st.session_state.advice)
     except Exception as e:
         logger.error(f"Prediction rendering failed: {e}")
@@ -523,7 +602,6 @@ def undo_result():
             st.session_state.bets_placed -= 1
             if bet_outcome == 'win':
                 if bet_selection == 'B':
-                    st.session",
                     st.session_state.bankroll -= bet_amount * 0.95
                 else:
                     st.session_state.bankroll -= bet_amount
