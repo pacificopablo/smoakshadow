@@ -12,6 +12,15 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Constants
+PARLAY_TABLE = {
+    i: {'base': b, 'parlay': p} for i, (b, p) in enumerate([
+        (1, 2), (1, 2), (1, 2), (2, 4), (3, 6), (4, 8), (6, 12), (8, 16),
+        (12, 24), (16, 32), (22, 44), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
+    ], 1)
+}
+STRATEGIES = ["T3", "Flatbet", "Parlay16"]
+
 # Placeholder for profit_enhancements module
 def adjust_safety_net():
     return st.session_state.get('safety_net_percentage', 10.0)
@@ -25,7 +34,7 @@ def calculate_roi():
 
 # Simulate Baccarat game data for training
 def generate_baccarat_data(num_games=10000):
-    outcomes = ['P', 'B']  # Player or Banker
+    outcomes = ['P', 'B']
     return [random.choice(outcomes) for _ in range(num_games)]
 
 # Preprocess data: Create sequences for prediction
@@ -57,8 +66,8 @@ def initialize_session_state():
     defaults = {
         'sequence_length': 10,
         'user_sequence': [],
-        'bet_history': [],  # (result, bet_amount, bet_selection, bet_outcome, t3_level, t3_results)
-        'pending_bet': None,  # (bet_amount, bet_selection)
+        'bet_history': [],
+        'pending_bet': None,
         'bankroll': 0.0,
         'base_bet': 0.10,
         'initial_bankroll': 0.0,
@@ -79,7 +88,12 @@ def initialize_session_state():
         'insights': {},
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
-        'ai_automation_enabled': True
+        'ai_automation_enabled': True,
+        'parlay_step': 1,
+        'parlay_wins': 0,
+        'parlay_using_base': True,
+        'parlay_step_changes': 0,
+        'parlay_peak_step': 1
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -187,7 +201,7 @@ def render_setup_form():
                     bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.initial_bankroll or 100.0, step=10.0)
                     base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=st.session_state.initial_base_bet or 0.10, step=0.10)
                 with col2:
-                    betting_strategy = st.selectbox("Betting Strategy", ["T3", "Flatbet"], index=0, help="T3: Adjusts bet size based on wins/losses. Flatbet: Fixed bet size.")
+                    betting_strategy = st.selectbox("Betting Strategy", STRATEGIES, index=STRATEGIES.index(st.session_state.strategy), help="T3: Adjusts bet size based on wins/losses. Flatbet: Fixed bet size. Parlay16: 16-step progression.")
                     target_mode = st.radio("Target Type", ["Profit %", "Units"], index=0)
                     target_value = st.number_input("Target Value", min_value=1.0, value=10.0, step=1.0)
                 safety_net_enabled = st.checkbox("Enable Safety Net", value=st.session_state.safety_net_enabled)
@@ -224,9 +238,13 @@ def render_setup_form():
                             'insights': {},
                             'safety_net_percentage': safety_net_percentage,
                             'safety_net_enabled': safety_net_enabled,
-                            'ai_automation_enabled': True
+                            'ai_automation_enabled': True,
+                            'parlay_step': 1,
+                            'parlay_wins': 0,
+                            'parlay_using_base': True,
+                            'parlay_step_changes': 0,
+                            'parlay_peak_step': 1
                         })
-                        # Train model
                         outcomes = generate_baccarat_data()
                         X, y, st.session_state.le = prepare_data(outcomes, st.session_state.sequence_length)
                         st.session_state.model = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -322,6 +340,8 @@ def render_status():
             with col2:
                 if st.session_state.strategy == 'T3':
                     st.markdown(f"**Strategy**: T3<br>Level: {st.session_state.t3_level}<br>Results: {st.session_state.t3_results}", unsafe_allow_html=True)
+                elif st.session_state.strategy == 'Parlay16':
+                    st.markdown(f"**Strategy**: Parlay16<br>Step: {st.session_state.parlay_step}/16 | Wins: {st.session_state.parlay_wins}", unsafe_allow_html=True)
                 else:
                     st.markdown(f"**Strategy**: Flatbet", unsafe_allow_html=True)
                 st.markdown(f"**AI Automation**: {'Enabled' if st.session_state.ai_automation_enabled else 'Disabled'}")
@@ -349,7 +369,7 @@ def render_accuracy():
                 accuracy_data = []
                 correct = total = 0
                 for h in st.session_state.bet_history[-50:]:
-                    if h[2] and h[3]:  # bet_selection and bet_outcome exist
+                    if h[2] and h[3]:
                         total += 1
                         if h[3] == 'win':
                             correct += 1
@@ -388,7 +408,8 @@ def render_history():
                         "Result": h[0],
                         "Amount": f"${h[1]:.2f}" if h[1] > 0 else "-",
                         "Outcome": h[3] if h[3] else "-",
-                        "T3_Level": h[4] if st.session_state.strategy == 'T3' else "-"
+                        "T3_Level": h[4] if st.session_state.strategy == 'T3' else "-",
+                        "Parlay_Step": h[5] if st.session_state.strategy == 'Parlay16' else "-"
                     }
                     for h in st.session_state.bet_history[-n:]
                 ], use_container_width=True)
@@ -400,10 +421,11 @@ def render_export():
     try:
         with st.expander("Export Session"):
             if st.button("Download Session Data"):
-                csv_data = "Result,Bet,Amount,Outcome,T3_Level\n"
+                csv_data = "Result,Bet,Amount,Outcome,T3_Level,Parlay_Step\n"
                 for h in st.session_state.bet_history:
                     t3_level = h[4] if st.session_state.strategy == 'T3' else '-'
-                    csv_data += f"{h[0]},{h[2] or '-'},${h[1]:.2f},{h[3] or '-'},{t3_level}\n"
+                    parlay_step = h[5] if st.session_state.strategy == 'Parlay16' else '-'
+                    csv_data += f"{h[0]},{h[2] or '-'},${h[1]:.2f},{h[3] or '-'},{t3_level},{parlay_step}\n"
                 st.download_button("Download CSV", csv_data, "session_data.csv", "text/csv")
     except Exception as e:
         logger.error(f"Export rendering failed: {e}")
@@ -479,6 +501,18 @@ def add_result(result):
                 st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
             if st.session_state.strategy == 'T3':
                 st.session_state.t3_results.append('W')
+            elif st.session_state.strategy == 'Parlay16':
+                st.session_state.parlay_wins += 1
+                if st.session_state.parlay_wins == 2:
+                    old_step = st.session_state.parlay_step
+                    st.session_state.parlay_step = 1
+                    st.session_state.parlay_wins = 0
+                    st.session_state.parlay_using_base = True
+                    if old_step != st.session_state.parlay_step:
+                        st.session_state.parlay_step_changes += 1
+                    st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+                else:
+                    st.session_state.parlay_using_base = False
             st.session_state.prediction_accuracy[bet_selection] += 1
             st.session_state.consecutive_losses = 0
         else:
@@ -486,6 +520,14 @@ def add_result(result):
             bet_outcome = 'loss'
             if st.session_state.strategy == 'T3':
                 st.session_state.t3_results.append('L')
+            elif st.session_state.strategy == 'Parlay16':
+                st.session_state.parlay_wins = 0
+                old_step = st.session_state.parlay_step
+                st.session_state.parlay_step = min(st.session_state.parlay_step + 1, 16)
+                st.session_state.parlay_using_base = True
+                if old_step != st.session_state.parlay_step:
+                    st.session_state.parlay_step_changes += 1
+                st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
             st.session_state.consecutive_losses += 1
             st.session_state.loss_log.append({
                 'sequence': st.session_state.user_sequence[-10:],
@@ -523,8 +565,11 @@ def add_result(result):
         if bet_selection:
             if st.session_state.strategy == 'Flatbet':
                 bet_amount = st.session_state.base_bet
-            else:  # T3
+            elif st.session_state.strategy == 'T3':
                 bet_amount = st.session_state.base_bet * st.session_state.t3_level
+            elif st.session_state.strategy == 'Parlay16':
+                key = 'base' if st.session_state.parlay_using_base else 'parlay'
+                bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
                 st.session_state.advice = f"Auto Bet: ${bet_amount:.2f} on {bet_selection}"
@@ -535,7 +580,7 @@ def add_result(result):
             st.session_state.pending_bet = None
             st.session_state.advice = "Skip betting (no 6th prior or low confidence)."
 
-    st.session_state.bet_history.append((result, bet_amount, bet_selection, bet_outcome, st.session_state.t3_level, st.session_state.t3_results[:]))
+    st.session_state.bet_history.append((result, bet_amount, bet_selection, bet_outcome, st.session_state.t3_level, st.session_state.parlay_step))
     if len(st.session_state.bet_history) > 1000:
         st.session_state.bet_history = st.session_state.bet_history[-1000:]
 
@@ -546,7 +591,7 @@ def undo_result():
     st.session_state.user_sequence.pop()
     if st.session_state.bet_history:
         last_bet = st.session_state.bet_history.pop()
-        result, bet_amount, bet_selection, bet_outcome, t3_level, t3_results = last_bet
+        result, bet_amount, bet_selection, bet_outcome, t3_level, parlay_step = last_bet
         if bet_amount > 0:
             st.session_state.bets_placed -= 1
             if bet_outcome == 'win':
@@ -557,14 +602,24 @@ def undo_result():
                 st.session_state.bets_won -= 1
                 st.session_state.prediction_accuracy[bet_selection] -= 1
                 st.session_state.prediction_accuracy['total'] -= 1
+                if st.session_state.strategy == 'Parlay16':
+                    st.session_state.parlay_wins -= 1
+                    if st.session_state.parlay_wins < 0:
+                        st.session_state.parlay_wins = 0
+                    st.session_state.parlay_using_base = True
             elif bet_outcome == 'loss':
                 st.session_state.bankroll += bet_amount
                 st.session_state.consecutive_losses -= 1
                 if st.session_state.loss_log and st.session_state.loss_log[-1]['result'] == result:
                     st.session_state.loss_log.pop()
+                if st.session_state.strategy == 'Parlay16':
+                    st.session_state.parlay_step = max(1, st.session_state.parlay_step - 1)
+                    st.session_state.parlay_using_base = False
             if st.session_state.strategy == 'T3':
                 st.session_state.t3_level = t3_level
-                st.session_state.t3_results = t3_results[:]
+                st.session_state.t3_results = []
+            elif st.session_state.strategy == 'Parlay16':
+                st.session_state.parlay_step = parlay_step
     if len(st.session_state.user_sequence) >= st.session_state.sequence_length - 1:
         pred, conf, insights = predict_next()
         st.session_state.insights = insights
@@ -578,8 +633,11 @@ def undo_result():
         if bet_selection:
             if st.session_state.strategy == 'Flatbet':
                 bet_amount = st.session_state.base_bet
-            else:  # T3
+            elif st.session_state.strategy == 'T3':
                 bet_amount = st.session_state.base_bet * st.session_state.t3_level
+            elif st.session_state.strategy == 'Parlay16':
+                key = 'base' if st.session_state.parlay_using_base else 'parlay'
+                bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
                 st.session_state.advice = f"Auto Bet: ${bet_amount:.2f} on {bet_selection}"
@@ -597,8 +655,10 @@ def get_advice():
         bet_amount, bet_selection = st.session_state.pending_bet
         if st.session_state.strategy == 'Flatbet':
             return f"Bet ${bet_amount:.2f} on {bet_selection} (Flatbet)."
-        else:
+        elif st.session_state.strategy == 'T3':
             return f"Bet ${bet_amount:.2f} on {bet_selection} (T3 Level {st.session_state.t3_level}, mirroring 6th prior)."
+        elif st.session_state.strategy == 'Parlay16':
+            return f"Bet ${bet_amount:.2f} on {bet_selection} (Parlay16 Step {st.session_state.parlay_step})."
     else:
         return "Skip betting (no 6th prior or low confidence)."
 
