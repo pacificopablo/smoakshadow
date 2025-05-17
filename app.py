@@ -35,31 +35,120 @@ def calculate_roi():
 # Simulate Baccarat game data for training
 def generate_baccarat_data(num_games=10000):
     outcomes = ['P', 'B', 'T']
-    # Approximate real-world probabilities: P=45.86%, B=44.62%, T=9.52%
     return np.random.choice(outcomes, size=num_games, p=[0.4586, 0.4462, 0.0952]).tolist()
 
-# Preprocess data: Create sequences for prediction
+# Extract pattern features from a sequence
+def extract_pattern_features(sequence, max_n=4):
+    features = {}
+    # Single outcomes
+    for outcome in ['P', 'B', 'T']:
+        features[f'single_{outcome}'] = sequence[-1] == outcome if sequence else 0
+    # Chops (alternating patterns)
+    if len(sequence) >= 2:
+        features['chop'] = 1 if sequence[-2:] in ['PB', 'BP'] else 0
+    # Streaks
+    if len(sequence) >= 2:
+        streak_length = 1
+        for i in range(len(sequence)-2, -1, -1):
+            if sequence[i] == sequence[-1] and sequence[i] != 'T':
+                streak_length += 1
+            else:
+                break
+        features[f'streak_{sequence[-1]}'] = streak_length if sequence[-1] in ['P', 'B'] else 0
+    # Bigrams, Trigrams, Fourgrams
+    for n in range(2, max_n+1):
+        if len(sequence) >= n:
+            ngram = ''.join(sequence[-n:])
+            features[f'ngram_{n}_{ngram}'] = 1
+    # LB6 Mirror (6th prior)
+    if len(sequence) >= 6 and sequence[-6] in ['P', 'B']:
+        features['lb6_mirror'] = sequence[-6]
+    return features
+
+# Preprocess data: Create sequences and pattern features for prediction
 def prepare_data(outcomes, sequence_length=10):
     le = LabelEncoder()
     encoded_outcomes = le.fit_transform(outcomes)
     X, y = [], []
-    for i in range(len(encoded_outcomes) - sequence_length):
-        X.append(encoded_outcomes[i:i + sequence_length])
+    for i in range(len(outcomes) - sequence_length):
+        sequence = outcomes[i:i + sequence_length]
+        features = extract_pattern_features(sequence)
+        feature_vector = [encoded_outcomes[j] for j in range(i, i + sequence_length)]
+        for k, v in features.items():
+            if isinstance(v, str):
+                feature_vector.append(1 if v in ['P', 'B'] else 0)
+            else:
+                feature_vector.append(v)
+        X.append(feature_vector)
         y.append(encoded_outcomes[i + sequence_length])
     return np.array(X), np.array(y), le
 
-# Simplified prediction logic
+# Combined prediction logic
 def predict_next():
     sequence = st.session_state.user_sequence
     if len(sequence) < st.session_state.sequence_length or not st.session_state.model:
         return None, 45.86, {}
+    
+    # Prepare input for model
     encoded_input = st.session_state.le.transform(sequence[-st.session_state.sequence_length:])
-    input_array = np.array([encoded_input])
+    features = extract_pattern_features(sequence)
+    feature_vector = list(encoded_input)
+    for k, v in features.items():
+        if isinstance(v, str):
+            feature_vector.append(1 if v in ['P', 'B'] else 0)
+        else:
+            feature_vector.append(v)
+    input_array = np.array([feature_vector])
+    
+    # Model prediction
     prediction_probs = st.session_state.model.predict_proba(input_array)[0]
-    predicted_class = np.argmax(prediction_probs)
+    model_predicted_class = np.argmax(prediction_probs)
+    model_confidence = np.max(prediction_probs) * 100
+    
+    # Rule-based pattern scoring
+    pattern_scores = {'P': 0, 'B': 0, 'T': 0}
+    if len(sequence) >= 6 and sequence[-6] in ['P', 'B']:
+        sixth_prior = sequence[-6]
+        outcome_index = st.session_state.le.transform([sixth_prior])[0]
+        sixth_confidence = st.session_state.model.predict_proba(np.array([encoded_input]))[0][outcome_index] * 100
+        if sixth_confidence > 40:
+            pattern_scores[sixth_prior] += 0.4 * (sixth_confidence / 100)
+    
+    # Score based on recent patterns
+    recent_patterns = extract_pattern_features(sequence)
+    if recent_patterns.get('chop', 0) == 1:
+        last = sequence[-1]
+        next_outcome = 'B' if last == 'P' else 'P'
+        pattern_scores[next_outcome] += 0.2
+    if recent_patterns.get('streak_P', 0) >= 3:
+        pattern_scores['P'] += 0.3
+    if recent_patterns.get('streak_B', 0) >= 3:
+        pattern_scores['B'] += 0.3
+    for n in range(2, 5):
+        ngram_key = [k for k in recent_patterns if k.startswith(f'ngram_{n}_')]
+        if ngram_key:
+            ngram = ngram_key[0].split('_')[-1]
+            if len(ngram) == n and ngram[-1] in ['P', 'B']:
+                pattern_scores[ngram[-1]] += 0.1 * (5 - n)  # Weight by n-gram length
+    
+    # Combine model and pattern scores
+    combined_probs = prediction_probs.copy()
+    for i, outcome in enumerate(st.session_state.le.classes_):
+        combined_probs[i] += pattern_scores.get(outcome, 0)
+    combined_probs /= np.sum(combined_probs)  # Normalize
+    predicted_class = np.argmax(combined_probs)
     predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
-    confidence = np.max(prediction_probs) * 100
-    insights = {"Model Confidence": f"{confidence:.1f}%"}
+    confidence = combined_probs[predicted_class] * 100
+    
+    # Insights
+    insights = {
+        "Model Confidence": f"{model_confidence:.1f}%",
+        "LB6 Mirror Contribution": f"{pattern_scores.get(predicted_outcome, 0):.2f}",
+        "Pattern Contribution": f"{sum(pattern_scores.values()):.2f}",
+        "Chop Detected": "Yes" if recent_patterns.get('chop', 0) == 1 else "No",
+        "Streak Detected": f"P: {recent_patterns.get('streak_P', 0)}, B: {recent_patterns.get('streak_B', 0)}"
+    }
+    
     return predicted_outcome, confidence, insights
 
 # Initialize session state
@@ -94,7 +183,8 @@ def initialize_session_state():
         'parlay_wins': 0,
         'parlay_using_base': True,
         'parlay_step_changes': 0,
-        'parlay_peak_step': 1
+        'parlay_peak_step': 1,
+        'deal_count': 0  # New: Track deal number in shoe
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -244,13 +334,14 @@ def render_setup_form():
                             'parlay_wins': 0,
                             'parlay_using_base': True,
                             'parlay_step_changes': 0,
-                            'parlay_peak_step': 1
+                            'parlay_peak_step': 1,
+                            'deal_count': 0
                         })
                         outcomes = generate_baccarat_data()
                         X, y, st.session_state.le = prepare_data(outcomes, st.session_state.sequence_length)
                         st.session_state.model = RandomForestClassifier(n_estimators=100, random_state=42)
                         st.session_state.model.fit(X, y)
-                        st.success(f"Session started with {betting_strategy} strategy! AI Automation: Enabled.")
+                        st.success(f"Session started with {betting_strategy} strategy! Betting will start on the 9th deal.")
                         st.rerun()
     except Exception as e:
         logger.error(f"Setup form rendering failed: {e}")
@@ -312,7 +403,9 @@ def render_bead_plate():
 def render_prediction():
     try:
         with st.expander("Latest Prediction", expanded=True):
-            if st.session_state.pending_bet:
+            if st.session_state.deal_count < 8:
+                st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>Waiting for deal {st.session_state.deal_count + 1}/8</h4></div>", unsafe_allow_html=True)
+            elif st.session_state.pending_bet:
                 amount, pred = st.session_state.pending_bet
                 color = '#3182ce' if pred == 'P' else '#e53e3e'
                 st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
@@ -342,6 +435,7 @@ def render_status():
                 st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
                 st.markdown(f"**Safety Net**: {'Enabled' if st.session_state.safety_net_enabled else 'Disabled'}"
                             f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
+                st.markdown(f"**Deal Number**: {st.session_state.deal_count + 1}")
             with col2:
                 if st.session_state.strategy == 'T3':
                     st.markdown(f"**Strategy**: T3<br>Level: {st.session_state.t3_level}<br>Results: {st.session_state.t3_results}", unsafe_allow_html=True)
@@ -387,7 +481,7 @@ def render_accuracy():
 
 def render_loss_log():
     try:
-        with st.expander("Recent Losses"):
+地面with st.expander("Recent Losses"):
             if st.session_state.loss_log:
                 st.dataframe([
                     {
@@ -446,9 +540,9 @@ def render_simulation():
                 wins = losses = 0
                 for outcome in outcomes:
                     add_result(outcome)
-                    if st.session_state.bet_history[-1][3] == 'win':
+                    if st.session_state.bet_history and st.session_state.bet_history[-1][3] == 'win':
                         wins += 1
-                    elif st.session_state.bet_history[-1][3] == 'loss':
+                    elif st.session_state.bet_history and st.session_state.bet_history[-1][3] == 'loss':
                         losses += 1
                 st.write(f"**Simulation Results**")
                 st.write(f"Final Bankroll: ${st.session_state.bankroll:.2f}")
@@ -470,6 +564,8 @@ def add_result(result):
     if st.session_state.model is None:
         st.error("Please start a session with bankroll and bet.")
         return
+    st.session_state.deal_count += 1
+    
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if st.session_state.bankroll <= safe_bankroll:
@@ -492,7 +588,7 @@ def add_result(result):
     bet_amount = 0
     bet_selection = None
     bet_outcome = None
-    if result != 'T' and st.session_state.pending_bet:
+    if result != 'T' and st.session_state.pending_bet and st.session_state.deal_count >= 8:
         bet_amount, bet_selection = st.session_state.pending_bet
         st.session_state.bets_placed += 1
         if result == bet_selection:
@@ -561,13 +657,16 @@ def add_result(result):
         pred, conf, insights = predict_next()
         st.session_state.insights = insights
         bet_selection = None
-        if len(st.session_state.user_sequence) >= 6:
-            sixth_prior = st.session_state.user_sequence[-6]
-            if sixth_prior != 'T':
-                outcome_index = st.session_state.le.transform([sixth_prior])[0]
-                sixth_confidence = st.session_state.model.predict_proba(np.array([st.session_state.le.transform(st.session_state.user_sequence[-st.session_state.sequence_length:])]))[0][outcome_index] * 100
-                if sixth_confidence > 40:
-                    bet_selection = sixth_prior
+        if st.session_state.deal_count >= 8:  # Only place bets starting from 9th deal
+            if len(st.session_state.user_sequence) >= 6:
+                sixth_prior = st.session_state.user_sequence[-6]
+                if sixth_prior != 'T':
+                    outcome_index = st.session_state.le.transform([sixth_prior])[0]
+                    sixth_confidence = st.session_state.model.predict_proba(np.array([st.session_state.le.transform(st.session_state.user_sequence[-st.session_state.sequence_length:])]))[0][outcome_index] * 100
+                    if sixth_confidence > 40:
+                        bet_selection = sixth_prior
+            if not bet_selection and pred in ['P', 'B'] and conf > 50:
+                bet_selection = pred
         if bet_selection:
             if st.session_state.strategy == 'Flatbet':
                 bet_amount = st.session_state.base_bet
@@ -584,7 +683,7 @@ def add_result(result):
                 st.session_state.advice = "No bet: Insufficient bankroll."
         else:
             st.session_state.pending_bet = None
-            st.session_state.advice = "Skip betting (no 6th prior or low confidence)."
+            st.session_state.advice = f"{'Waiting for deal 9' if st.session_state.deal_count < 8 else 'Skip betting (no strong prediction).'}"
 
     st.session_state.bet_history.append((result, bet_amount, bet_selection, bet_outcome, st.session_state.t3_level, st.session_state.parlay_step))
     if len(st.session_state.bet_history) > 1000:
@@ -595,10 +694,11 @@ def undo_result():
         st.warning("No results to undo.")
         return
     last_result = st.session_state.user_sequence.pop()
+    st.session_state.deal_count -= 1
     if st.session_state.bet_history:
         last_bet = st.session_state.bet_history.pop()
         result, bet_amount, bet_selection, bet_outcome, t3_level, parlay_step = last_bet
-        if last_result != 'T' and bet_amount > 0:
+        if last_result != 'T' and bet_amount > 0 and st.session_state.deal_count >= 8:
             st.session_state.bets_placed -= 1
             if bet_outcome == 'win':
                 if bet_selection == 'B':
@@ -630,13 +730,16 @@ def undo_result():
         pred, conf, insights = predict_next()
         st.session_state.insights = insights
         bet_selection = None
-        if len(st.session_state.user_sequence) >= 6:
-            sixth_prior = st.session_state.user_sequence[-6]
-            if sixth_prior != 'T':
-                outcome_index = st.session_state.le.transform([sixth_prior])[0]
-                sixth_confidence = st.session_state.model.predict_proba(np.array([st.session_state.le.transform(st.session_state.user_sequence[-st.session_state.sequence_length:])]))[0][outcome_index] * 100
-                if sixth_confidence > 40:
-                    bet_selection = sixth_prior
+        if st.session_state.deal_count >= 8:
+            if len(st.session_state.user_sequence) >= 6:
+                sixth_prior = st.session_state.user_sequence[-6]
+                if sixth_prior != 'T':
+                    outcome_index = st.session_state.le.transform([sixth_prior])[0]
+                    sixth_confidence = st.session_state.model.predict_proba(np.array([st.session_state.le.transform(st.session_state.user_sequence[-st.session_state.sequence_length:])]))[0][outcome_index] * 100
+                    if sixth_confidence > 40:
+                        bet_selection = sixth_prior
+            if not bet_selection and pred in ['P', 'B'] and conf > 50:
+                bet_selection = pred
         if bet_selection:
             if st.session_state.strategy == 'Flatbet':
                 bet_amount = st.session_state.base_bet
@@ -653,21 +756,23 @@ def undo_result():
                 st.session_state.advice = "No bet: Insufficient bankroll."
         else:
             st.session_state.pending_bet = None
-            st.session_state.advice = "Skip betting (no 6th prior or low confidence)."
+            st.session_state.advice = f"{'Waiting for deal 9' if st.session_state.deal_count < 8 else 'Skip betting (no strong prediction).'}"
 
 def get_advice():
     if len(st.session_state.user_sequence) < st.session_state.sequence_length:
         return f"Need {st.session_state.sequence_length - len(st.session_state.user_sequence)} more results"
+    elif st.session_state.deal_count < 8:
+        return f"Waiting for deal {st.session_state.deal_count + 1}/8"
     elif st.session_state.pending_bet:
         bet_amount, bet_selection = st.session_state.pending_bet
         if st.session_state.strategy == 'Flatbet':
             return f"Bet ${bet_amount:.2f} on {bet_selection} (Flatbet)."
         elif st.session_state.strategy == 'T3':
-            return f"Bet ${bet_amount:.2f} on {bet_selection} (T3 Level {st.session_state.t3_level}, mirroring 6th prior)."
+            return f"Bet ${bet_amount:.2f} on {bet_selection} (T3 Level {st.session_state.t3_level}, mirroring patterns)."
         elif st.session_state.strategy == 'Parlay16':
             return f"Bet ${bet_amount:.2f} on {bet_selection} (Parlay16 Step {st.session_state.parlay_step})."
     else:
-        return "Skip betting (no 6th prior or low confidence)."
+        return "Skip betting (no strong prediction)."
 
 # Main Application
 def main():
