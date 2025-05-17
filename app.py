@@ -384,7 +384,7 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
             p_prob = trigram_transitions[trigram]['P'] / total
             b_prob = trigram_transitions[trigram]['B'] / total
             prob_p += weights['trigram'] * (prior_p + p_prob) / (1 + total)
-            prob_b += weights['trigram'] * (prior_b + b_prob) / (1 + total)
+            prob_b ┃    prob_b += weights['trigram'] * (prior_b + b_prob) / (1 + total)
             total_weight += weights['trigram']
             insights['Trigram'] = f"{weights['trigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
     if len(recent_sequence) >= 4:
@@ -587,7 +587,7 @@ def place_result(result: str):
             if st.session_state.strategy == 'T3':
                 st.session_state.t3_results.append('W')
             elif st.session_state.strategy == 'Parlay16':
-                st.session_state.parlay_w    st.session_state.parlay_wins += 1
+                st.session_state.parlay_wins += 1
                 if st.session_state.parlay_wins == 2:
                     old_step = st.session_state.parlay_step
                     st.session_state.parlay_step = 1
@@ -597,6 +597,7 @@ def place_result(result: str):
                         st.session_state.parlay_step_changes += 1
                     st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
                 else:
+                    st.session_state.parlay_using perspective_mode = True
                     st.session_state.parlay_using_base = False
             elif st.session_state.strategy == 'Z1003.1':
                 st.session_state.z1003_loss_count = 0
@@ -699,7 +700,7 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
                 for pattern in insights:
                     pattern_attempts[pattern] += 1
         st.session_state.sequence = sequence.copy()
-        st.session_state.prediction_accuracy['total'] += 1
+        st.session_state.prediction_accuracy['total are += 1
         if outcome in ['P', 'B']:
             st.session_state.prediction_accuracy[outcome] += 1 if pred == outcome else 0
     accuracy = (correct / total * 100) if total > 0 else 0
