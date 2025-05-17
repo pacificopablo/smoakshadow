@@ -43,9 +43,70 @@ def initialize_session_state():
         if key not in st.session_state:
             st.session_state[key] = value
 
+# Apply custom CSS for bead plate and UI styling
+def apply_custom_css():
+    st.markdown("""
+    <style>
+    .stApp {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+    h1 {
+        color: #1a3c6e;
+        text-align: center;
+    }
+    .stButton > button {
+        background-color: #1a3c6e;
+        color: white;
+        border-radius: 6px;
+        padding: 8px 16px;
+    }
+    .stButton > button:hover {
+        background-color: #2b6cb0;
+    }
+    .bead-plate {
+        background-color: #edf2f7;
+        padding: 10px;
+        border-radius: 8px;
+        overflow-x: auto;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Render bead plate
+def render_bead_plate():
+    with st.expander("Bead Plate", expanded=True):
+        sequence = st.session_state.user_sequence[-90:]  # Show up to 90 recent results
+        grid = [[] for _ in range(15)]  # 15 columns max
+        for i, result in enumerate(sequence):
+            col_index = i // 6
+            if col_index < 15:
+                grid[col_index].append(result)
+        for col in grid:
+            while len(col) < 6:
+                col.append('')
+        bead_plate_html = "<div class='bead-plate' style='display: flex; flex-direction: row; gap: 5px;'>"
+        for col in grid:
+            col_html = "<div style='display: flex; flex-direction: column; gap: 5px;'>"
+            for result in col:
+                style = (
+                    "width: 24px; height: 24px; border: 1px solid #e2e8f0; border-radius: 50%;" if result == '' else
+                    f"width: 24px; height: 24px; background-color: {'#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'}; border-radius: 50%;"
+                )
+                col_html += f"<div style='{style}'></div>"
+            col_html += "</div>"
+            bead_plate_html += col_html
+        bead_plate_html += "</div>"
+        st.markdown(bead_plate_html, unsafe_allow_html=True)
+
 # Main Streamlit app
 def main():
     st.set_page_config(page_title="Grok vs. Baccarat", layout="centered")
+    apply_custom_css()
     st.title("EDMELG BACCARAT")
     initialize_session_state()
 
@@ -118,6 +179,9 @@ def main():
         with col5:
             if st.button("Undo Last Result", key="undo_button"):
                 undo_result()
+
+        # Bead plate
+        render_bead_plate()
 
         # Display status
         st.subheader("Session Status")
