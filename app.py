@@ -54,7 +54,7 @@ def predict_next():
 
 # Initialize session state
 def initialize_session_state():
-    defaults = {
+    defaumainlts = {
         'sequence_length': 10,
         'user_sequence': [],
         'bet_history': [],  # (result, bet_amount, bet_selection, bet_outcome, t3_level, t3_results)
@@ -79,7 +79,8 @@ def initialize_session_state():
         'insights': {},
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
-        'ai_automation_enabled': True
+        'ai_automation_enabled': True,
+        'advice': "No betting advice available yet."
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -224,7 +225,8 @@ def render_setup_form():
                             'insights': {},
                             'safety_net_percentage': safety_net_percentage,
                             'safety_net_enabled': safety_net_enabled,
-                            'ai_automation_enabled': True
+                            'ai_automation_enabled': True,
+                            'advice': "Session started. Awaiting results for betting advice."
                         })
                         # Train model
                         outcomes = generate_baccarat_data()
@@ -289,16 +291,21 @@ def render_bead_plate():
 def render_prediction():
     try:
         with st.expander("Latest Prediction", expanded=True):
+            if 'pending_bet' not in st.session_state:
+                st.session_state.pending_bet = None
             if st.session_state.pending_bet:
                 amount, pred = st.session_state.pending_bet
                 color = '#3182ce' if pred == 'P' else '#e53e3e'
                 st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>AI Auto Bet: {pred} | Amount: ${amount:.2f}</h4></div>", unsafe_allow_html=True)
             else:
                 st.markdown("<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:#4a5568; margin:0;'>AI Auto Bet: None</h4></div>", unsafe_allow_html=True)
-            st.info(st.session_state.advice)
+            if 'advice' in st.session_state and st.session_state.advice:
+                st.info(st.session_state.advice)
+            else:
+                st.info("No betting advice available.")
     except Exception as e:
         logger.error(f"Prediction rendering failed: {e}")
-        st.error("Error rendering prediction. Please refresh.")
+        st.error(f"Error rendering prediction: {str(e)}. Please refresh or contact support.")
 
 def render_insights():
     try:
