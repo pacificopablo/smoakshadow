@@ -24,7 +24,7 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
-GROK_T3_SEQUENCE_LENGTH = 10
+GROK_T3_SEQUENCE_LENGTH = 6  # Changed from 10 to 6
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -161,7 +161,7 @@ def generate_baccarat_data(num_games=10000):
     outcomes = ['P', 'B']
     return [random.choice(outcomes) for _ in range(num_games)]
 
-def prepare_data(outcomes, sequence_length=10):
+def prepare_data(outcomes, sequence_length=6):  # Changed from 10 to 6
     le = LabelEncoder()
     encoded_outcomes = le.fit_transform(outcomes)
     X, y = [], []
@@ -316,7 +316,7 @@ def predict_grok_t3() -> Tuple[Optional[str], float, Dict]:
     pattern_confidences = []
 
     # LB 6 Rep Logic
-    if len(sequence) >= GROK_T3_SEQUENCE_LENGTH + 5:
+    if len(sequence) >= GROK_T3_SEQUENCE_LENGTH:  # Changed to ensure 6 results are enough
         sixth_prior = sequence[-6]
         outcome_index = st.session_state.grok_t3_le.transform([sixth_prior])[0]
         sixth_confidence = prediction_probs[outcome_index] * 100
@@ -509,7 +509,7 @@ def update_grok_t3_level():
         st.session_state.t3_results = []
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
-    if len(st.session_state.sequence) < GROK_T3_SEQUENCE_LENGTH:
+    if len(st.session_state.sequence) < GROK_T3_SEQUENCE_LENGTH:  # Changed to 6
         return None, f"No bet: Need {GROK_T3_SEQUENCE_LENGTH - len(st.session_state.sequence)} more results"
     if st.session_state.consecutive_losses >= 3 and conf < 45.0:
         return None, f"No bet: Paused after {st.session_state.consecutive_losses} losses"
@@ -654,7 +654,7 @@ def place_result(result: str):
             st.session_state.consecutive_losses += 1
             _, conf, _ = predict_grok_t3()
             st.session_state.loss_log.append({
-                'sequence': st.session_state.sequence[-10:],
+                'sequence': st.session_state.sequence[-6:],  # Changed to 6
                 'prediction': selection,
                 'result': result,
                 'confidence': f"{conf:.1f}",
