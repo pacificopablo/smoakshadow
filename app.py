@@ -494,7 +494,7 @@ def add_result(result):
             wins = st.session_state.t3_results.count('W')
             losses = st.session_state.t3_results.count('L')
             if wins > losses:
-                st.session_state.t3_level BERT
+                st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
             elif losses > wins:
                 st.session_state.t3_level += 1
             st.session_state.t3_results = []
