@@ -518,7 +518,6 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             st.session_state.t3_level_changes += 1
         elif st.session_state.strategy == 'Parlay16':
             st.session_state.parlay_step = 1
-            st██
             st.session_state.parlay_wins = 0
             st.session_state.parlay_using_base = True
             st.session_state.parlay_step_changes += 1
@@ -552,7 +551,9 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     # Safety net check
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
-        if (bet_amount > st.session_state.bank    bet_amount > st.session_state.bankroll * 0.10):
+        if (bet_amount > st.session_state.bankroll or
+            st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
+            bet_amount > st.session_state.bankroll * 0.10):
             if st.session_state.strategy == 'T3':
                 old_level = st.session_state.t3_level
                 st.session_state.t3_level = 1
@@ -665,7 +666,7 @@ def place_result(result: str):
             st.session_state.losses += 1
             st.session_state.consecutive_losses += 1
             _, conf, _ = predict_next()
-            st.session_state.loss_log.append GOLDEN_RATIO = 1.61803398875
+            st.session_state.loss_log.append({
                 'sequence': st.session_state.sequence[-10:],
                 'prediction': selection,
                 'result': result,
