@@ -507,7 +507,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
 
-    # Check profit lock when at base bet
+    # Check profit lock and reset strategy if reached
     at_base_bet = False
     if st.session_state.strategy == 'T3' and st.session_state.t3_level == 1:
         at_base_bet = True
@@ -518,11 +518,23 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     elif st.session_state.strategy == 'Flatbet' and st.session_state.base_bet == st.session_state.initial_base_bet:
         at_base_bet = True
 
-    if at_base_bet and st.session_state.bankroll > st.session_state.profit_lock:
-        st.session_state.profit_lock_notification = f"Profit lock triggered at bankroll ${st.session_state.bankroll:.2f} (profit lock: ${st.session_state.profit_lock:.2f}). Strategy at base bet."
+    if at_base_bet and st.session_state.bankroll >= st.session_state.profit_lock:
+        st.session_state.profit_lock_notification = f"Profit lock reached at bankroll ${st.session_state.bankroll:.2f}. Resetting strategy to base level."
         if st.session_state.strategy == 'T3':
-            st.session_state.t3_results = []  # Clear to prevent level change
-        return None, "No bet: Profit lock reached at base bet"
+            st.session_state.t3_level = 1
+            st.session_state.t3_results = []
+            st.session_state.t3_level_changes += 1
+        elif st.session_state.strategy == 'Parlay16':
+            st.session_state.parlay_step = 1
+            st.session_state.parlay_wins = 0
+            st.session_state.parlay_using_base = True
+            st.session_state.parlay_step_changes += 1
+        elif st.session_state.strategy == 'Z1003.1':
+            st.session_state.z1003_loss_count = 0
+            st.session_state.z1003_bet_factor = 1.0
+            st.session_state.z1003_continue = False
+            st.session_state.z1003_level_changes += 1
+        st.session_state.profit_lock = st.session_state.bankroll  # Update to new peak
 
     # Check stop-loss condition
     if st.session_state.stop_loss_enabled:
