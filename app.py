@@ -510,33 +510,16 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
 
-    # Check profit lock with threshold
-    profit_threshold = st.session_state.initial_bankroll * (st.session_state.profit_lock_threshold / 100)
-    # Debugging output
-    st.write(f"Debug: bankroll={st.session_state.bankroll:.2f}, profit_lock={st.session_state.profit_lock:.2f}, "
-             f"profit_threshold={profit_threshold:.2f}, "
-             f"condition={st.session_state.bankroll > st.session_state.profit_lock + profit_threshold}")
-    if st.session_state.bankroll > st.session_state.profit_lock + profit_threshold:
+    # Check profit lock condition for T3 strategy
+    if st.session_state.strategy == 'T3' and st.session_state.bankroll >= st.session_state.profit_lock:
         profit_gained = st.session_state.bankroll - st.session_state.profit_lock
         st.session_state.profit_lock_notification = (
             f"Profit lock reached at bankroll ${st.session_state.bankroll:.2f} "
-            f"(+${profit_gained:.2f}, threshold: ${profit_threshold:.2f}). "
-            f"Resetting {st.session_state.strategy} strategy."
+            f"(+${profit_gained:.2f}). Resetting T3 strategy to level 1."
         )
-        if st.session_state.strategy == 'T3':
-            st.session_state.t3_level = 1
-            st.session_state.t3_results = []
-            st.session_state.t3_level_changes += 1
-        elif st.session_state.strategy == 'Parlay16':
-            st.session_state.parlay_step = 1
-            st.session_state.parlay_wins = 0
-            st.session_state.parlay_using_base = True
-            st.session_state.parlay_step_changes += 1
-        elif st.session_state.strategy == 'Z1003.1':
-            st.session_state.z1003_loss_count = 0
-            st.session_state.z1003_bet_factor = 1.0
-            st.session_state.z1003_continue = False
-            st.session_state.z1003_level_changes += 1
+        st.session_state.t3_level = 1
+        st.session_state.t3_results = []
+        st.session_state.t3_level_changes += 1
         st.session_state.profit_lock = st.session_state.bankroll  # Update to new peak
 
     # Check stop-loss condition
@@ -657,7 +640,7 @@ def place_result(result: str):
                 if pattern in st.session_state.insights:
                     st.session_state.pattern_success[pattern] += 1
                     st.session_state.pattern_attempts[pattern] += 1
-        else:
+ ощу    else:
             st.session_state.bankroll -= bet_amount
             if st.session_state.strategy == 'T3':
                 st.session_state.t3_results.append('L')
@@ -850,7 +833,7 @@ def render_setup_form():
                 betting_strategy = st.selectbox(
                     "Betting Strategy", STRATEGIES,
                     index=STRATEGIES.index(st.session_state.strategy),
-                    help="T3: AdjustFITs bet size based on wins/losses. Flatbet: Fixed bet size. Parlay16: 16-step progression. Z1003.1: Resets after first win, stops after three losses."
+                    help="T3: Adjusts bet size based on wins/losses. Flatbet: Fixed bet size. Parlay16: 16-step progression. Z1003.1: Resets after first win, stops after three losses."
                 )
                 target_mode = st.radio("Target Type", ["Profit %", "Units"], index=0)
                 target_value = st.number_input("Target Value", min_value=1.0, value=float(st.session_state.target_value), step=1.0)
@@ -1048,7 +1031,7 @@ def render_status():
             if st.session_state.strategy == 'T3':
                 strategy_status += f"<br>Level: {st.session_state.t3_level} | Peak: {st.session_state.t3_peak_level}<br>Changes: {st.session_state.t3_level_changes}"
             elif st.session_state.strategy == 'Parlay16':
-                strategy_status += f"<br>Steps: {st.session_state.parlay_step}/16 | Peak: {st.session_state.parlay_peak_step}<br>Changes: {st.session_state.par Lucia: {st.session_state.parlay_step_changes} | Wins: {st.session_state.parlay_wins}"
+                strategy_status += f"<br>Steps: {st.session_state.parlay_step}/16 | Peak: {st.session_state.parlay_peak_step}<br>Changes: {st.session_state.parlay_step_changes} | Wins: {st.session_state.parlay_wins}"
             elif st.session_state.strategy == 'Z1003.1':
                 strategy_status += f"<br>Loss Count: {st.session_state.z1003_loss_count}<br>Changes: {st.session_state.z1003_level_changes} | Continue: {st.session_state.z1003_continue}"
             st.markdown(strategy_status, unsafe_allow_html=True)
@@ -1068,6 +1051,7 @@ def render_accuracy():
             p_accuracy = (st.session_state.prediction_accuracy['P'] / total) * 100
             b_accuracy = (st.session_state.prediction_accuracy['B'] / total) * 100
             st.markdown(f"**Player Bets**: {st.session_state.prediction_accuracy['P']}/{total} ({p_accuracy:.1f}%)")
+            6
             st.markdown(f"**Banker Bets**: {st.session_state.prediction_accuracy['B']}/{total} ({b_accuracy:.1f}%)")
         if st.session_state.history:
             accuracy_data = []
