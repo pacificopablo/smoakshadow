@@ -223,7 +223,8 @@ def initialize_session_state():
         'profit_lock': 0.0,
         'stop_loss_enabled': False,
         'stop_loss_percentage': 50.0,
-        'profit_lock_notification': None
+        'profit_lock_notification': None,
+        'profit_lock_threshold': 5.0  # New: Default 5% of initial bankroll
     }
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
@@ -271,7 +272,8 @@ def reset_session():
         'profit_lock': st.session_state.initial_bankroll,
         'stop_loss_enabled': False,
         'stop_loss_percentage': 50.0,
-        'profit_lock_notification': None
+        'profit_lock_notification': None,
+        'profit_lock_threshold': 5.0  # Reset to default
     })
 
 # --- Prediction Logic ---
@@ -508,10 +510,16 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
 
-    # Check profit lock and reset strategy if reached
-    if st.session_state.bankroll > st.session_state.profit_lock:
+    # Check profit lock with threshold
+    profit_threshold = st.session_state.initial_bankroll * (st.session_state.profit_lock_threshold / 100)
+    if st.session_state.bankroll > st.session_state.profit_lock + profit_threshold:
+        profit_gained = st.session_state.bankroll - st.session_state.profit_lock
         old_level = st.session_state.t3_level
-        st.session_state.profit_lock_notification = f"Profit lock reached at bankroll ${st.session_state.bankroll:.2f}. Resetting T3 strategy from level {old_level} to level 1."
+        st.session_state.profit_lock_notification = (
+            f"Profit lock reached at bankroll ${st.session_state.bankroll:.2f} "
+            f"(+${profit_gained:.2f}, threshold: ${profit_threshold:.2f}). "
+            f"Resetting {st.session_state.strategy} strategy."
+        )
         if st.session_state.strategy == 'T3':
             st.session_state.t3_level = 1
             st.session_state.t3_results = []
@@ -613,7 +621,8 @@ def place_result(result: str):
         "safety_net_enabled": st.session_state.safety_net_enabled,
         "profit_lock": st.session_state.profit_lock,
         "stop_loss_enabled": st.session_state.stop_loss_enabled,
-        "stop_loss_percentage": st.session_state.stop_loss_percentage
+        "stop_loss_percentage": st.session_state.stop_loss_percentage,
+        "profit_lock_threshold": st.session_state.profit_lock_threshold
     }
     if st.session_state.pending_bet and result != 'T':
         bet_amount, selection = st.session_state.pending_bet
@@ -801,7 +810,8 @@ def simulate_to_target(max_hands: int = 1000) -> Dict:
         'profit_lock': 1000.0,
         'stop_loss_enabled': False,
         'stop_loss_percentage': 50.0,
-        'profit_lock_notification': None
+        'profit_lock_notification': None,
+        'profit_lock_threshold': 5.0
     })
     st.session_state.pattern_success['fourgram'] = 0
     st.session_state.pattern_attempts['fourgram'] = 0
@@ -866,6 +876,11 @@ def render_setup_form():
                     min_value=10.0, max_value=90.0, value=st.session_state.stop_loss_percentage, step=1.0,
                     help="Set the percentage of initial bankroll below which betting will stop (e.g., 50% means stop if bankroll falls below 50% of initial)."
                 )
+            profit_lock_threshold = st.number_input(
+                "Profit Lock Threshold (%)",
+                min_value=0.0, max_value=50.0, value=st.session_state.profit_lock_threshold, step=1.0,
+                help="Minimum profit percentage of initial bankroll required to trigger a strategy reset (e.g., 5% means reset only if bankroll exceeds profit lock by 5% of initial bankroll)."
+            )
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
@@ -915,7 +930,8 @@ def render_setup_form():
                         'profit_lock': bankroll,
                         'stop_loss_enabled': stop_loss_enabled,
                         'stop_loss_percentage': stop_loss_percentage,
-                        'profit_lock_notification': None
+                        'profit_lock_notification': None,
+                        'profit_lock_threshold': profit_lock_threshold
                     })
                     st.session_state.pattern_success['fourgram'] = 0
                     st.session_state.pattern_attempts['fourgram'] = 0
@@ -1013,7 +1029,7 @@ def render_insights():
             for factor, contribution in st.session_state.insights.items():
                 st.markdown(f"**{factor}**: {contribution}")
         if st.session_state.pattern_volatility > 0.5:
-            st.warning(f"High Pattern Volatility: {st.session_state.pattern_volatility:.2f} (Betting paused)")
+            st.warning(f"High Pattern Volatility: {st.session_state.patternL2f} (Betting paused)")
 
 def render_status():
     with st.expander("Session Status", expanded=True):
