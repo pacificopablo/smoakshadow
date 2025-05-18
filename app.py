@@ -21,7 +21,7 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
-T3_MAX_LEVEL = 5
+T3_MAX_LEVEL = 3  # Reduced from 5 to cap T3 level
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -221,8 +221,8 @@ def initialize_session_state():
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
         'profit_lock': 0.0,
-        'stop_loss_enabled': False,
-        'stop_loss_percentage': 50.0,
+        'stop_loss_enabled': True,
+        'stop_loss_percentage': 20.0,
         'profit_lock_notification': None,
         'profit_lock_threshold': 5.0
     }
@@ -270,8 +270,8 @@ def reset_session():
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
         'profit_lock': st.session_state.initial_bankroll,
-        'stop_loss_enabled': False,
-        'stop_loss_percentage': 50.0,
+        'stop_loss_enabled': True,
+        'stop_loss_percentage': 20.0,
         'profit_lock_notification': None,
         'profit_lock_threshold': 5.0
     })
@@ -339,7 +339,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
                   if st.session_state.pattern_attempts.get('bigram', 0) > 0 else 0.5,
         'trigram': st.session_state.pattern_success.get('trigram', 0) / total_bets
                    if st.session_state.pattern_attempts.get('trigram', 0) > 0 else 0.5,
-        'fourgram': st.session_state.pattern_success.get('fourgram', 0) / total_bets
+        'fourgram': st.session_state.pattern_success.get('fourgram', 0) / total_bets * 1.5  # Boost fourgram
                     if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.5,
         'streak': 0.6 if streak_count >= 2 else 0.3,
         'chop': 0.4 if chop_count >= 2 else 0.2,
@@ -358,9 +358,9 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
         weights['fourgram'] *= 0.85
     total_w = sum(weights.values())
     if total_w == 0:
-        weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
+        weights = {'bigram': 0.25, 'trigram': 0.20, 'fourgram': 0.30, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
         total_w = sum(weights.values())
-    return {k: max(w / total_w, 0.05) for k, w in weights.items()}
+    return {k: max(w / total_w, 0.05) for k, v in weights.items()}
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
@@ -461,9 +461,7 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
         prob_p = 0.9 * prob_p + 0.1 * p_prob * 100
         prob_b = 0.9 * prob_b + 0.1 * b_prob * 100
         insights['Pattern Transition'] = f"10% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    recent_accuracy = (st.session_state.prediction_accuracy['P'] + st.session_state.prediction_accuracy['B']) / max(st.session_state.prediction_accuracy['total'], 1)
-    threshold = 32.0 + (st.session_state.consecutive_losses * 0.5) - (recent_accuracy * 0.8)
-    threshold = min(max(threshold, 32.0), 42.0)
+    threshold = 40.0  # Fixed threshold
     insights['Threshold'] = f"{threshold:.1f}%"
     if st.session_state.pattern_volatility > 0.5:
         threshold += 1.5
@@ -494,20 +492,20 @@ def update_t3_level():
         elif losses == 2 and wins == 1:
             st.session_state.t3_level = st.session_state.t3_level + 1
         elif losses == 3:
-            st.session_state.t3_level = st.session_state.t3_level + 2
+            st.session_state.t3_level = min(3, st.session_state.t3_level + 1)  # Cap at 3, slower increase
         if old_level != st.session_state.t3_level:
             st.session_state.t3_level_changes += 1
         st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, st.session_state.t3_level)
         st.session_state.t3_results = []
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
-    if len(st.session_state.sequence) < 5:
-        return None, "No bet: Waiting for 6th hand"
+    if len(st.session_state.sequence) < 8:  # Start on 9th hand
+        return None, "No bet: Waiting for 9th hand"
     if st.session_state.consecutive_losses >= 3 and conf < 45.0:
         return None, f"No bet: Paused after {st.session_state.consecutive_losses} losses"
     if st.session_state.pattern_volatility > 0.6:
         return None, f"No bet: High pattern volatility"
-    if pred is None or conf < 32.0:
+    if pred is None or conf < 40.0:
         return None, f"No bet: Confidence too low"
 
     # Check profit lock condition for T3 strategy
@@ -520,7 +518,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         st.session_state.t3_level = 1
         st.session_state.t3_results = []
         st.session_state.t3_level_changes += 1
-        st.session_state.profit_lock = st.session_state.bankroll  # Update to new peak
+        st.session_state.profit_lock = st.session_state.bankroll
 
     # Check stop-loss condition
     if st.session_state.stop_loss_enabled:
@@ -539,7 +537,9 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         bet_amount = st.session_state.base_bet * st.session_state.t3_level
     else:  # Parlay16
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
-        bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
+        bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][
+
+key]
         st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
 
     # Safety net check
@@ -640,7 +640,7 @@ def place_result(result: str):
                 if pattern in st.session_state.insights:
                     st.session_state.pattern_success[pattern] += 1
                     st.session_state.pattern_attempts[pattern] += 1
- ощу    else:
+        else:
             st.session_state.bankroll -= bet_amount
             if st.session_state.strategy == 'T3':
                 st.session_state.t3_results.append('L')
@@ -752,7 +752,6 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
     return result
 
 def simulate_to_target(max_hands: int = 1000) -> Dict:
-    # Initialize session
     st.session_state.update({
         'bankroll': 1000.0,
         'base_bet': 1.0,
@@ -792,15 +791,14 @@ def simulate_to_target(max_hands: int = 1000) -> Dict:
         'safety_net_percentage': 10.0,
         'safety_net_enabled': False,
         'profit_lock': 1000.0,
-        'stop_loss_enabled': False,
-        'stop_loss_percentage': 50.0,
+        'stop_loss_enabled': True,
+        'stop_loss_percentage': 20.0,
         'profit_lock_notification': None,
         'profit_lock_threshold': 5.0
     })
     st.session_state.pattern_success['fourgram'] = 0
     st.session_state.pattern_attempts['fourgram'] = 0
 
-    # Simulate hands
     hand_count = 0
     while hand_count < max_hands and not st.session_state.target_hit:
         outcome = np.random.choice(['P', 'B', 'T'], p=[0.4462, 0.4586, 0.0952])
@@ -809,26 +807,20 @@ def simulate_to_target(max_hands: int = 1000) -> Dict:
         if st.session_state.bankroll <= 0:
             break
 
-    # Collect results
     result = {
         'target_hit': st.session_state.target_hit,
         'bankroll': st.session_state.bankroll,
         'profit_lock': st.session_state.profit_lock,
         'wins': st.session_state.wins,
         'losses': st.session_state.losses,
-        'history': st.session_state.history,
-        'sequence': st.session_state.sequence
-    }
-    return result
-
-# --- UI Components ---
+        'history': st.session# --- UI Components ---
 def render_setup_form():
     with st.expander("Session Setup", expanded=st.session_state.bankroll == 0):
         with st.form("setup_form"):
             col1, col2 = st.columns(2)
             with col1:
                 bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll, step=10.0)
-                base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10)
+                base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=0.10, step=0.10)
             with col2:
                 betting_strategy = st.selectbox(
                     "Betting Strategy", STRATEGIES,
@@ -850,20 +842,18 @@ def render_setup_form():
                 )
             stop_loss_enabled = st.checkbox(
                 "Enable Stop-Loss",
-                value=st.session_state.stop_loss_enabled,
+                value=True,  # Default enabled
                 help="Stops betting if bankroll falls below the specified percentage of initial bankroll."
             )
-            stop_loss_percentage = st.session_state.stop_loss_percentage
-            if stop_loss_enabled:
-                stop_loss_percentage = st.number_input(
-                    "Stop-Loss Percentage (%)",
-                    min_value=10.0, max_value=90.0, value=st.session_state.stop_loss_percentage, step=1.0,
-                    help="Set the percentage of initial bankroll below which betting will stop (e.g., 50% means stop if bankroll falls below 50% of initial)."
-                )
+            stop_loss_percentage = st.number_input(
+                "Stop-Loss Percentage (%)",
+                min_value=10.0, max_value=90.0, value=20.0, step=1.0,
+                help="Set the percentage of initial bankroll below which betting will stop (e.g., 20% means stop if bankroll falls below 20% of initial)."
+            )
             profit_lock_threshold = st.number_input(
                 "Profit Lock Threshold (%)",
                 min_value=0.0, max_value=50.0, value=st.session_state.profit_lock_threshold, step=1.0,
-                help="Minimum profit percentage of initial bankroll required to trigger a strategy reset (e.g., 5% means reset only if bankroll exceeds profit lock by 5% of initial bankroll)."
+                help="Minimum profit percentage of initial bankroll required to trigger a strategy reset."
             )
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
@@ -937,6 +927,10 @@ def render_result_input():
                 place_result("T")
                 st.rerun()
         with cols[3]:
+            if st.button("Skip Bet", key="skip_btn", help="Skip the next bet"):
+                st.session_state.pending_bet = None
+                st.session_state.advice = "Bet skipped manually."
+                st.rerun()
             if st.button("Undo Last", key="undo_btn", help="Undo the last action"):
                 if not st.session_state.sequence:
                     st.warning("No results to undo.")
@@ -1051,7 +1045,6 @@ def render_accuracy():
             p_accuracy = (st.session_state.prediction_accuracy['P'] / total) * 100
             b_accuracy = (st.session_state.prediction_accuracy['B'] / total) * 100
             st.markdown(f"**Player Bets**: {st.session_state.prediction_accuracy['P']}/{total} ({p_accuracy:.1f}%)")
-            6
             st.markdown(f"**Banker Bets**: {st.session_state.prediction_accuracy['B']}/{total} ({b_accuracy:.1f}%)")
         if st.session_state.history:
             accuracy_data = []
@@ -1149,7 +1142,7 @@ def main():
         render_prediction()
         render_insights()
     with col2:
-        render_status()
+        render SUSEstatus()
         render_accuracy()
         render_loss_log()
         render_history()
