@@ -508,17 +508,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         return None, f"No bet: Confidence too low"
 
     # Check profit lock and reset strategy if reached
-    at_base_bet = False
-    if st.session_state.strategy == 'T3' and st.session_state.t3_level == 1:
-        at_base_bet = True
-    elif st.session_state.strategy == 'Parlay16' and st.session_state.parlay_step == 1 and st.session_state.parlay_using_base:
-        at_base_bet = True
-    elif st.session_state.strategy == 'Z1003.1' and st.session_state.z1003_loss_count == 0:
-        at_base_bet = True
-    elif st.session_state.strategy == 'Flatbet' and st.session_state.base_bet == st.session_state.initial_base_bet:
-        at_base_bet = True
-
-    if at_base_bet and st.session_state.bankroll >= st.session_state.profit_lock:
+    if st.session_state.bankroll > st.session_state.profit_lock:
         st.session_state.profit_lock_notification = f"Profit lock reached at bankroll ${st.session_state.bankroll:.2f}. Resetting strategy to base level."
         if st.session_state.strategy == 'T3':
             st.session_state.t3_level = 1
@@ -764,6 +754,75 @@ def simulate_shoe(num_hands: int = 80) -> Dict:
                     f"Fourgram={result['pattern_success'].get('fourgram', 0)}/{result['pattern_attempts'].get('fourgram', 0)}\n")
     except PermissionError:
         st.error("Unable to write to simulation log.")
+    return result
+
+def simulate_to_target(max_hands: int = 1000) -> Dict:
+    # Initialize session
+    st.session_state.update({
+        'bankroll': 1000.0,
+        'base_bet': 1.0,
+        'initial_base_bet': 1.0,
+        'strategy': 'T3',
+        'sequence': [],
+        'pending_bet': None,
+        't3_level': 1,
+        't3_results': [],
+        't3_level_changes': 0,
+        't3_peak_level': 1,
+        'parlay_step': 1,
+        'parlay_wins': 0,
+        'parlay_using_base': True,
+        'parlay_step_changes': 0,
+        'parlay_peak_step': 1,
+        'z1003_loss_count': 0,
+        'z1003_bet_factor': 1.0,
+        'z1003_continue': False,
+        'z1003_level_changes': 0,
+        'advice': "",
+        'history': [],
+        'wins': 0,
+        'losses': 0,
+        'target_mode': 'Profit %',
+        'target_value': 10.0,
+        'initial_bankroll': 1000.0,
+        'target_hit': False,
+        'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
+        'consecutive_losses': 0,
+        'loss_log': [],
+        'last_was_tie': False,
+        'insights': {},
+        'pattern_volatility': 0.0,
+        'pattern_success': defaultdict(int),
+        'pattern_attempts': defaultdict(int),
+        'safety_net_percentage': 10.0,
+        'safety_net_enabled': False,
+        'profit_lock': 1000.0,
+        'stop_loss_enabled': False,
+        'stop_loss_percentage': 50.0,
+        'profit_lock_notification': None
+    })
+    st.session_state.pattern_success['fourgram'] = 0
+    st.session_state.pattern_attempts['fourgram'] = 0
+
+    # Simulate hands
+    hand_count = 0
+    while hand_count < max_hands and not st.session_state.target_hit:
+        outcome = np.random.choice(['P', 'B', 'T'], p=[0.4462, 0.4586, 0.0952])
+        place_result(outcome)
+        hand_count += 1
+        if st.session_state.bankroll <= 0:
+            break
+
+    # Collect results
+    result = {
+        'target_hit': st.session_state.target_hit,
+        'bankroll': st.session_state.bankroll,
+        'profit_lock': st.session_state.profit_lock,
+        'wins': st.session_state.wins,
+        'losses': st.session_state.losses,
+        'history': st.session_state.history,
+        'sequence': st.session_state.sequence
+    }
     return result
 
 # --- UI Components ---
@@ -1072,75 +1131,6 @@ def render_simulation():
             for h in result['history']:
                 csv_data += f"{h['Bet'] or '-'},{h['Result']},${h['Amount']:.2f},{h['Win']},{h['T3_Level']},{h['Parlay_Step']},{h['Z1003_Loss_Count']}\n"
             st.download_button("Download Simulation CSV", csv_data, "simulation_data.csv", "text/csv")
-
-def simulate_to_target(max_hands: int = 1000) -> Dict:
-    # Initialize session
-    st.session_state.update({
-        'bankroll': 1000.0,
-        'base_bet': 1.0,
-        'initial_base_bet': 1.0,
-        'strategy': 'T3',
-        'sequence': [],
-        'pending_bet': None,
-        't3_level': 1,
-        't3_results': [],
-        't3_level_changes': 0,
-        't3_peak_level': 1,
-        'parlay_step': 1,
-        'parlay_wins': 0,
-        'parlay_using_base': True,
-        'parlay_step_changes': 0,
-        'parlay_peak_step': 1,
-        'z1003_loss_count': 0,
-        'z1003_bet_factor': 1.0,
-        'z1003_continue': False,
-        'z1003_level_changes': 0,
-        'advice': "",
-        'history': [],
-        'wins': 0,
-        'losses': 0,
-        'target_mode': 'Profit %',
-        'target_value': 10.0,
-        'initial_bankroll': 1000.0,
-        'target_hit': False,
-        'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
-        'consecutive_losses': 0,
-        'loss_log': [],
-        'last_was_tie': False,
-        'insights': {},
-        'pattern_volatility': 0.0,
-        'pattern_success': defaultdict(int),
-        'pattern_attempts': defaultdict(int),
-        'safety_net_percentage': 10.0,
-        'safety_net_enabled': False,
-        'profit_lock': 1000.0,
-        'stop_loss_enabled': False,
-        'stop_loss_percentage': 50.0,
-        'profit_lock_notification': None
-    })
-    st.session_state.pattern_success['fourgram'] = 0
-    st.session_state.pattern_attempts['fourgram'] = 0
-
-    # Simulate hands
-    hand_count = 0
-    while hand_count < max_hands and not st.session_state.target_hit:
-        outcome = np.random.choice(['P', 'B', 'T'], p=[0.4462, 0.4586, 0.0952])
-        place_result(outcome)
-        hand_count += 1
-        if st.session_state.bankroll <= 0:
-            break
-
-    # Collect results
-    result = {
-        'target_hit': st.session_state.target_hit,
-        'bankroll': st.session_state.bankroll,
-        'profit_lock': st.session_state.profit_lock,
-        'wins': st.session_state.wins,
-        'losses': st.session_state.losses,
-        'history': st.session_state.history,
-        'sequence': st.session_state.sequence
-    }
-    return result
 
 # --- Main Application ---
 def main():
