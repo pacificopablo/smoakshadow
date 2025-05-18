@@ -1,4 +1,3 @@
-
 import streamlit as st
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -508,9 +507,6 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
 
-    # Update profit lock
-    st.session_state.profit_lock = max(st.session_state.profit_lock, st.session_state.bankroll)
-
     # Check profit lock when at base bet
     at_base_bet = False
     if st.session_state.strategy == 'T3' and st.session_state.t3_level == 1:
@@ -522,7 +518,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     elif st.session_state.strategy == 'Flatbet' and st.session_state.base_bet == st.session_state.initial_base_bet:
         at_base_bet = True
 
-    if at_base_bet and st.session_state.bankroll >= st.session_state.profit_lock * 0.99:
+    if at_base_bet and st.session_state.bankroll > st.session_state.profit_lock:
         st.session_state.profit_lock_notification = f"Profit lock triggered at bankroll ${st.session_state.bankroll:.2f} (profit lock: ${st.session_state.profit_lock:.2f}). Strategy at base bet."
         if st.session_state.strategy == 'T3':
             st.session_state.t3_results = []  # Clear to prevent level change
@@ -680,6 +676,8 @@ def place_result(result: str):
                     st.session_state.pattern_attempts[pattern] += 1
         st.session_state.prediction_accuracy['total'] += 1
         st.session_state.pending_bet = None
+        # Update profit lock after bet resolution
+        st.session_state.profit_lock = max(st.session_state.profit_lock, st.session_state.bankroll)
     st.session_state.sequence.append(result)
     if len(st.session_state.sequence) > SEQUENCE_LIMIT:
         st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
@@ -841,7 +839,7 @@ def render_setup_form():
                         'pattern_attempts': defaultdict(int),
                         'safety_net_percentage': safety_net_percentage,
                         'safety_net_enabled': safety_net_enabled,
-                        'profit_lock': bankroll * 1.01,  # Initialize above bankroll
+                        'profit_lock': bankroll,
                         'stop_loss_enabled': stop_loss_enabled,
                         'stop_loss_percentage': stop_loss_percentage,
                         'profit_lock_notification': None
@@ -1103,7 +1101,7 @@ def simulate_to_target(max_hands: int = 1000) -> Dict:
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
         'safety_net_enabled': False,
-        'profit_lock': 1000.0 * 1.01,  # Initialize above bankroll
+        'profit_lock': 1000.0,
         'stop_loss_enabled': False,
         'stop_loss_percentage': 50.0,
         'profit_lock_notification': None
