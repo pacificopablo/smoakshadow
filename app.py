@@ -1,3 +1,4 @@
+
 import streamlit as st
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -1042,8 +1043,94 @@ def render_simulation():
             for pattern in result['pattern_success']:
                 success = result['pattern_success'][pattern]
                 attempts = result['pattern_attempts'][pattern]
-                st.write(f"{pattern}: {success}/{attempts} ({success/attempts*100:.1f}%)" if attempts > 0 else f"{pattern}: 0/0 (0%)")
+                st.write(f"{pattern}: {success}/{attempts} ({success/attacks*100:.1f}%)" if attempts > 0 else f"{pattern}: 0/0 (0%)")
             st.write("Results logged to simulation_log.txt")
+        if st.button("Simulate to Target Profit"):
+            result = simulate_to_target()
+            st.write(f"**Simulation to Target Results**")
+            st.write(f"Target Reached: {'Yes' if result['target_hit'] else 'No'}")
+            st.write(f"Final Bankroll: ${result['bankroll']:.2f}")
+            st.write(f"Profit Lock: ${result['profit_lock']:.2f}")
+            st.write(f"Hands Played: {len(result['history'])}")
+            st.write(f"Wins: {result['wins']} | Losses: {result['losses']}")
+            st.write("**Last 10 Bets**:")
+            for h in result['history'][-10:]:
+                st.write(f"Bet: {h['Bet'] or '-'}, Result: {h['Result']}, Amount: ${h['Amount']:.2f}, "
+                        f"Outcome: {'Win' if h['Win'] else 'Loss' if h['Bet_Placed'] else '-'}, "
+                        f"T3 Level: {h['T3_Level']}")
+            csv_data = "Bet,Result,Amount,Win,T3_Level,Parlay_Step,Z1003_Loss_Count\n"
+            for h in result['history']:
+                csv_data += f"{h['Bet'] or '-'},{h['Result']},${h['Amount']:.2f},{h['Win']},{h['T3_Level']},{h['Parlay_Step']},{h['Z1003_Loss_Count']}\n"
+            st.download_button("Download Simulation CSV", csv_data, "simulation_data.csv", "text/csv")
+
+def simulate_to_target(max_hands: int = 1000) -> Dict:
+    # Initialize session
+    st.session_state.update({
+        'bankroll': 1000.0,
+        'base_bet': 1.0,
+        'initial_base_bet': 1.0,
+        'strategy': 'T3',
+        'sequence': [],
+        'pending_bet': None,
+        't3_level': 1,
+        't3_results': [],
+        't3_level_changes': 0,
+        't3_peak_level': 1,
+        'parlay_step': 1,
+        'parlay_wins': 0,
+        'parlay_using_base': True,
+        'parlay_step_changes': 0,
+        'parlay_peak_step': 1,
+        'z1003_loss_count': 0,
+        'z1003_bet_factor': 1.0,
+        'z1003_continue': False,
+        'z1003_level_changes': 0,
+        'advice': "",
+        'history': [],
+        'wins': 0,
+        'losses': 0,
+        'target_mode': 'Profit %',
+        'target_value': 10.0,
+        'initial_bankroll': 1000.0,
+        'target_hit': False,
+        'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
+        'consecutive_losses': 0,
+        'loss_log': [],
+        'last_was_tie': False,
+        'insights': {},
+        'pattern_volatility': 0.0,
+        'pattern_success': defaultdict(int),
+        'pattern_attempts': defaultdict(int),
+        'safety_net_percentage': 10.0,
+        'safety_net_enabled': False,
+        'profit_lock': 1000.0,
+        'stop_loss_enabled': False,
+        'stop_loss_percentage': 50.0,
+        'profit_lock_notification': None
+    })
+    st.session_state.pattern_success['fourgram'] = 0
+    st.session_state.pattern_attempts['fourgram'] = 0
+
+    # Simulate hands
+    hand_count = 0
+    while hand_count < max_hands and not st.session_state.target_hit:
+        outcome = np.random.choice(['P', 'B', 'T'], p=[0.4462, 0.4586, 0.0952])
+        place_result(outcome)
+        hand_count += 1
+        if st.session_state.bankroll <= 0:
+            break
+
+    # Collect results
+    result = {
+        'target_hit': st.session_state.target_hit,
+        'bankroll': st.session_state.bankroll,
+        'profit_lock': st.session_state.profit_lock,
+        'wins': st.session_state.wins,
+        'losses': st.session_state.losses,
+        'history': st.session_state.history,
+        'sequence': st.session_state.sequence
+    }
+    return result
 
 # --- Main Application ---
 def main():
