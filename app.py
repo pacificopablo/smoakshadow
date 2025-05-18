@@ -25,7 +25,7 @@ T3_MAX_LEVEL = 5
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
-    st.markdown() 
+    st.markdown() ;
     <style>
     body {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
