@@ -21,7 +21,7 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
-T3_MAX_LEVEL = 5  # Threshold for T3 all-in condition
+T3_MAX_LEVEL = 5
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -219,9 +219,9 @@ def initialize_session_state():
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
-        'peak_bankroll': 0.0,  # New: Track peak bankroll for profit lock
-        'stop_loss_enabled': False,  # New: Toggle for stop-loss
-        'stop_loss_percentage': 50.0  # New: Stop-loss threshold
+        'peak_bankroll': 0.0,
+        'stop_loss_enabled': False,
+        'stop_loss_percentage': 50.0
     }
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
@@ -355,7 +355,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     if total_w == 0:
         weights = {'bigram': 0.30, 'trigram': 0.25, 'fourgram': 0.25, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
         total_w = sum(weights.values())
-    return {k: max(w / total_w, 0.05) for k, w in weights.items()}
+    return {k: max(w / total_w, 0.05) for k, v in weights.items()}
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
@@ -416,60 +416,7 @@ def predict_next() -> Tuple[Optional[str], float, Dict]:
             prob_p += weights['chop'] * 0.6
             prob_b += weights['chop'] * 0.4
         else:
-            prob_b += weights['chop'] * 0.6
-            prob_p += weights['chop'] * 0.4
-        total_weight += weights['chop']
-        insights['Chop'] = f"{weights['chop']*100:.0f}% ({chop_count} alternations)"
-    if double_count >= 1 and len(recent_sequence) >= 2 and recent_sequence[-1] == recent_sequence[-2]:
-        double_prob = 0.6
-        if recent_sequence[-1] == 'P':
-            prob_p += weights['double'] * double_prob
-            prob_b += weights['double'] * (1 - double_prob)
-        else:
-            prob_b += weights['double'] * double_prob
-            prob_p += weights['double'] * (1 - double_prob)
-        total_weight += weights['double']
-        insights['Double'] = f"{weights['double']*100:.0f}% ({recent_sequence[-1]}{recent_sequence[-1]})"
-    if total_weight > 0:
-        prob_p = (prob_p / total_weight) * 100
-        prob_b = (prob_b / total_weight) * 100
-    else:
-        prob_p, prob_b = 44.62, 45.86
-    if shoe_bias > 0.1:
-        prob_p *= 1.05
-        prob_b *= 0.95
-    elif shoe_bias < -0.1:
-        prob_b *= 1.05
-        prob_p *= 0.95
-    if abs(prob_p - prob_b) < 2:
-        prob_p += 0.5
-        prob_b -= 0.5
-    current_pattern = (
-        'streak' if streak_count >= 2 else
-        'chop' if chop_count >= 2 else
-        'double' if double_count >= 1 else 'other'
-    )
-    total = sum(pattern_transitions[current_pattern].values())
-    if total > 0:
-        p_prob = pattern_transitions[current_pattern]['P'] / total
-        b_prob = pattern_transitions[current_pattern]['B'] / total
-        prob_p = 0.9 * prob_p + 0.1 * p_prob * 100
-        prob_b = 0.9 * prob_b + 0.1 * b_prob * 100
-        insights['Pattern Transition'] = f"10% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    recent_accuracy = (st.session_state.prediction_accuracy['P'] + st.session_state.prediction_accuracy['B']) / max(st.session_state.prediction_accuracy['total'], 1)
-    threshold = 32.0 + (st.session_state.consecutive_losses * 0.5) - (recent_accuracy * 0.8)
-    threshold = min(max(threshold, 32.0), 42.0)
-    insights['Threshold'] = f"{threshold:.1f}%"
-    if st.session_state.pattern_volatility > 0.5:
-        threshold += 1.5
-        insights['Volatility'] = f"High (Adjustment: +1.5% threshold)"
-    if prob_p > prob_b and prob_p >= threshold:
-        return 'P', prob_p, insights
-    elif prob_b >= threshold:
-        return 'B', prob_b, insights
-    return None, max(prob_p, prob_b), insights
-
-# --- Betting Logic ---
+            prob_b += weights['chop, # --- Betting Logic ---
 def check_target_hit() -> bool:
     if st.session_state.target_mode == "Profit %":
         target_profit = st.session_state.initial_bankroll * (st.session_state.target_value / 100)
@@ -546,8 +493,6 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             st.session_state.z1003_bet_factor = 1.0
             if old_loss_count != st.session_state.z1003_loss_count:
                 st.session_state.z1003_level_changes += 1
-        elif st.session_state.strategy == 'Flatbet':
-            pass  # Flatbet doesn't adjust levels, so no reset needed
         return None, "No bet: Profit lock triggered at peak bankroll, strategy reset to starting level/step"
 
     # Calculate bet amount
@@ -803,13 +748,14 @@ def render_setup_form():
             stop_loss_enabled = st.checkbox(
                 "Enable Stop-Loss",
                 value=st.session_state.stop_loss_enabled,
-                help="Stops betting if bankroll falls below a percentage of initial bankroll."
+                help="Stops betting if bankroll falls below the specified percentage of initial bankroll."
             )
             stop_loss_percentage = st.session_state.stop_loss_percentage
             if stop_loss_enabled:
                 stop_loss_percentage = st.number_input(
                     "Stop-Loss Percentage (%)",
-                    min_value=10.0, max_value=90.0, value=st.session_state.stop_loss_percentage, step=5.0
+                    min_value=10.0, max_value=90.0, value=st.session_state.stop_loss_percentage, step=1.0,
+                    help="Set the percentage of initial bankroll below which betting will stop (e.g., 50% means stop if bankroll falls below 50% of initial)."
                 )
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
