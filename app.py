@@ -220,7 +220,7 @@ def initialize_session_state():
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
-        'profit_lock': 0.0,  # Renamed from peak_bankroll
+        'profit_lock': 0.0,
         'stop_loss_enabled': False,
         'stop_loss_percentage': 50.0,
         'profit_lock_notification': None
@@ -268,7 +268,7 @@ def reset_session():
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
-        'profit_lock': st.session_state.initial_bankroll,  # Renamed
+        'profit_lock': st.session_state.initial_bankroll,
         'stop_loss_enabled': False,
         'stop_loss_percentage': 50.0,
         'profit_lock_notification': None
@@ -611,7 +611,7 @@ def place_result(result: str):
         "pattern_attempts": st.session_state.pattern_attempts.copy(),
         "safety_net_percentage": st.session_state.safety_net_percentage,
         "safety_net_enabled": st.session_state.safety_net_enabled,
-        "profit_lock": st.session_state.profit_lock,  # Renamed
+        "profit_lock": st.session_state.profit_lock,
         "stop_loss_enabled": st.session_state.stop_loss_enabled,
         "stop_loss_percentage": st.session_state.stop_loss_percentage
     }
@@ -797,11 +797,11 @@ def render_setup_form():
                 )
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
-                    st.error ‚ÄúBankroll must be positive.‚Äù
+                    st.error("Bankroll must be positive.")
                 elif base_bet < 0.10:
-                    st.error ‚ÄúBase bet must be at least $0.10.‚Äù
+                    st.error("Base bet must be at least $0.10.")
                 elif base_bet > bankroll:
-                    st.error ‚ÄúBase bet cannot exceed bankroll.‚Äù
+                    st.error("Base bet cannot exceed bankroll.")
                 else:
                     st.session_state.update({
                         'bankroll': bankroll,
@@ -841,7 +841,7 @@ def render_setup_form():
                         'pattern_attempts': defaultdict(int),
                         'safety_net_percentage': safety_net_percentage,
                         'safety_net_enabled': safety_net_enabled,
-                        'profit_lock': bankroll,  # Renamed
+                        'profit_lock': bankroll,
                         'stop_loss_enabled': stop_loss_enabled,
                         'stop_loss_percentage': stop_loss_percentage,
                         'profit_lock_notification': None
@@ -949,7 +949,7 @@ def render_status():
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
-            st.markdown(f"**Profit Lock**: ${st.session_state.profit_lock:.2f}")  # Renamed
+            st.markdown(f"**Profit Lock**: ${st.session_state.profit_lock:.2f}")
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
             st.markdown(f"**Safety Net**: {'Enabled' if st.session_state.safety_net_enabled else 'Disabled'}"
                         f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
