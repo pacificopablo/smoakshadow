@@ -25,7 +25,7 @@ T3_MAX_LEVEL = 5
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
-    st.markdown() 
+    st.markdown("""
     <style>
     body {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -78,12 +78,152 @@ def apply_custom_css():
         font-size: 14px;
     }
     .stRadio > div > label, .stCheckbox > div > label {
-        font-size:  SAFETY_NET_PERCENTAGE = 10.0
-        SAFETY_NET_ENABLED = True
-        PROFIT_LOCK = 0.0
-        STOP_LOSS_ENABLED = False
-        STOP_LOSS_PERCENTAGE = 50.0
-        PROFIT_LOCK_NOTIFICATION = None
+        font-size: 14px;
+        color: #4a5568;
+        margin-bottom: 5px;
+    }
+    .st-expander {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .st-expander > div > div {
+        background-color: #f7fafc;
+        border-radius: 8px;
+    }
+    .stMarkdown, .stDataFrame {
+        font-size: 14px;
+        color: #2d3748;
+    }
+    .result-button-player {
+        background: linear-gradient(to bottom, #3182ce, #2b6cb0);
+        color: white;
+    }
+    .result-button-player:hover {
+        background: linear-gradient(to bottom, #63b3ed, #3182ce);
+    }
+    .result-button-banker {
+        background: linear-gradient(to bottom, #e53e3e, #c53030);
+        color: white;
+    }
+    .result-button-banker:hover {
+        background: linear-gradient(to bottom, #fc8181, #e53e3e);
+    }
+    .result-button-tie {
+        background: linear-gradient(to bottom, #38a169, #2f855a);
+        color: white;
+    }
+    .result-button-tie:hover {
+        background: linear-gradient(to bottom, #68d391, #38a169);
+    }
+    .result-button-undo {
+        background: linear-gradient(to bottom, #718096, #5a667f);
+        color: white;
+    }
+    .result-button-undo:hover {
+        background: linear-gradient(to bottom, #a0aec0, #718096);
+    }
+    .bead-plate {
+        background-color: #edf2f7;
+        padding: 10px;
+        border-radius: 8px;
+        overflow-x: auto;
+    }
+    @media (max-width: 768px) {
+        .stApp {
+            padding: 10px;
+        }
+        h1 {
+            font-size: 2rem;
+        }
+        h2, .st-emotion-cache-1rtdyac {
+            font-size: 1.25rem;
+        }
+        .stButton > button {
+            width: 100%;
+            padding: 12px;
+        }
+        .stNumberInput, .stSelectbox {
+            margin-bottom: 1rem;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- Session Tracking ---
+def track_user_session() -> int:
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = str(time.time())
+    sessions = {}
+    current_time = datetime.now()
+    try:
+        if os.path.exists(SESSION_FILE):
+            with open(SESSION_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        session_id, timestamp = line.strip().split(',')
+                        last_seen = datetime.fromisoformat(timestamp)
+                        if current_time - last_seen <= timedelta(seconds=30):
+                            sessions[session_id] = last_seen
+                    except ValueError:
+                        continue
+    except PermissionError:
+        st.error("Unable to access session file.")
+        return 0
+    sessions[st.session_state.session_id] = current_time
+    try:
+        with open(SESSION_FILE, 'w', encoding='utf-8') as f:
+            for session_id, last_seen in sessions.items():
+                f.write(f"{session_id},{last_seen.isoformat()}\n")
+    except PermissionError:
+        st.error("Unable to write to session file.")
+        return 0
+    return len(sessions)
+
+# --- Session State Management ---
+def initialize_session_state():
+    defaults = {
+        'bankroll': 0.0,
+        'base_bet': 0.10,
+        'initial_base_bet': 0.10,
+        'sequence': [],
+        'pending_bet': None,
+        'strategy': 'T3',
+        't3_level': 1,
+        't3_results': [],
+        't3_level_changes': 0,
+        't3_peak_level': 1,
+        'parlay_step': 1,
+        'parlay_wins': 0,
+        'parlay_using_base': True,
+        'parlay_step_changes': 0,
+        'parlay_peak_step': 1,
+        'z1003_loss_count': 0,
+        'z1003_bet_factor': 1.0,
+        'z1003_continue': False,
+        'z1003_level_changes': 0,
+        'advice': "",
+        'history': [],
+        'wins': 0,
+        'losses': 0,
+        'target_mode': 'Profit %',
+        'target_value': 10.0,
+        'initial_bankroll': 0.0,
+        'target_hit': False,
+        'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
+        'consecutive_losses': 0,
+        'loss_log': [],
+        'last_was_tie': False,
+        'insights': {},
+        'pattern_volatility': 0.0,
+        'pattern_success': defaultdict(int),
+        'pattern_attempts': defaultdict(int),
+        'safety_net_percentage': 10.0,
+        'safety_net_enabled': True,
+        'profit_lock': 0.0,
+        'stop_loss_enabled': False,
+        'stop_loss_percentage': 50.0,
+        'profit_lock_notification': None
     }
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
@@ -378,6 +518,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             st.session_state.t3_level_changes += 1
         elif st.session_state.strategy == 'Parlay16':
             st.session_state.parlay_step = 1
+            st██
             st.session_state.parlay_wins = 0
             st.session_state.parlay_using_base = True
             st.session_state.parlay_step_changes += 1
@@ -411,9 +552,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     # Safety net check
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
-        if (bet_amount > st.session_state.bankroll or
-            st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
-            bet_amount > st.session_state.bankroll * 0.10):
+        if (bet_amount > st.session_state.bank    bet_amount > st.session_state.bankroll * 0.10):
             if st.session_state.strategy == 'T3':
                 old_level = st.session_state.t3_level
                 st.session_state.t3_level = 1
@@ -526,7 +665,7 @@ def place_result(result: str):
             st.session_state.losses += 1
             st.session_state.consecutive_losses += 1
             _, conf, _ = predict_next()
-            st.session_state.loss_log.append({
+            st.session_state.loss_log.append GOLDEN_RATIO = 1.61803398875
                 'sequence': st.session_state.sequence[-10:],
                 'prediction': selection,
                 'result': result,
@@ -882,7 +1021,7 @@ def render_status():
             st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
             st.markdown(f"**Profit Lock**: ${st.session_state.profit_lock:.2f}")
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
-            st.markdown(f"** пене Net**: {'Enabled' if st.session_state.safety_net_enabled else 'Disabled'}"
+            st.markdown(f"**Safety Net**: {'Enabled' if st.session_state.safety_net_enabled else 'Disabled'}"
                         f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
             st.markdown(f"**Stop-Loss**: {'Enabled' if st.session_state.stop_loss_enabled else 'Disabled'}"
                         f"{' | ' + str(st.session_state.stop_loss_percentage) + '%' if st.session_state.stop_loss_enabled else ''}")
