@@ -21,12 +21,12 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
+T3_MAX_LEVEL = 5  # Threshold for T3 all-in condition
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
     st.markdown("""
     <style>
-    /* General Styling */
     body {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         background-color: #f7f9fc;
@@ -94,7 +94,6 @@ def apply_custom_css():
         font-size: 14px;
         color: #2d3748;
     }
-    /* Result Buttons */
     .result-button-player {
         background: linear-gradient(to bottom, #3182ce, #2b6cb0);
         color: white;
@@ -123,14 +122,12 @@ def apply_custom_css():
     .result-button-undo:hover {
         background: linear-gradient(to bottom, #a0aec0, #718096);
     }
-    /* Bead Plate */
     .bead-plate {
         background-color: #edf2f7;
         padding: 10px;
         border-radius: 8px;
         overflow-x: auto;
     }
-    /* Responsive Design */
     @media (max-width: 768px) {
         .stApp {
             padding: 10px;
@@ -221,7 +218,10 @@ def initialize_session_state():
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
-        'safety_net_enabled': True
+        'safety_net_enabled': True,
+        'peak_bankroll': 0.0,  # New: Track peak bankroll for profit lock
+        'stop_loss_enabled': False,  # New: Toggle for stop-loss
+        'stop_loss_percentage': 50.0  # New: Stop-loss threshold
     }
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
@@ -265,7 +265,10 @@ def reset_session():
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
-        'safety_net_enabled': True
+        'safety_net_enabled': True,
+        'peak_bankroll': st.session_state.initial_bankroll,
+        'stop_loss_enabled': False,
+        'stop_loss_percentage': 50.0
     })
 
 # --- Prediction Logic ---
@@ -356,7 +359,6 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
 
 def predict_next() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
-    # Skip prediction until the 6th hand (sequence length >= 5)
     if len(sequence) < 5:
         return None, 0.0, {'Status': 'Waiting for 6th hand'}
     recent_sequence = sequence[-WINDOW_SIZE:]
@@ -494,7 +496,6 @@ def update_t3_level():
         st.session_state.t3_results = []
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
-    # Skip betting until the 6th hand (sequence length >= 5)
     if len(st.session_state.sequence) < 5:
         return None, "No bet: Waiting for 6th hand"
     if st.session_state.consecutive_losses >= 3 and conf < 45.0:
@@ -503,6 +504,53 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         return None, f"No bet: High pattern volatility"
     if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
+
+    # Update peak bankroll
+    st.session_state.peak_bankroll = max(st.session_state.peak_bankroll, st.session_state.bankroll)
+
+    # Check stop-loss condition
+    if st.session_state.stop_loss_enabled:
+        stop_loss_threshold = st.session_state.initial_bankroll * (st.session_state.stop_loss_percentage / 100)
+        if st.session_state.bankroll <= stop_loss_threshold:
+            return None, f"No bet: Stop-loss triggered at {st.session_state.stop_loss_percentage}% of initial bankroll"
+
+    # Check all-in condition for profit lock
+    all_in = False
+    if st.session_state.strategy == 'T3' and st.session_state.t3_level >= T3_MAX_LEVEL:
+        all_in = True
+    elif st.session_state.strategy == 'Parlay16' and st.session_state.parlay_step == 16:
+        all_in = True
+    elif st.session_state.strategy == 'Z1003.1' and st.session_state.z1003_loss_count >= 3:
+        all_in = True
+    elif st.session_state.strategy == 'Flatbet' and st.session_state.base_bet >= st.session_state.bankroll * 0.10:
+        all_in = True
+
+    # Apply profit lock if all-in and bankroll is at or above peak
+    if all_in and st.session_state.bankroll >= st.session_state.peak_bankroll:
+        if st.session_state.strategy == 'T3':
+            old_level = st.session_state.t3_level
+            st.session_state.t3_level = 1
+            if old_level != st.session_state.t3_level:
+                st.session_state.t3_level_changes += 1
+            st.session_state.t3_peak_level = max(st.session_state.t3_peak_level, old_level)
+        elif st.session_state.strategy == 'Parlay16':
+            old_step = st.session_state.parlay_step
+            st.session_state.parlay_step = 1
+            st.session_state.parlay_using_base = True
+            if old_step != st.session_state.parlay_step:
+                st.session_state.parlay_step_changes += 1
+            st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+        elif st.session_state.strategy == 'Z1003.1':
+            old_loss_count = st.session_state.z1003_loss_count
+            st.session_state.z1003_loss_count = 0
+            st.session_state.z1003_bet_factor = 1.0
+            if old_loss_count != st.session_state.z1003_loss_count:
+                st.session_state.z1003_level_changes += 1
+        elif st.session_state.strategy == 'Flatbet':
+            pass  # Flatbet doesn't adjust levels, so no reset needed
+        return None, "No bet: Profit lock triggered at peak bankroll, strategy reset to starting level/step"
+
+    # Calculate bet amount
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
             return None, "No bet: Stopped after three losses (Z1003.1 rule)"
@@ -515,6 +563,8 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
         bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
         st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
+
+    # Safety net check
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if (bet_amount > st.session_state.bankroll or
@@ -543,6 +593,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                     st.session_state.z1003_level_changes += 1
                 bet_amount = st.session_state.base_bet
             return None, "No bet: Risk too high for current bankroll. Level/step reset to 1."
+    
     return bet_amount, f"Next Bet: ${bet_amount:.2f} on {pred}"
 
 def place_result(result: str):
@@ -576,7 +627,10 @@ def place_result(result: str):
         "pattern_success": st.session_state.pattern_success.copy(),
         "pattern_attempts": st.session_state.pattern_attempts.copy(),
         "safety_net_percentage": st.session_state.safety_net_percentage,
-        "safety_net_enabled": st.session_state.safety_net_enabled
+        "safety_net_enabled": st.session_state.safety_net_enabled,
+        "peak_bankroll": st.session_state.peak_bankroll,
+        "stop_loss_enabled": st.session_state.stop_loss_enabled,
+        "stop_loss_percentage": st.session_state.stop_loss_percentage
     }
     if st.session_state.pending_bet and result != 'T':
         bet_amount, selection = st.session_state.pending_bet
@@ -746,6 +800,17 @@ def render_setup_form():
                     "Safety Net Percentage (%)",
                     min_value=0.0, max_value=50.0, value=st.session_state.safety_net_percentage, step=5.0
                 )
+            stop_loss_enabled = st.checkbox(
+                "Enable Stop-Loss",
+                value=st.session_state.stop_loss_enabled,
+                help="Stops betting if bankroll falls below a percentage of initial bankroll."
+            )
+            stop_loss_percentage = st.session_state.stop_loss_percentage
+            if stop_loss_enabled:
+                stop_loss_percentage = st.number_input(
+                    "Stop-Loss Percentage (%)",
+                    min_value=10.0, max_value=90.0, value=st.session_state.stop_loss_percentage, step=5.0
+                )
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
@@ -792,7 +857,10 @@ def render_setup_form():
                         'pattern_success': defaultdict(int),
                         'pattern_attempts': defaultdict(int),
                         'safety_net_percentage': safety_net_percentage,
-                        'safety_net_enabled': safety_net_enabled
+                        'safety_net_enabled': safety_net_enabled,
+                        'peak_bankroll': bankroll,
+                        'stop_loss_enabled': stop_loss_enabled,
+                        'stop_loss_percentage': stop_loss_percentage
                     })
                     st.session_state.pattern_success['fourgram'] = 0
                     st.session_state.pattern_attempts['fourgram'] = 0
@@ -894,9 +962,12 @@ def render_status():
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
+            st.markdown(f"**Peak Bankroll**: ${st.session_state.peak_bankroll:.2f}")
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
             st.markdown(f"**Safety Net**: {'Enabled' if st.session_state.safety_net_enabled else 'Disabled'}"
                         f"{' | ' + str(st.session_state.safety_net_percentage) + '%' if st.session_state.safety_net_enabled else ''}")
+            st.markdown(f"**Stop-Loss**: {'Enabled' if st.session_state.stop_loss_enabled else 'Disabled'}"
+                        f"{' | ' + str(st.session_state.stop_loss_percentage) + '%' if st.session_state.stop_loss_enabled else ''}")
         with col2:
             strategy_status = f"**Strategy**: {st.session_state.strategy}"
             if st.session_state.strategy == 'T3':
