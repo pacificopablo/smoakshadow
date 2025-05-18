@@ -522,7 +522,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     elif st.session_state.strategy == 'Flatbet' and st.session_state.base_bet == st.session_state.initial_base_bet:
         at_base_bet = True
 
-    if at_base_bet and st.session_state.bankroll >= st.session_state.profit_lock * 0.99:
+    if at_base_bet and st.session_state.bankroll > st.session_state.profit_lock * 0.99:
         st.session_state.profit_lock_notification = f"Profit lock triggered at bankroll ${st.session_state.bankroll:.2f} (profit lock: ${st.session_state.profit_lock:.2f}). Strategy at base bet."
         if st.session_state.strategy == 'T3':
             st.session_state.t3_results = []  # Clear to prevent level change
@@ -1043,7 +1043,7 @@ def render_simulation():
             for pattern in result['pattern_success']:
                 success = result['pattern_success'][pattern]
                 attempts = result['pattern_attempts'][pattern]
-                st.write(f"{pattern}: {success}/{attempts} ({success/attacks*100:.1f}%)" if attempts > 0 else f"{pattern}: 0/0 (0%)")
+                st.write(f"{pattern}: {success}/{attempts} ({success/attempts*100:.1f}%)" if attempts > 0 else f"{pattern}: 0/0 (0%)")
             st.write("Results logged to simulation_log.txt")
         if st.button("Simulate to Target Profit"):
             result = simulate_to_target()
