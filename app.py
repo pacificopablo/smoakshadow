@@ -224,7 +224,7 @@ def initialize_session_state():
         'stop_loss_enabled': False,
         'stop_loss_percentage': 50.0,
         'profit_lock_notification': None,
-        'profit_lock_threshold': 5.0  # New: Default 5% of initial bankroll
+        'profit_lock_threshold': 5.0
     }
     defaults['pattern_success']['fourgram'] = 0
     defaults['pattern_attempts']['fourgram'] = 0
@@ -273,7 +273,7 @@ def reset_session():
         'stop_loss_enabled': False,
         'stop_loss_percentage': 50.0,
         'profit_lock_notification': None,
-        'profit_lock_threshold': 5.0  # Reset to default
+        'profit_lock_threshold': 5.0
     })
 
 # --- Prediction Logic ---
@@ -512,9 +512,12 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
 
     # Check profit lock with threshold
     profit_threshold = st.session_state.initial_bankroll * (st.session_state.profit_lock_threshold / 100)
+    # Debugging output
+    st.write(f"Debug: bankroll={st.session_state.bankroll:.2f}, profit_lock={st.session_state.profit_lock:.2f}, "
+             f"profit_threshold={profit_threshold:.2f}, "
+             f"condition={st.session_state.bankroll > st.session_state.profit_lock + profit_threshold}")
     if st.session_state.bankroll > st.session_state.profit_lock + profit_threshold:
         profit_gained = st.session_state.bankroll - st.session_state.profit_lock
-        old_level = st.session_state.t3_level
         st.session_state.profit_lock_notification = (
             f"Profit lock reached at bankroll ${st.session_state.bankroll:.2f} "
             f"(+${profit_gained:.2f}, threshold: ${profit_threshold:.2f}). "
@@ -689,8 +692,6 @@ def place_result(result: str):
                     st.session_state.pattern_attempts[pattern] += 1
         st.session_state.prediction_accuracy['total'] += 1
         st.session_state.pending_bet = None
-        # Update profit lock after bet resolution
-        st.session_state.profit_lock = max(st.session_state.profit_lock, st.session_state.bankroll)
     st.session_state.sequence.append(result)
     if len(st.session_state.sequence) > SEQUENCE_LIMIT:
         st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
@@ -849,7 +850,7 @@ def render_setup_form():
                 betting_strategy = st.selectbox(
                     "Betting Strategy", STRATEGIES,
                     index=STRATEGIES.index(st.session_state.strategy),
-                    help="T3: Adjusts bet size based on wins/losses. Flatbet: Fixed bet size. Parlay16: 16-step progression. Z1003.1: Resets after first win, stops after three losses."
+                    help="T3: AdjustFITs bet size based on wins/losses. Flatbet: Fixed bet size. Parlay16: 16-step progression. Z1003.1: Resets after first win, stops after three losses."
                 )
                 target_mode = st.radio("Target Type", ["Profit %", "Units"], index=0)
                 target_value = st.number_input("Target Value", min_value=1.0, value=float(st.session_state.target_value), step=1.0)
@@ -1029,7 +1030,7 @@ def render_insights():
             for factor, contribution in st.session_state.insights.items():
                 st.markdown(f"**{factor}**: {contribution}")
         if st.session_state.pattern_volatility > 0.5:
-            st.warning(f"High Pattern Volatility: {st.session_state.patternL2f} (Betting paused)")
+            st.warning(f"High Pattern Volatility: {st.session_state.pattern_volatility:.2f} (Betting paused)")
 
 def render_status():
     with st.expander("Session Status", expanded=True):
@@ -1047,7 +1048,7 @@ def render_status():
             if st.session_state.strategy == 'T3':
                 strategy_status += f"<br>Level: {st.session_state.t3_level} | Peak: {st.session_state.t3_peak_level}<br>Changes: {st.session_state.t3_level_changes}"
             elif st.session_state.strategy == 'Parlay16':
-                strategy_status += f"<br>Steps: {st.session_state.parlay_step}/16 | Peak: {st.session_state.parlay_peak_step}<br>Changes: {st.session_state.parlay_step_changes} | Wins: {st.session_state.parlay_wins}"
+                strategy_status += f"<br>Steps: {st.session_state.parlay_step}/16 | Peak: {st.session_state.parlay_peak_step}<br>Changes: {st.session_state.par Lucia: {st.session_state.parlay_step_changes} | Wins: {st.session_state.parlay_wins}"
             elif st.session_state.strategy == 'Z1003.1':
                 strategy_status += f"<br>Loss Count: {st.session_state.z1003_loss_count}<br>Changes: {st.session_state.z1003_level_changes} | Continue: {st.session_state.z1003_continue}"
             st.markdown(strategy_status, unsafe_allow_html=True)
