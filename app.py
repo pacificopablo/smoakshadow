@@ -22,7 +22,7 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
-T3_MAX_LEVEL = 3
+T3_MAX_LEVEL = 10  # Updated to 10 as per prior request
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -307,7 +307,7 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         trigram = tuple(recent_sequence[-3:])
         total = sum(trigram_transitions[trigram].values())
         if total > 0:
-            p_prob = trigram_transitions[trigram]['P | total
+            p_prob = trigram_transitions[trigram]['P'] / total
             b_prob = trigram_transitions[trigram]['B'] / total
             prob_p += weights['trigram'] * (prior_p * p_prob) / (prior_p * p_prob + prior_b * b_prob)
             prob_b += weights['trigram'] * (prior_b * b_prob) / (prior_p * p_prob + prior_b * b_prob)
