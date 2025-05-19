@@ -138,15 +138,16 @@ def apply_custom_css():
         overflow-x: auto;
     }
     .prediction-banner {
-        background: linear-gradient(to right, #1a3c6e, #2b6cb0);
+        background: linear-gradient(to right, #2b6cb0, #63b3ed);
         color: white;
-        padding: 15px;
+        padding: 18px;
         border-radius: 8px;
         margin-bottom: 1rem;
         text-align: center;
         font-size: 16px;
-        font-weight: 600;
+        font-weight: bold;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border-left: 4px solid #90cdf4;
     }
     @media (max-width: 768px) {
         .stApp {
@@ -167,7 +168,9 @@ def apply_custom_css():
         }
         .prediction-banner {
             font-size: 14px;
-            padding: 10px;
+            font-weight: bold;
+            padding: 12px;
+            border-left: 3px solid #90cdf4;
         }
     }
     </style>
@@ -193,7 +196,7 @@ def track_user_session() -> int:
     except PermissionError:
         st.error("Unable to access session file.")
         return 0
-    st.session_state.session_id = str(time.time())  # Update session_id for the current session
+    st.session_state.session_id = str(time.time())
     sessions[st.session_state.session_id] = current_time
     try:
         with open(SESSION_FILE, 'w', encoding='utf-8') as f:
@@ -446,7 +449,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
     if len(sequence) < 8:
         return None, 0.0, {'Status': 'Waiting for 9th hand'}
     recent_sequence = sequence[-WINDOW_SIZE:] if len(sequence) >= WINDOW_SIZE else sequence
-    # Corrected unpacking: Include all elements from analyze_patterns
     (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
      streak_count, chop_count, double_count, volatility, shoe_bias, insights) = analyze_patterns(recent_sequence)
     st.session_state.pattern_volatility = volatility
@@ -1144,9 +1146,9 @@ def render_prediction_banner():
     pred, conf, _ = smart_predict()
     if pred:
         bet_amount, advice = calculate_bet_amount(pred, conf)
-        st.markdown(f"<div class='prediction-banner'>Recommended Bet: {advice or 'No bet recommended.'} | Confidence: {conf:.1f}%</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='prediction-banner'><strong>Recommended Bet: {advice or 'No bet recommended.'} | Confidence: {conf:.1f}%</strong></div>", unsafe_allow_html=True)
     else:
-        st.markdown("<div class='prediction-banner'>No prediction available. Enter more results.</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='prediction-banner'><strong>No prediction available. Enter more results.</strong></div>", unsafe_allow_html=True)
 
 def render_insights():
     with st.expander("Prediction Insights", expanded=True):
