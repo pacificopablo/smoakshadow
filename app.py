@@ -25,6 +25,8 @@ LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
 T3_MAX_LEVEL = 10
 SHOE_SIZE = 100
+GRID_ROWS = 6
+GRID_COLS = 16  # Adjust based on your desired bead plate size
 
 # Placeholder for profit_enhancements module
 def adjust_safety_net():
@@ -53,7 +55,6 @@ def apply_custom_css():
         .stNumberInput>div>div>input { width: 100%; }
         .stSelectbox>div>div>select { width: 100%; }
         .css-1d391kg { padding: 1rem; }
-        .bead-plate { background-color: #edf2f7; padding: 10px; border-radius: 8px; overflow-x: auto; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -707,34 +708,6 @@ def render_result_input():
             st.session_state.shoe_completed = False
             st.rerun()
 
-def render_bead_plate():
-    try:
-        with st.expander("Bead Plate", expanded=True):
-            sequence = st.session_state.sequence[-90:]
-            grid = [[] for _ in range(15)]
-            for i, result in enumerate(sequence):
-                col_index = i // 6
-                if col_index < 15:
-                    grid[col_index].append(result)
-            for col in grid:
-                while len(col) < 6:
-                    col.append('')
-            bead_plate_html = "<div class='bead-plate' style='display: flex; flex-direction: row; gap: 5px;'>"
-            for col in grid:
-                col_html = "<div style='display: flex; flex-direction: column; gap: 5px;'>"
-                for result in col:
-                    style = (
-                        "width: 24px; height: 24px; border: 1px solid #e2e8f0; border-radius: 50%;" if result == '' else
-                        f"width: 24px; height: 24px; background-color: {'#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'}; border-radius: 50%;"
-                    )
-                    col_html += f"<div style='{style}'></div>"
-                col_html += "</div>"
-                bead_plate_html += col_html
-            bead_plate_html += "</div>"
-            st.markdown(bead_plate_html, unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"Error rendering bead plate: {str(e)}")
-
 def render_prediction():
     with st.expander("Prediction", expanded=True):
         pred, conf, _ = smart_predict()
@@ -859,6 +832,23 @@ def render_simulation():
                 fig.update_layout(title="Bankroll Over Shoes", xaxis_title="Hand", yaxis_title="Bankroll ($)", showlegend=True)
                 st.plotly_chart(fig, use_container_width=True)
 
+def render_bead_plate():
+    with st.expander("Bead Plate", expanded=True):
+        st.markdown("**Bead Plate**")
+        sequence = st.session_state.sequence[- (GRID_ROWS * GRID_COLS):]  # Get the last GRID_ROWS * GRID_COLS results
+        grid = [['' for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
+        
+        for i, result in enumerate(sequence[::-1]):  # Reverse to start from the latest
+            if result in ['P', 'B']:
+                row = i // GRID_COLS
+                col = i % GRID_COLS
+                if row < GRID_ROWS:
+                    color = '#1E90FF' if result == 'P' else '#FF4040'  # Blue for Player, Red for Banker
+                    grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
+
+        for row in grid:
+            st.markdown(' '.join(row), unsafe_allow_html=True)
+
 def main():
     st.set_page_config(layout="wide", page_title="Mang Baccarat")
     apply_custom_css()
@@ -868,9 +858,9 @@ def main():
     with col1:
         render_setup_form()
         render_result_input()
-        render_bead_plate()
         render_prediction()
         render_insights()
+        render_bead_plate()  # Add bead plate here
     with col2:
         render_status()
         render_genius_insights()
