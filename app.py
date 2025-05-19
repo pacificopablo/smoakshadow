@@ -446,8 +446,8 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
     if len(sequence) < 8:
         return None, 0.0, {'Status': 'Waiting for 9th hand'}
     recent_sequence = sequence[-WINDOW_SIZE:] if len(sequence) >= WINDOW_SIZE else sequence
-    (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
-     streak_count, chop_count, double_count, volatility volatility, shoe_bias, insights) = analyze_patterns(recent_sequence)
+    # Corrected unpacking: Use last 6 elements from analyze_patterns
+    streak_count, chop_count, double_count, volatility, shoe_bias, insights = analyze_patterns(recent_sequence)[-6:]
     st.session_state.pattern_volatility = volatility
     st.session_state.trend_score = {'streak': insights['streak'], 'chop': insights['chop'], 'double': insights['double']}
     
@@ -1247,7 +1247,7 @@ def render_history():
                 {
                     "Bet": h["Bet"] if h["Bet"] else "-",
                     "Result": h["Result"],
-                    "Amount": f"${h['Search for code in Streamlit documentation Amount']:.2f}" if h["Bet_Placed"] else "-",
+                    "Amount": f"${h['Amount']:.2f}" if h["Bet_Placed"] else "-",
                     "Outcome": "Win" if h["Win"] else "Loss" if h["Bet_Placed"] else "-",
                     "T3_Level": h["T3_Level"] if st.session_state.strategy in ['T3', 'Genius'] else "-",
                     "Parlay_Step": h["Parlay_Step"] if st.session_state.strategy == 'Parlay16' else "-",
