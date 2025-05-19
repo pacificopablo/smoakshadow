@@ -1355,20 +1355,52 @@ def render_history():
                 for h in st.session_state.history[-n:]
             ], use_container_width=True)
 
-def render_export():
-    with st.expander("Export Session", expanded=True):
-        if st.session_state.history:
-            df = pd.DataFrame(st.session_state.history)
-            csv = df.to_csv(index=False)
-            st.download_button(
-                label="Download History as CSV",
-                data=csv,
-                file_name="baccarat_history.csv",
-                mime="text/csv"
-            )
-        if os.path.exists(SIMULATION_LOG):
-            try:
-                with open(SIMULATION_LOG, 'r', encoding='utf-8') as f:
-                    log_content = f.read()
-                st.download_button(
-                    label="Download Simulation Log as TXT
+def render_simulation():
+    with st.expander("Run Simulation", expanded=True):
+        num_shoes = st.number_input("Number of Shoes to Simulate", min_value=1, max_value=100, value=10, step=1)
+        strategy = st.selectbox("Simulation Strategy", STRATEGIES, index=STRATEGIES.index(st.session_state.strategy))
+        if st.button("Run Simulation", key="run_sim_btn"):
+            with st.spinner("Running simulation..."):
+                result = simulate_to_target(strategy, num_shoes)
+                st.write(f"**Simulation Results**")
+                st.write(f"Average Accuracy: {result['avg_accuracy']:.1f}% (±{result['std_accuracy']:.1f}%)")
+                st.write(f"Average Final Bankroll: ${result['avg_bankroll']:.2f} (±${result['std_bankroll']:.2f})")
+                st.write(f"Total Wins: {result['wins']}")
+                st.write(f"Total Losses: {result['losses']}")
+                fig = go.Figure()
+                for i, res in enumerate(result['results']):
+                    fig.add_trace(go.Scatter(x=list(range(1, len(res['sequence']) + 1)), y=[r['final_bankroll'] for r in result['results'][:i+1]], mode='lines', name=f"Shoe {i+1}"))
+                fig.update_layout(title="Bankroll Over Shoes", xaxis_title="Hand", yaxis_title="Bankroll ($)", showlegend=True)
+                st.plotly_chart(fig, use_container_width=True)
+
+def render_profit_dashboard():
+    with st.expander("Profit Dashboard", expanded=True):
+        profit = st.session_state.bankroll - st.session_state.initial_bankroll
+        roi = (profit / st.session_state.initial_bankroll * 100) if st.session_state.initial_bankroll > 0 else 0.0
+        st.markdown(f"**Profit**: ${profit:.2f}")
+        st.markdown(f"**ROI**: {roi:.2f}%")
+
+# --- Main Application ---
+def main():
+    st.set_page_config(layout="wide", page_title="Mang Baccarat")
+    apply_custom_css()
+    st.title("Mang Baccarat")
+    initialize_session_state()
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        render_setup_form()
+        render_result_input()
+        render_bead_plate()
+        render_prediction()
+        render_profit_dashboard()
+        render_status()
+        render_insights()
+    with col2:
+        render_accuracy()
+        render_loss_log()
+        render_history()
+        render_export()
+        render_simulation()
+
+if __name__ == "__main__":
+    main()
