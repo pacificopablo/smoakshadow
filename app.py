@@ -382,6 +382,7 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
     volatility = pattern_changes / max(len(filtered_sequence) - 2, 1)
     total_outcomes = max(player_count + banker_count, 1)
     shoe_bias = player_count / total_outcomes if player_count > banker_count else -banker_count / total_outcomes
+    # Ensure all insight keys are initialized, even if total_outcomes is 0
     insights = {
         'volatility': volatility,
         'streak': streak_count / total_outcomes if total_outcomes > 0 else 0.0,
@@ -562,10 +563,10 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         final_conf = max(prob_p, prob_b)
     
     # Trend adjustments
-    if insights['streak'] > 0.6 and recent_sequence[-1] != 'T':
+    if insights.get('streak', 0.0) > 0.6 and recent_sequence and recent_sequence[-1] != 'T':
         final_pred = recent_sequence[-1]
         final_conf += 10.0
-    elif insights['chop'] > 0.6 and recent_sequence[-1] != 'T':
+    elif insights.get('chop', 0.0) > 0.6 and recent_sequence and recent_sequence[-1] != 'T':
         final_pred = 'P' if recent_sequence[-1] == 'B' else 'B'
         final_conf += 5.0
     
