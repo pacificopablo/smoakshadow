@@ -68,9 +68,9 @@ def apply_custom_css():
 
 def initialize_session_state():
     defaults = {
-        'bankroll': 0.0,
-        'base_bet': 0.10,
-        'initial_base_bet': 0.10,
+        'bankroll': 519.0,  # Set to match provided setup
+        'base_bet': 5.0,
+        'initial_base_bet': 5.0,
         'sequence': [],
         'pending_bet': None,
         'strategy': 'Genius',
@@ -92,8 +92,8 @@ def initialize_session_state():
         'wins': 0,
         'losses': 0,
         'target_mode': 'Profit %',
-        'target_value': 10.0,
-        'initial_bankroll': 0.0,
+        'target_value': 5.0,
+        'initial_bankroll': 519.0,
         'target_hit': False,
         'prediction_accuracy': {'P': 0, 'B': 0, 'total': 0},
         'consecutive_losses': 0,
@@ -106,7 +106,7 @@ def initialize_session_state():
         'pattern_attempts': defaultdict(int),
         'safety_net_percentage': 10.0,
         'safety_net_enabled': True,
-        'profit_lock': 0.0,
+        'profit_lock': 519.0,
         'stop_loss_enabled': True,
         'stop_loss_percentage': 15.0,
         'profit_lock_notification': None,
@@ -128,7 +128,6 @@ def initialize_session_state():
         st.session_state.strategy = 'Genius'
 
 def reset_session():
-    # Store current setup values before reset
     setup_values = {
         'initial_bankroll': st.session_state.initial_bankroll,
         'base_bet': st.session_state.base_bet,
@@ -221,11 +220,9 @@ def update_t3_level():
 def analyze_patterns(sequence):
     if len(sequence) < 4:
         return 0.0, 0.0, {}
-    # Volatility
     recent = sequence[-WINDOW_SIZE:] if len(sequence) >= WINDOW_SIZE else sequence
     transitions = sum(1 for i in range(1, len(recent)) if recent[i] != recent[i-1] and recent[i] != 'T' and recent[i-1] != 'T')
     volatility = transitions / (len(recent) - 1) if len(recent) > 1 else 0.0
-    # Trends
     streak = 0.0
     chop = 0.0
     double = 0.0
@@ -240,7 +237,6 @@ def analyze_patterns(sequence):
     streak_score = streak / total_patterns
     chop_score = chop / total_patterns
     double_score = double / total_patterns
-    # Shoe bias
     outcomes = [o for o in sequence if o != 'T']
     p_count = outcomes.count('P')
     b_count = outcomes.count('B')
@@ -261,12 +257,10 @@ def smart_predict():
     volatility, shoe_bias, insights = analyze_patterns(sequence)
     st.session_state.pattern_volatility = volatility
     st.session_state.trend_score = {'streak': insights['streak'], 'chop': insights['chop'], 'double': insights['double']}
-    # Fourgram pattern
     fourgram = sequence[-4:] if len(sequence) >= 4 else sequence
     fourgram_key = ''.join(fourgram)
     fourgram_pred = 'B' if fourgram_key in ['PPPP', 'BBBB', 'PPBB', 'BBPP'] else 'P'
     fourgram_conf = 60.0 if fourgram_key in ['PPPP', 'BBBB'] else 50.0
-    # Markov chain
     markov_pred = None
     markov_conf = 0.0
     if len(sequence) >= 2:
@@ -284,20 +278,17 @@ def smart_predict():
                 b_prob = transitions[current]['B'] / total
                 markov_pred = 'P' if p_prob > b_prob else 'B'
                 markov_conf = max(p_prob, b_prob) * 100
-    # Combine predictions
     final_pred = fourgram_pred
     final_conf = fourgram_conf
     if markov_conf > fourgram_conf:
         final_pred = markov_pred
         final_conf = markov_conf
-    # Adjust confidence based on trends
     if st.session_state.trend_score['streak'] > 0.6 and sequence[-1] != 'T':
         final_pred = sequence[-1]
         final_conf += 10.0
     elif st.session_state.trend_score['chop'] > 0.6 and sequence[-1] != 'T':
         final_pred = 'P' if sequence[-1] == 'B' else 'B'
         final_conf += 5.0
-    # Adjust for shoe bias
     if shoe_bias > 0.2 and final_pred == 'P':
         final_pred = 'B'
         final_conf += 5.0
@@ -439,7 +430,6 @@ def place_result(result: str):
     if st.session_state.target_hit:
         reset_session()
         return
-    # Check stop loss
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if st.session_state.bankroll <= safe_bankroll:
@@ -571,7 +561,6 @@ def place_result(result: str):
         st.session_state.target_hit = True
         reset_session()
         return
-    # Recheck stop loss after updating bankroll
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if st.session_state.bankroll <= safe_bankroll:
@@ -580,9 +569,10 @@ def place_result(result: str):
             return
     pred, conf, insights = smart_predict()
     bet_amount, advice = calculate_bet_amount(pred, conf)
-    if not smart_stop() and st.session_state.non_betting_deals == 0 and st.session_state.is_paused:
+    if not smart_stop() and st.session_state.non_betting_deals >= 3 and st.session_state.is_paused:
         advice = "Betting resumed after 3 deals"
         st.session_state.is_paused = False
+        st.session_state.non_betting_deals = 0
     st.session_state.pending_bet = (bet_amount, pred) if bet_amount else None
     st.session_state.advice = advice
     st.session_state.insights = insights
@@ -844,7 +834,8 @@ def render_history():
             return
         history = st.session_state.history[::-1]
         for h in history[:10]:
-            st.write(f"Bet: {h['Bet'] or 'None'}, Result: {h['Result']}, Amount: ${h['Amount']:.2f}, Win: {h['Win']}")
+            amount_str = f"${h['Amount']:.2f}" if isinstance(h['Amount'], (int, float)) else "No Bet"
+            st.write(f"Bet: {h['Bet'] or 'None'}, Result: {h['Result']}, Amount: {amount_str}, Win: {h['Win']}")
             if h['T3_Level'] > 1:
                 st.write(f"T3 Level: {h['T3_Level']}")
             if h['Parlay_Step'] > 1:
