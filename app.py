@@ -15,7 +15,7 @@ SIMULATION_LOG = os.path.join(tempfile.gettempdir(), "simulation_log.txt")
 PARLAY_TABLE = {
     i: {'base': b, 'parlay': p} for i, (b, p) in enumerate([
         (1, 2), (1, 2), (1, 2), (2, 4), (3, 6), (4, 8), (6, 12), (8, 16),
-        (12, 24), (16, 32), (22, 44), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
+        (12, 24), (16, 32), (22, 44), (30, 60), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
     ], 1)
 }
 STRATEGIES = ["T3", "Flatbet", "Parlay16", "Z1003.1", "Genius"]
@@ -838,7 +838,7 @@ def render_bead_plate():
         sequence = st.session_state.sequence[-(GRID_ROWS * GRID_COLS):]  # Get the last GRID_ROWS * GRID_COLS results
         grid = [['' for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
         
-        for i, result in enumerate(sequence[::-1]):  # Reverse to start from the latest
+        for i, result in enumerate(sequence):  # Iterate without reversing
             if result in ['P', 'B']:  # Only include Player and Banker outcomes
                 col = i // GRID_ROWS  # Determine column (fill top to bottom)
                 row = i % GRID_ROWS   # Determine row within the column
