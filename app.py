@@ -13,6 +13,7 @@ from typing import Tuple, Dict, Optional, List
 import uuid
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
+from sklearn.utils.validation import check_is_fitted
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
@@ -400,7 +401,7 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
     return (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
             streak_count, chop_count, double_count, volatility, shoe_bias, insights)
 
-def calculate_weights(streak_count: int, chop_count: int, double_count: int, shoe_bias: float) -> Dict[str, float]:
+def calculate_weights(streak_count: int, chop_count: int, double_count: int, shoe_bias: float, ml_available: bool) -> Dict[str, float]:
     total_bets = max(st.session_state.pattern_attempts.get('fourgram', 1), 1)
     success_ratios = {
         'bigram': st.session_state.pattern_success.get('bigram', 0) / total_bets
@@ -411,7 +412,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
                     if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.75,
         'markov': st.session_state.pattern_success.get('markov', 0) / total_bets
                   if st.session_state.pattern_attempts.get('markov', 0) > 0 else 0.5,
-        'ml': 0.3,  # Default weight for ML model
+        'ml': 0.3 if ml_available else 0.0,  # ML weight only if model is fitted
         'streak': 0.8 if streak_count >= 2 else 0.4,
         'chop': 0.4 if chop_count >= 2 else 0.2,
         'double': 0.4 if double_count >= 1 else 0.2
@@ -424,16 +425,21 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
         weights['trigram'] *= 1.1
         weights['fourgram'] *= 1.15
         weights['markov'] *= 1.1
-        weights['ml'] *= 1.1
+        if ml_available:
+            weights['ml'] *= 1.1
     elif shoe_bias < -0.1:
         weights['bigram'] *= 0.9
         weights['trigram'] *= 0.9
         weights['fourgram'] *= 0.85
         weights['markov'] *= 0.9
-        weights['ml'] *= 0.9
+        if ml_available:
+            weights['ml'] *= 0.9
     total_w = sum(weights.values())
     if total_w == 0:
-        weights = {'bigram': 0.25, 'trigram': 0.20, 'fourgram': 0.20, 'markov': 0.20, 'ml': 0.15, 'streak': 0.10, 'chop': 0.05, 'double': 0.05}
+        weights = {
+            'bigram': 0.25, 'trigram': 0.20, 'fourgram': 0.20, 'markov': 0.20,
+            'ml': 0.15 if ml_available else 0.0, 'streak': 0.10, 'chop': 0.05, 'double': 0.05
+        }
         total_w = sum(weights.values())
     return {k: max(w / total_w, 0.05) for k, w in weights.items()}
 
@@ -446,9 +452,9 @@ def prepare_ml_features(sequence: List[str], streak_count: int, chop_count: int,
     features = np.hstack((encoded_sequence, pattern_features))
     return features
 
-def train_ml_model(history: List[Dict]) -> RandomForestClassifier:
+def train_ml_model(history: List[Dict]) -> Tuple[RandomForestClassifier, bool]:
     if len(history) < 10:
-        return RandomForestClassifier(n_estimators=100, random_state=42)
+        return RandomForestClassifier(n_estimators=100, random_state=42), False
     X, y = [], []
     le = LabelEncoder()
     le.fit(['P', 'B', 'T'])
@@ -461,12 +467,12 @@ def train_ml_model(history: List[Dict]) -> RandomForestClassifier:
                 X.append(features.flatten())
                 y.append(history[i+1]['Result'])
     if not X or not y:
-        return RandomForestClassifier(n_estimators=100, random_state=42)
+        return RandomForestClassifier(n_estimators=100, random_state=42), False
     X = np.array(X)
     y = le.transform(y)
     model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X, y)
-    return model
+    return model, True
 
 def smart_predict() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
@@ -478,20 +484,29 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
     st.session_state.pattern_volatility = volatility
     st.session_state.trend_score = {'streak': insights['streak'], 'chop': insights['chop'], 'double': insights['double']}
     prior_p, prior_b = 44.62 / 100, 45.86 / 100
-    weights = calculate_weights(streak_count, chop_count, double_count, shoe_bias)
+    ml_model, ml_fitted = train_ml_model(st.session_state.history)
+    weights = calculate_weights(streak_count, chop_count, double_count, shoe_bias, ml_fitted)
     prob_p = prob_b = total_weight = 0
     insights = {'Volatility': f"{volatility:.2f}"}
-    ml_model = train_ml_model(st.session_state.history)
-    features = prepare_ml_features(recent_sequence, streak_count, chop_count, double_count, shoe_bias)
-    ml_probs = ml_model.predict_proba(features)[0]
-    le = LabelEncoder()
-    le.fit(['P', 'B', 'T'])
-    ml_pred = le.inverse_transform([np.argmax(ml_probs)])[0]
-    ml_conf = max(ml_probs) * 100
-    prob_p += weights.get('ml', 0.3) * ml_probs[le.transform(['P'])[0]]
-    prob_b += weights.get('ml', 0.3) * ml_probs[le.transform(['B'])[0]]
-    total_weight += weights.get('ml', 0.3)
-    insights['ML_Model'] = f"{weights.get('ml', 0.3)*100:.0f}% (P: {ml_probs[le.transform(['P'])[0]]*100:.1f}%, B: {ml_probs[le.transform(['B'])[0]]*100:.1f}%)"
+    ml_pred = None
+    ml_conf = 0.0
+    if ml_fitted:
+        try:
+            check_is_fitted(ml_model)
+            features = prepare_ml_features(recent_sequence, streak_count, chop_count, double_count, shoe_bias)
+            ml_probs = ml_model.predict_proba(features)[0]
+            le = LabelEncoder()
+            le.fit(['P', 'B', 'T'])
+            ml_pred = le.inverse_transform([np.argmax(ml_probs)])[0]
+            ml_conf = max(ml_probs) * 100
+            prob_p += weights.get('ml', 0.3) * ml_probs[le.transform(['P'])[0]]
+            prob_b += weights.get('ml', 0.3) * ml_probs[le.transform(['B'])[0]]
+            total_weight += weights.get('ml', 0.3)
+            insights['ML_Model'] = f"{weights.get('ml', 0.3)*100:.0f}% (P: {ml_probs[le.transform(['P'])[0]]*100:.1f}%, B: {ml_probs[le.transform(['B'])[0]]*100:.1f}%)"
+        except NotFittedError:
+            insights['ML_Model'] = "0% (Not trained: Insufficient data)"
+    else:
+        insights['ML_Model'] = "0% (Not trained: Insufficient data)"
     if len(recent_sequence) >= 2:
         bigram = tuple(recent_sequence[-2:])
         total = sum(bigram_transitions[bigram].values())
@@ -539,7 +554,7 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         current = ''.join(last_two)
         if current in transitions:
             total = sum(transitions[current].values())
-            if total > 0:
+            if total betreffen > 0:
                 p_prob = transitions[current]['P'] / total
                 b_prob = transitions[current]['B'] / total
                 markov_pred = 'P' if p_prob > b_prob else 'B'
@@ -590,8 +605,8 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
     elif shoe_bias < -0.1:
         prob_b *= 1.05
         prob_p *= 0.95
-    final_pred = ml_pred if ml_conf > max(fourgram_conf, markov_conf) else (fourgram_pred if fourgram_conf > markov_conf else markov_pred)
-    final_conf = max(ml_conf, fourgram_conf, markov_conf)
+    final_pred = ml_pred if ml_fitted and ml_conf > max(fourgram_conf, markov_conf) else (fourgram_pred if fourgram_conf > markov_conf else markov_pred)
+    final_conf = max(ml_conf if ml_fitted else 0.0, fourgram_conf, markov_conf)
     if not final_pred:
         final_pred = 'P' if prob_p > prob_b else 'B'
         final_conf = max(prob_p, prob_b)
