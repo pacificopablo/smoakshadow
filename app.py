@@ -276,7 +276,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     if total_w == 0:
         weights = {'bigram': 0.25, 'trigram': 0.20, 'fourgram': 0.30, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
         total_w = sum(weights.values())
-    return {k: max(w / total_w, 0.05) for k, v in weights.items()}
+    return {k: max(w / total_w, 0.05) for k, w in weights.items()}
 
 def smart_predict() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
