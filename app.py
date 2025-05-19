@@ -734,18 +734,32 @@ def render_result_input():
             st.rerun()
 
 def render_bead_plate():
-    with st.expander("Bead Plate", expanded=True):
-        if not st.session_state.sequence:
-            st.write("No results yet.")
-            return
-        sequence = st.session_state.sequence
-        grid = [''] * 36
-        for i, outcome in enumerate(sequence):
-            if i < 36:
-                grid[i] = outcome
-        rows = [grid[i:i+6] for i in range(0, 36, 6)]
-        df = pd.DataFrame(rows, columns=[f"Col {i+1}" for i in range(6)])
-        st.table(df)
+    try:
+        with st.expander("Bead Plate", expanded=True):
+            sequence = st.session_state.sequence[-90:]
+            grid = [[] for _ in range(15)]
+            for i, result in enumerate(sequence):
+                col_index = i // 6
+                if col_index < 15:
+                    grid[col_index].append(result)
+            for col in grid:
+                while len(col) < 6:
+                    col.append('')
+            bead_plate_html = "<div class='bead-plate' style='display: flex; flex-direction: row; gap: 5px;'>"
+            for col in grid:
+                col_html = "<div style='display: flex; flex-direction: column; gap: 5px;'>"
+                for result in col:
+                    style = (
+                        "width: 24px; height: 24px; border: 1px solid #e2e8f0; border-radius: 50%;" if result == '' else
+                        f"width: 24px; height: 24px; background-color: {'#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'}; border-radius: 50%;"
+                    )
+                    col_html += f"<div style='{style}'></div>"
+                col_html += "</div>"
+                bead_plate_html += col_html
+            bead_plate_html += "</div>"
+            st.markdown(bead_plate_html, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Error rendering bead plate: {str(e)}")
 
 def render_prediction():
     with st.expander("Prediction", expanded=True):
@@ -872,8 +886,8 @@ def render_simulation():
         if st.button("Run Simulation", key="run_sim_btn"):
             with st.spinner("Running simulation..."):
                 result = simulate_to_target(strategy, num_shoes)
-                st.write(f"Average Accuracy: {result['avg_accuracy']:.1f}% (±{result['std_accuracy']:.1f}%)")
-                st.write(f"Average Final Bankroll: ${result['avg_bankroll']:.2f} (±${result['std_bankroll']:.2f})")
+                st.write(f"Average Accuracy: {result['avg_accuracy']:.1f}% (Â±{result['std_accuracy']:.1f}%)")
+                st.write(f"Average Final Bankroll: ${result['avg_bankroll']:.2f} (Â±${result['std_bankroll']:.2f})")
                 st.write(f"Total Wins: {result['wins']}")
                 st.write(f"Total Losses: {result['losses']}")
                 fig = go.Figure()
