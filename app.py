@@ -490,6 +490,10 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
     insights = {'Volatility': f"{volatility:.2f}"}
     ml_pred = None
     ml_conf = 0.0
+    final_pred = None
+    final_conf = 0.0
+
+    # Machine Learning Prediction
     if ml_fitted:
         try:
             check_is_fitted(ml_model)
@@ -499,123 +503,132 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
             le.fit(['P', 'B', 'T'])
             ml_pred = le.inverse_transform([np.argmax(ml_probs)])[0]
             ml_conf = max(ml_probs) * 100
-            prob_p += weights.get('ml', 0.3) * ml_probs[le.transform(['P'])[0]]
-            prob_b += weights.get('ml', 0.3) * ml_probs[le.transform(['B'])[0]]
-            total_weight += weights.get('ml', 0.3)
-            insights['ML_Model'] = f"{weights.get('ml', 0.3)*100:.0f}% (P: {ml_probs[le.transform(['P'])[0]]*100:.1f}%, B: {ml_probs[le.transform(['B'])[0]]*100:.1f}%)"
+            insights['ML_Model'] = f"100% (P: {ml_probs[le.transform(['P'])[0]]*100:.1f}%, B: {ml_probs[le.transform(['B'])[0]]*100:.1f}%)"
+            if ml_conf >= 40.0:
+                final_pred = ml_pred
+                final_conf = ml_conf
+                prob_p = ml_probs[le.transform(['P'])[0]] * 100
+                prob_b = ml_probs[le.transform(['B'])[0]] * 100
         except NotFittedError:
             insights['ML_Model'] = "0% (Not trained: Insufficient data)"
     else:
         insights['ML_Model'] = "0% (Not trained: Insufficient data)"
-    if len(recent_sequence) >= 2:
-        bigram = tuple(recent_sequence[-2:])
-        total = sum(bigram_transitions[bigram].values())
-        if total > 0:
-            p_prob = bigram_transitions[bigram]['P'] / total
-            b_prob = bigram_transitions[bigram]['B'] / total
-            prob_p += weights['bigram'] * (prior_p + p_prob) / (1 + total)
-            prob_b += weights['bigram'] * (prior_b + b_prob) / (1 + total)
-            total_weight += weights['bigram']
-            insights['Bigram'] = f"{weights['bigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    if len(recent_sequence) >= 3:
-        trigram = tuple(recent_sequence[-3:])
-        total = sum(trigram_transitions[trigram].values())
-        if total > 0:
-            p_prob = trigram_transitions[trigram]['P'] / total
-            b_prob = trigram_transitions[trigram]['B'] / total
-            prob_p += weights['trigram'] * (prior_p + p_prob) / (1 + total)
-            prob_b += weights['trigram'] * (prior_b + b_prob) / (1 + total)
-            total_weight += weights['trigram']
-            insights['Trigram'] = f"{weights['trigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    fourgram_pred = None
-    fourgram_conf = 0.0
-    if len(recent_sequence) >= 4:
-        fourgram = recent_sequence[-4:]
-        fourgram_key = ''.join(fourgram)
-        fourgram_pred = 'B' if fourgram_key in ['PPPP', 'BBBB', 'PPBB', 'BBPP'] else 'P'
-        fourgram_conf = 60.0 if fourgram_key in ['PPPP', 'BBBB'] else 50.0
-        total = sum(fourgram_transitions[tuple(fourgram)].values())
-        if total > 0:
-            p_prob = fourgram_transitions[tuple(fourgram)]['P'] / total
-            b_prob = fourgram_transitions[tuple(fourgram)]['B'] / total
-            prob_p += weights['fourgram'] * (prior_p + p_prob) / (1 + total)
-            prob_b += weights['fourgram'] * (prior_b + b_prob) / (1 + total)
-            total_weight += weights['fourgram']
-            insights['Fourgram'] = f"{weights['fourgram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    markov_pred = None
-    markov_conf = 0.0
-    if len(recent_sequence) >= 2:
-        last_two = recent_sequence[-2:]
-        transitions = defaultdict(lambda: {'P': 0, 'B': 0, 'T': 0})
-        for i in range(len(recent_sequence) - 2):
-            current = recent_sequence[i:i+2]
-            next_outcome = recent_sequence[i+2]
-            transitions[''.join(current)][next_outcome] += 1
-        current = ''.join(last_two)
-        if current in transitions:
-            total = sum(transitions[current].values())
-            if total > 0:
-                p_prob = transitions[current]['P'] / total
-                b_prob = transitions[current]['B'] / total
-                markov_pred = 'P' if p_prob > b_prob else 'B'
-                markov_conf = max(p_prob, b_prob) * 100
-                prob_p += weights['markov'] * (prior_p + p_prob) / (1 + total)
-                prob_b += weights['markov'] * (prior_b + b_prob) / (1 + total)
-                total_weight += weights['markov']
-                insights['Markov'] = f"{weights['markov']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
-    if streak_count >= 2:
-        streak_prob = min(0.7, 0.5 + streak_count * 0.05) * (0.8 if streak_count > 4 else 1.0)
-        current_streak = recent_sequence[-1]
-        if current_streak == 'P':
-            prob_p += weights['streak'] * streak_prob
-            prob_b += weights['streak'] * (1 - streak_prob)
-        else:
-            prob_b += weights['streak'] * streak_prob
-            prob_p += weights['streak'] * (1 - streak_prob)
-        total_weight += weights['streak']
-        insights['Streak'] = f"{weights['streak']*100:.0f}% ({streak_count} {current_streak})"
-    if chop_count >= 2:
-        next_pred = 'B' if recent_sequence[-1] == 'P' else 'P'
-        if next_pred == 'P':
-            prob_p += weights['chop'] * 0.6
-            prob_b += weights['chop'] * 0.4
-        else:
-            prob_b += weights['chop'] * 0.6
-            prob_p += weights['chop'] * 0.4
-        total_weight += weights['chop']
-        insights['Chop'] = f"{weights['chop']*100:.0f}% ({chop_count} alternations)"
-    if double_count >= 1 and len(recent_sequence) >= 2 and recent_sequence[-1] == recent_sequence[-2]:
-        double_prob = 0.6
-        if recent_sequence[-1] == 'P':
-            prob_p += weights['double'] * double_prob
-            prob_b += weights['double'] * (1 - double_prob)
-        else:
-            prob_b += weights['double'] * double_prob
-            prob_p += weights['double'] * (1 - double_prob)
-        total_weight += weights['double']
-        insights['Double'] = f"{weights['double']*100:.0f}% ({recent_sequence[-1]}{recent_sequence[-1]})"
-    if total_weight > 0:
-        prob_p = (prob_p / total_weight) * 100
-        prob_b = (prob_b / total_weight) * 100
-    else:
-        prob_p, prob_b = 44.62, 45.86
-    if shoe_bias > 0.1:
-        prob_p *= 1.05
-        prob_b *= 0.95
-    elif shoe_bias < -0.1:
-        prob_b *= 1.05
-        prob_p *= 0.95
-    final_pred = ml_pred if ml_fitted and ml_conf > max(fourgram_conf, markov_conf) else (fourgram_pred if fourgram_conf > markov_conf else markov_pred)
-    final_conf = max(ml_conf if ml_fitted else 0.0, fourgram_conf, markov_conf)
+
+    # Heuristic Predictions (Fallback)
     if not final_pred:
-        final_pred = 'P' if prob_p > prob_b else 'B'
-        final_conf = max(prob_p, prob_b)
+        if len(recent_sequence) >= 2:
+            bigram = tuple(recent_sequence[-2:])
+            total = sum(bigram_transitions[bigram].values())
+            if total > 0:
+                p_prob = bigram_transitions[bigram]['P'] / total
+                b_prob = bigram_transitions[bigram]['B'] / total
+                prob_p += weights['bigram'] * (prior_p + p_prob) / (1 + total)
+                prob_b += weights['bigram'] * (prior_b + b_prob) / (1 + total)
+                total_weight += weights['bigram']
+                insights['Bigram'] = f"{weights['bigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
+        if len(recent_sequence) >= 3:
+            trigram = tuple(recent_sequence[-3:])
+            total = sum(trigram_transitions[trigram].values())
+            if total > 0:
+                p_prob = trigram_transitions[trigram]['P'] / total
+                b_prob = trigram_transitions[trigram]['B'] / total
+                prob_p += weights['trigram'] * (prior_p + p_prob) / (1 + total)
+                prob_b += weights['trigram'] * (prior_b + b_prob) / (1 + total)
+                total_weight += weights['trigram']
+                insights['Trigram'] = f"{weights['trigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
+        fourgram_pred = None
+        fourgram_conf = 0.0
+        if len(recent_sequence) >= 4:
+            fourgram = recent_sequence[-4:]
+            fourgram_key = ''.join(fourgram)
+            fourgram_pred = 'B' if fourgram_key in ['PPPP', 'BBBB', 'PPBB', 'BBPP'] else 'P'
+            fourgram_conf = 60.0 if fourgram_key in ['PPPP', 'BBBB'] else 50.0
+            total = sum(fourgram_transitions[tuple(fourgram)].values())
+            if total > 0:
+                p_prob = fourgram_transitions[tuple(fourgram)]['P'] / total
+                b_prob = fourgram_transitions[tuple(fourgram)]['B'] / total
+                prob_p += weights['fourgram'] * (prior_p + p_prob) / (1 + total)
+                prob_b += weights['fourgram'] * (prior_b + b_prob) / (1 + total)
+                total_weight += weights['fourgram']
+                insights['Fourgram'] = f"{weights['fourgram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
+        markov_pred = None
+        markov_conf = 0.0
+        if len(recent_sequence) >= 2:
+            last_two = recent_sequence[-2:]
+            transitions = defaultdict(lambda: {'P': 0, 'B': 0, 'T': 0})
+            for i in range(len(recent_sequence) - 2):
+                current = recent_sequence[i:i+2]
+                next_outcome = recent_sequence[i+2]
+                transitions[''.join(current)][next_outcome] += 1
+            current = ''.join(last_two)
+            if current in transitions:
+                total = sum(transitions[current].values())
+                if total > 0:
+                    p_prob = transitions[current]['P'] / total
+                    b_prob = transitions[current]['B'] / total
+                    markov_pred = 'P' if p_prob > b_prob else 'B'
+                    markov_conf = max(p_prob, b_prob) * 100
+                    prob_p += weights['markov'] * (prior_p + p_prob) / (1 + total)
+                    prob_b += weights['markov'] * (prior_b + b_prob) / (1 + total)
+                    total_weight += weights['markov']
+                    insights['Markov'] = f"{weights['markov']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
+        if streak_count >= 2:
+            streak_prob = min(0.7, 0.5 + streak_count * 0.05) * (0.8 if streak_count > 4 else 1.0)
+            current_streak = recent_sequence[-1]
+            if current_streak == 'P':
+                prob_p += weights['streak'] * streak_prob
+                prob_b += weights['streak'] * (1 - streak_prob)
+            else:
+                prob_b += weights['streak'] * streak_prob
+                prob_p += weights['streak'] * (1 - streak_prob)
+            total_weight += weights['streak']
+            insights['Streak'] = f"{weights['streak']*100:.0f}% ({streak_count} {current_streak})"
+        if chop_count >= 2:
+            next_pred = 'B' if recent_sequence[-1] == 'P' else 'P'
+            if next_pred == 'P':
+                prob_p += weights['chop'] * 0.6
+                prob_b += weights['chop'] * 0.4
+            else:
+                prob_b += weights['chop'] * 0.6
+                prob_p += weights['chop'] * 0.4
+            total_weight += weights['chop']
+            insights['Chop'] = f"{weights['chop']*100:.0f}% ({chop_count} alternations)"
+        if double_count >= 1 and len(recent_sequence) >= 2 and recent_sequence[-1] == recent_sequence[-2]:
+            double_prob = 0.6
+            if recent_sequence[-1] == 'P':
+                prob_p += weights['double'] * double_prob
+                prob_b += weights['double'] * (1 - double_prob)
+            else:
+                prob_b += weights['double'] * double_prob
+                prob_p += weights['double'] * (1 - double_prob)
+            total_weight += weights['double']
+            insights['Double'] = f"{weights['double']*100:.0f}% ({recent_sequence[-1]}{recent_sequence[-1]})"
+        if total_weight > 0:
+            prob_p = (prob_p / total_weight) * 100
+            prob_b = (prob_b / total_weight) * 100
+        else:
+            prob_p, prob_b = 44.62, 45.86
+        if shoe_bias > 0.1:
+            prob_p *= 1.05
+            prob_b *= 0.95
+        elif shoe_bias < -0.1:
+            prob_b *= 1.05
+            prob_p *= 0.95
+        final_pred = fourgram_pred if fourgram_conf > markov_conf else markov_pred
+        final_conf = max(fourgram_conf, markov_conf)
+        if not final_pred:
+            final_pred = 'P' if prob_p > prob_b else 'B'
+            final_conf = max(prob_p, prob_b)
+
+    # Adjust for strong patterns
     if insights.get('streak', 0.0) > 0.6 and recent_sequence and recent_sequence[-1] != 'T':
         final_pred = recent_sequence[-1]
         final_conf += 10.0
     elif insights.get('chop', 0.0) > 0.6 and recent_sequence and recent_sequence[-1] != 'T':
         final_pred = 'P' if recent_sequence[-1] == 'B' else 'B'
         final_conf += 5.0
+
+    # Apply betting threshold
     recent_accuracy = (st.session_state.prediction_accuracy['P'] + st.session_state.prediction_accuracy['B']) / max(st.session_state.prediction_accuracy['total'], 1)
     threshold = 32.0 + (st.session_state.consecutive_losses * 0.5) - (recent_accuracy * 0.8)
     threshold = min(max(threshold, 32.0), 42.0)
@@ -624,6 +637,8 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         threshold += 1.5
         insights['Volatility'] = f"High (Adjustment: +1.5% threshold)"
     final_conf = min(final_conf, 100.0)
+
+    # Return prediction if confidence meets threshold
     if final_pred == 'P' and prob_p >= threshold:
         return 'P', prob_p, insights
     elif final_pred == 'B' and prob_b >= threshold:
