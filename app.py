@@ -13,7 +13,7 @@ from typing import Tuple, Dict, Optional, List
 import uuid
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
-from sklearn.utils.validation import check_is_fitted
+from sklearn.utils.validation import check_is_fitted, NotFittedError
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
