@@ -247,7 +247,7 @@ def initialize_session_state():
         'non_betting_deals': 0,
         'is_paused': False,
         'shoe_completed': False,
-        'enable_ml': False  # New: Toggle for ML predictions
+        'enable_ml': False
     }
     defaults['pattern_success']['bigram'] = 0
     defaults['pattern_attempts']['bigram'] = 0
@@ -372,7 +372,7 @@ def train_ml_model(history: List[Dict], sequence: List[str], window_size: int = 
             if features is not None:
                 data.append(features.iloc[0].to_dict())
                 labels.append(sequence[i + window_size])
-    if not data or len(labels) < 10:  # Minimum data requirement
+    if not data or len(labels) < 10:
         return None
     df = pd.DataFrame(data)
     labels = np.array(labels)
@@ -606,7 +606,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         prob_b *= 1.05
         prob_p *= 0.95
     
-    # ML Prediction
     ml_prob_p, ml_prob_b, ml_prob_t = prior_p, prior_b, 0.0952
     ml_pred = None
     ml_conf = 0.0
@@ -618,7 +617,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
                 df_encoded = pd.get_dummies(features[['bigram', 'trigram', 'fourgram']], sparse=True)
                 df_numeric = features[['volatility', 'shoe_bias', 'streak_score', 'chop_score', 'double_score']]
                 X = pd.concat([df_encoded, df_numeric], axis=1)
-                # Ensure feature alignment
                 model_features = model.feature_names_in_
                 for col in model_features:
                     if col not in X.columns:
@@ -635,7 +633,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         except (FileNotFoundError, Exception) as e:
             insights['ML_Confidence'] = f"ML model not available: {str(e)}"
     
-    # Combine rule-based and ML predictions
     ml_weight = 0.5 if st.session_state.enable_ml and ml_pred else 0.0
     final_prob_p = ml_weight * ml_prob_p + (1 - ml_weight) * prob_p
     final_prob_b = ml_weight * ml_prob_b + (1 - ml_weight) * prob_b
@@ -1004,7 +1001,6 @@ def place_result(result: str):
         update_t3_level()
     if len(st.session_state.sequence) >= SHOE_SIZE:
         st.session_state.shoe_completed = True
-    # Retrain ML model periodically
     if st.session_state.enable_ml and len(st.session_state.sequence) % 10 == 0:
         train_ml_model(st.session_state.history, st.session_state.sequence)
 
@@ -1033,7 +1029,6 @@ def simulate_shoe(num_hands: int = SHOE_SIZE, strategy: str = 'Genius') -> Dict:
         st.session_state.prediction_accuracy['total'] += 1
         if outcome in ['P', 'B']:
             st.session_state.prediction_accuracy[outcome] += 1 if pred == outcome else 0
-    # Train ML model after simulation
     if st.session_state.enable_ml:
         train_ml_model(st.session_state.history, sequence)
     accuracy = (correct / total * 100) if total > 0 else 0
@@ -1365,6 +1360,15 @@ def render_export():
         if st.session_state.history:
             df = pd.DataFrame(st.session_state.history)
             csv = df.to_csv(index=False)
-            st.download_button(label="Download History as CSV", data=csv, file_name="baccarat_history.csv", mime="text/csv")
+            st.download_button(
+                label="Download History as CSV",
+                data=csv,
+                file_name="baccarat_history.csv",
+                mime="text/csv"
+            )
         if os.path.exists(SIMULATION_LOG):
-            with open(SIMULATION_LOG, 'r', encoding='utf-8')
+            try:
+                with open(SIMULATION_LOG, 'r', encoding='utf-8') as f:
+                    log_content = f.read()
+                st.download_button(
+                    label="Download Simulation Log as TXT
