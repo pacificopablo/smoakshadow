@@ -6,6 +6,7 @@ import time
 import numpy as np
 from typing import Tuple, Dict, Optional, List
 import uuid
+import plotly.graph_objects as go
 
 # --- Constants ---
 SESSION_FILE = "online_users.txt"
@@ -426,7 +427,7 @@ def update_t3_level():
         st.session_state.t3_results = st.session_state.t3_results[-4:]
 
 def smart_stop() -> bool:
-    if st.session_state.consecutive_losses >= 3:
+    if st.session_state.consecutive_losses  >= 3:
         return True
     if st.session_state.stop_loss_enabled:
         stop_loss_threshold = st.session_state.initial_bankroll * (st.session_state.stop_loss_percentage / 100)
@@ -513,7 +514,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if (bet_amount > st.session_state.bankroll or
             st.session_state.bankroll - bet_amount < safe_bankroll * 0.5):
-            if st.session_state.strategy == 'T3':
+            if st.session_state.strategy ಮ = 'T3':
                 st.session_state.t3_level = 1
                 st.session_state.t3_results = []
             elif st.session_state.strategy == 'Parlay16':
@@ -930,12 +931,13 @@ def render_insights():
 
 @st.cache_data
 def get_chart_data(history, initial_bankroll):
-    bankroll_data = [initial_bankroll] + [
-        h['Previous_State'].get('bankroll', initial_bankroll) for h in history[-20:]
-    ]
-    accuracy_data = [None] + [
-        h['Previous_State'].get('recent_accuracy', 50.0) for h in history[-20:]
-    ]
+    bankroll_data = [initial_bankroll]
+    accuracy_data = [50.0]  # Default accuracy
+    for h in history[-20:]:
+        bankroll = h.get('Previous_State', {}).get('bankroll', initial_bankroll)
+        accuracy = h.get('Previous_State', {}).get('recent_accuracy', 50.0)
+        bankroll_data.append(float(bankroll) if bankroll is not None else initial_bankroll)
+        accuracy_data.append(float(accuracy) if accuracy is not None else 50.0)
     labels = [str(i) for i in range(len(bankroll_data))]
     return bankroll_data, accuracy_data, labels
 
@@ -974,121 +976,23 @@ def render_genius_insights():
         
         try:
             bankroll_data, accuracy_data, labels = get_chart_data(history, st.session_state.initial_bankroll)
-            if not bankroll_data or len(bankroll_data) < 2:
-                st.warning("Insufficient data to display trends. Play more hands.")
+            if len(bankroll_data) < 2 or any(d is None or np.isnan(d) for d in bankroll_data + accuracy_data):
+                st.warning("Not enough valid data to display trends. Play more hands.")
                 return
             
             st.markdown("**Bankroll & Accuracy Trend**")
-            # Generate a unique ID for the canvas to avoid conflicts
-            chart_id = f"chart-{uuid.uuid4()}"
-            chart_html = f"""
-            <div style="height: 400px; width: 100%; margin-bottom: 20px;">
-                <canvas id="{chart_id}"></canvas>
-            </div>
-            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-            <script>
-                const ctx = document.getElementById('{chart_id}').getContext('2d');
-                new Chart(ctx, {{
-                    type: 'line',
-                    data: {{
-                        labels: {labels},
-                        datasets: [
-                            {{
-                                label: 'Bankroll ($)',
-                                data: {bankroll_data},
-                                borderColor: '#0288d1',
-                                backgroundColor: 'rgba(2, 136, 209, 0.1)',
-                                yAxisID: 'y',
-                                fill: false,
-                                pointRadius: 4,
-                                borderWidth: 2
-                            }},
-                            {{
-                                label: 'Accuracy (%)',
-                                data: {accuracy_data},
-                                borderColor: '#2e7d32',
-                                backgroundColor: 'rgba(46, 125, 50, 0.1)',
-                                yAxisID: 'y1',
-                                fill: false,
-                                pointRadius: 4,
-                                borderWidth: 2
-                            }}
-                        ]
-                    }},
-                    options: {{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {{
-                            legend: {{
-                                display: true,
-                                position: 'top',
-                                labels: {{
-                                    font: {{ size: 14 }},
-                                    color: '#1a3c6e'
-                                }}
-                            }},
-                            tooltip: {{
-                                enabled: true,
-                                callbacks: {{
-                                    label: function(context) {{
-                                        let label = context.dataset.label || '';
-                                        let value = context.parsed.y;
-                                        return label + ': ' + (label.includes('Bankroll') ? '$' + value.toFixed(2) : value.toFixed(1) + '%');
-                                    }}
-                                }}
-                            }}
-                        }},
-                        scales: {{
-                            y: {{
-                                type: 'linear',
-                                display: true,
-                                position: 'left',
-                                title: {{
-                                    display: true,
-                                    text: 'Bankroll ($)',
-                                    font: {{ size: 14 }},
-                                    color: '#1a3c6e'
-                                }},
-                                suggestedMin: 7,
-                                suggestedMax: 10,
-                                ticks: {{
-                                    callback: function(value) {{ return '$' + value.toFixed(2); }},
-                                    font: {{ size: 12 }}
-                                }}
-                            }},
-                            y1: {{
-                                type: 'linear',
-                                display: true,
-                                position: 'right',
-                                title: {{
-                                    display: true,
-                                    text: 'Accuracy (%)',
-                                    font: {{ size: 14 }},
-                                    color: '#1a3c6e'
-                                }},
-                                suggestedMin: 0,
-                                suggestedMax: 100,
-                                ticks: {{
-                                    callback: function(value) {{ return value + '%'; }},
-                                    font: {{ size: 12 }}
-                                }},
-                                grid: {{ drawOnChartArea: false }}
-                            }},
-                            x: {{
-                                title: {{
-                                    display: true,
-                                    text: 'Hand Number',
-                                    font: {{ size: 14 }},
-                                    color: '#1a3c6e'
-                                }},
-                                ticks: {{ font: {{ size: 12 }} }}
-                            }}
-                        }}
-                    }}
-                }});
-            </script>
-            """
-            st.markdown(chart_html, unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=labels, y=bankroll_data, name="Bankroll ($)", line=dict(color="#0288d1")))
+            fig.add_trace(go.Scatter(x=labels, y=accuracy_data, name="Accuracy (%)", line=dict(color="#2e7d32"), yaxis="y2"))
+            fig.update_layout(
+                title="Bankroll & Accuracy Trend",
+                xaxis=dict(title="Hand Number"),
+                yaxis=dict(title="Bankroll ($)", side="left"),
+                yaxis2=dict(title="Accuracy (%)", side="right", overlaying="y"),
+                legend=dict(x=0, y=1.1, orientation="h"),
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"Error rendering chart: {str(e)}. Please play more hands or check session data.")
 
