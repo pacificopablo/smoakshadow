@@ -442,7 +442,22 @@ def genius_bet(conf: float, shoe_bias: float) -> float:
         base *= 1.1
     elif shoe_bias < -0.2:
         base *= 1.1
-    return min(base, st.session_state.bankroll * 0.05)  # Cap at 5% of bankroll
+    # Round to nearest multiple of base_bet
+    base_bet = st.session_state.base_bet
+    if base_bet > 0:  # Avoid division by zero
+        rounded_bet = round(base / base_bet) * base_bet
+        # Ensure bet is at least base_bet if rounding results in zero
+        rounded_bet = max(rounded_bet, base_bet)
+    else:
+        rounded_bet = base
+    # Cap at 5% of bankroll
+    capped_bet = min(rounded_bet, st.session_state.bankroll * 0.05)
+    # Ensure the capped bet is also a multiple of base_bet
+    if base_bet > 0:
+        capped_bet = (int(capped_bet / base_bet)) * base_bet
+        # If capping reduces bet to zero, use the base bet if possible
+        capped_bet = max(capped_bet, base_bet) if capped_bet <= st.session_state.bankroll * 0.05 else 0
+    return capped_bet
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
     if len(st.session_state.sequence) < 8:  # Start on 9th hand
