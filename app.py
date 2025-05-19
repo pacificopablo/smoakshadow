@@ -276,7 +276,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     if total_w == 0:
         weights = {'bigram': 0.25, 'trigram': 0.20, 'fourgram': 0.30, 'streak': 0.15, 'chop': 0.05, 'double': 0.05}
         total_w = sum(weights.values())
-    return {k: max(w / total_w, 0.05) for k, w in weights.items()}
+    return {k: max(w / total_w, 0.05) for k, v in weights.items()}
 
 def smart_predict() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
@@ -514,7 +514,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if (bet_amount > st.session_state.bankroll or
             st.session_state.bankroll - bet_amount < safe_bankroll * 0.5):
-            if st.session_state.strategy ಮ = 'T3':
+            if st.session_state.strategy != 'T3':
                 st.session_state.t3_level = 1
                 st.session_state.t3_results = []
             elif st.session_state.strategy == 'Parlay16':
