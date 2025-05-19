@@ -63,6 +63,12 @@ def apply_custom_css():
         .css-1d391kg {
             padding: 1rem;
         }
+        .bead-plate {
+            background-color: #edf2f7;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
         </style>
     """, unsafe_allow_html=True)
 
