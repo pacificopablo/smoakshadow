@@ -964,111 +964,116 @@ def render_genius_insights():
                 return
             
             st.markdown("**Bankroll & Accuracy Trend**")
-            st.code(
-                """
-                ```chartjs
-                {
-                    "type": "line",
-                    "data": {
-                        "labels": """ + str(labels) + """,
-                        "datasets": [
-                            {
-                                "label": "Bankroll ($)",
-                                "data": """ + str(bankroll_data) + """,
-                                "borderColor": "#0288d1",
-                                "backgroundColor": "rgba(2, 136, 209, 0.1)",
-                                "yAxisID": "y",
-                                "fill": false,
-                                "pointRadius": 4,
-                                "borderWidth": 2
-                            },
-                            {
-                                "label": "Accuracy (%)",
-                                "data": """ + str(accuracy_data) + """,
-                                "borderColor": "#2e7d32",
-                                "backgroundColor": "rgba(46, 125, 50, 0.1)",
-                                "yAxisID": "y1",
-                                "fill": false,
-                                "pointRadius": 4,
-                                "borderWidth": 2
-                            }
+            # Generate a unique ID for the canvas to avoid conflicts
+            chart_id = f"chart-{uuid.uuid4()}"
+            chart_html = f"""
+            <div style="height: 400px; width: 100%; margin-bottom: 20px;">
+                <canvas id="{chart_id}"></canvas>
+            </div>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+            <script>
+                const ctx = document.getElementById('{chart_id}').getContext('2d');
+                new Chart(ctx, {{
+                    type: 'line',
+                    data: {{
+                        labels: {labels},
+                        datasets: [
+                            {{
+                                label: 'Bankroll ($)',
+                                data: {bankroll_data},
+                                borderColor: '#0288d1',
+                                backgroundColor: 'rgba(2, 136, 209, 0.1)',
+                                yAxisID: 'y',
+                                fill: false,
+                                pointRadius: 4,
+                                borderWidth: 2
+                            }},
+                            {{
+                                label: 'Accuracy (%)',
+                                data: {accuracy_data},
+                                borderColor: '#2e7d32',
+                                backgroundColor: 'rgba(46, 125, 50, 0.1)',
+                                yAxisID: 'y1',
+                                fill: false,
+                                pointRadius: 4,
+                                borderWidth: 2
+                            }}
                         ]
-                    },
-                    "options": {
-                        "responsive": true,
-                        "maintainAspectRatio": false,
-                        "plugins": {
-                            "legend": {
-                                "display": true,
-                                "position": "top",
-                                "labels": {
-                                    "font": { "size": 14 },
-                                    "color": "#1a3c6e"
-                                }
-                            },
-                            "tooltip": {
-                                "enabled": true,
-                                "callbacks": {
-                                    "label": function(context) {
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {{
+                            legend: {{
+                                display: true,
+                                position: 'top',
+                                labels: {{
+                                    font: {{ size: 14 }},
+                                    color: '#1a3c6e'
+                                }}
+                            }},
+                            tooltip: {{
+                                enabled: true,
+                                callbacks: {{
+                                    label: function(context) {{
                                         let label = context.dataset.label || '';
                                         let value = context.parsed.y;
                                         return label + ': ' + (label.includes('Bankroll') ? '$' + value.toFixed(2) : value.toFixed(1) + '%');
-                                    }
-                                }
-                            }
-                        },
-                        "scales": {
-                            "y": {
-                                "type": "linear",
-                                "display": true,
-                                "position": "left",
-                                "title": {
-                                    "display": true,
-                                    "text": "Bankroll ($)",
-                                    "font": { "size": 14 },
-                                    "color": "#1a3c6e"
-                                },
-                                "suggestedMin": 7,
-                                "suggestedMax": 10,
-                                "ticks": {
-                                    "callback": function(value) { return '$' + value.toFixed(2); },
-                                    "font": { "size": 12 }
-                                }
-                            },
-                            "y1": {
-                                "type": "linear",
-                                "display": true,
-                                "position": "right",
-                                "title": {
-                                    "display": true,
-                                    "text": "Accuracy (%)",
-                                    "font": { "size": 14 },
-                                    "color": "#1a3c6e"
-                                },
-                                "suggestedMin": 0,
-                                "suggestedMax": 100,
-                                "ticks": {
-                                    "callback": function(value) { return value + '%'; },
-                                    "font": { "size": 12 }
-                                },
-                                "grid": { "drawOnChartArea": false }
-                            },
-                            "x": {
-                                "title": {
-                                    "display": true,
-                                    "text": "Hand Number",
-                                    "font": { "size": 14 },
-                                    "color": "#1a3c6e"
-                                },
-                                "ticks": { "font": { "size": 12 } }
-                            }
-                        }
-                    }
-                }
-                ```
-                """,
-                language="json"
-            )
+                                    }}
+                                }}
+                            }}
+                        }},
+                        scales: {{
+                            y: {{
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {{
+                                    display: true,
+                                    text: 'Bankroll ($)',
+                                    font: {{ size: 14 }},
+                                    color: '#1a3c6e'
+                                }},
+                                suggestedMin: 7,
+                                suggestedMax: 10,
+                                ticks: {{
+                                    callback: function(value) {{ return '$' + value.toFixed(2); }},
+                                    font: {{ size: 12 }}
+                                }}
+                            }},
+                            y1: {{
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {{
+                                    display: true,
+                                    text: 'Accuracy (%)',
+                                    font: {{ size: 14 }},
+                                    color: '#1a3c6e'
+                                }},
+                                suggestedMin: 0,
+                                suggestedMax: 100,
+                                ticks: {{
+                                    callback: function(value) {{ return value + '%'; }},
+                                    font: {{ size: 12 }}
+                                }},
+                                grid: {{ drawOnChartArea: false }}
+                            }},
+                            x: {{
+                                title: {{
+                                    display: true,
+                                    text: 'Hand Number',
+                                    font: {{ size: 14 }},
+                                    color: '#1a3c6e'
+                                }},
+                                ticks: {{ font: {{ size: 12 }} }}
+                            }}
+                        }}
+                    }}
+                }});
+            </script>
+            """
+            st.markdown(chart_html, unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Error rendering chart: {str(e)}. Please play more hands or check session data.")
 
