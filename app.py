@@ -1264,6 +1264,7 @@ def main():
         render_result_input()
         render_bead_plate()
         render_prediction()
+        render_profit_dashboard()
         render_status()
         render_insights()
     with col2:
@@ -1272,7 +1273,6 @@ def main():
         render_history()
         render_export()
         render_simulation()
-        render_profit_dashboard()
 
 if __name__ == "__main__":
     main()
