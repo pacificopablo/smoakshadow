@@ -228,7 +228,7 @@ def initialize_session_state():
         'trend_score': {'streak': 0.0, 'chop': 0.0, 'double': 0.0},
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
-        'safety_net_percentage': 10.0,
+        'safety_net_percentage': 5.0,  # Changed from 10.0 to 5.0
         'safety_net_enabled': True,
         'profit_lock': 519.0,
         'stop_loss_enabled': True,
@@ -399,11 +399,11 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
                   if st.session_state.pattern_attempts.get('bigram', 0) > 0 else 0.5,
         'trigram': st.session_state.pattern_success.get('trigram', 0) / total_bets
                    if st.session_state.pattern_attempts.get('trigram', 0) > 0 else 0.5,
-        'fourgram': st.session_state.pattern_success.get('fourgram', 0) / total_bets
-                    if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.5,
+        'fourgram': (st.session_state.pattern_success.get('fourgram', 0) / total_bets) * 1.5  # Boosted by 1.5x
+                    if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.75,  # Increased default from 0.5
         'markov': st.session_state.pattern_success.get('markov', 0) / total_bets
                   if st.session_state.pattern_attempts.get('markov', 0) > 0 else 0.5,
-        'streak': 0.6 if streak_count >= 2 else 0.3,
+        'streak': 0.8 if streak_count >= 2 else 0.4,  # Increased from 0.6/0.3
         'chop': 0.4 if chop_count >= 2 else 0.2,
         'double': 0.4 if double_count >= 1 else 0.2
     }
@@ -630,8 +630,8 @@ def genius_bet(conf: float, shoe_bias: float) -> float:
 def smart_stop():
     if not st.session_state.stop_loss_enabled:
         return False
-    if st.session_state.consecutive_losses >= 3:
-        if st.session_state.non_betting_deals < 3:
+    if st.session_state.consecutive_losses >= 5:  # Changed from 3 to 5
+        if st.session_state.non_betting_deals < 2:  # Changed from 3 to 2
             st.session_state.is_paused = True
             return True
         st.session_state.is_paused = False
@@ -647,15 +647,15 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     if len(st.session_state.sequence) < 8:
         return None, "No bet: Waiting for 9th hand"
     if st.session_state.smart_skip:
-        if conf < 45.0:
+        if conf < 40.0:  # Changed from 45.0 to 40.0
             return None, f"No bet: Confidence too low ({conf:.1f}%)"
-        if st.session_state.pattern_volatility > 0.6:
+        if st.session_state.pattern_volatility > 0.7:  # Changed from 0.6 to 0.7
             return None, "No bet: High pattern volatility"
         if st.session_state.shoe_completed:
             return None, "No bet: Shoe completed"
         if smart_stop():
-            if st.session_state.consecutive_losses >= 3:
-                return None, f"No bet: Paused due to {st.session_state.consecutive_losses} consecutive losses ({st.session_state.non_betting_deals}/3 deals)"
+            if st.session_state.consecutive_losses >= 5:  # Changed from 3 to 5
+                return None, f"No bet: Paused due to {st.session_state.consecutive_losses} consecutive losses ({st.session_state.non_betting_deals}/2 deals)"  # Changed from 3 to 2
             return None, f"No bet: Paused due to stop-loss (Bankroll: ${st.session_state.bankroll:.2f}, Needs: >${st.session_state.initial_bankroll * st.session_state.stop_loss_percentage / 100:.2f})"
     if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
@@ -681,8 +681,8 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             st.session_state.profit_lock = st.session_state.bankroll
 
     if st.session_state.strategy == 'Z1003.1':
-        if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
-            return None, "No bet: Stopped after three losses (Z1003.1 rule)"
+        if st.session_state.z1003_loss_count >= 3:
+            st.session_state.z1003_continue = True  # Allow continuation after 3 losses
         bet_amount = enhanced_z1003_bet(st.session_state.z1003_loss_count, st.session_state.base_bet)
     elif st.session_state.strategy == 'Flatbet':
         bet_amount = st.session_state.base_bet
@@ -700,7 +700,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if (bet_amount > st.session_state.bankroll or
             st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
-            bet_amount > st.session_state.bankroll * 0.10):
+            bet_amount > st.session_state.bankroll * 0.15):  # Changed from 0.10 to 0.15
             if st.session_state.strategy == 'T3':
                 old_level = st.session_state.t3_level
                 st.session_state.t3_level = 1
@@ -712,6 +712,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             elif st.session_state.strategy == 'Parlay16':
                 old_step = st.session_state.parlay_step
                 st.session_state.parlay_step = 1
+                st.session_state.parlay_wins = 0
                 st.session_state.parlay_using_base = True
                 if old_step != st.session_state.parlay_step:
                     st.session_state.parlay_step_changes += 1
@@ -826,7 +827,7 @@ def place_result(result: str):
                         if st.session_state.z1003_loss_count == 2 and st.session_state.history and st.session_state.history[-1]['Win']:
                             st.session_state.z1003_continue = True
                         elif st.session_state.z1003_loss_count >= 3:
-                            st.session_state.z1003_continue = False
+                            st.session_state.z1003_continue = True
                     elif st.session_state.strategy == 'Genius':
                         st.session_state.t3_results.append('L')
                     st.session_state.losses += 1
@@ -866,8 +867,8 @@ def place_result(result: str):
         return
     pred, conf, insights = smart_predict()
     bet_amount, advice = calculate_bet_amount(pred, conf)
-    if not smart_stop() and st.session_state.non_betting_deals >= 3 and st.session_state.is_paused:
-        advice = "Betting resumed after 3 deals"
+    if not smart_stop() and st.session_state.non_betting_deals >= 2 and st.session_state.is_paused:
+        advice = "Betting resumed after 2 deals"
         st.session_state.is_paused = False
         st.session_state.non_betting_deals = 0
     st.session_state.pending_bet = (bet_amount, pred) if bet_amount else None
@@ -962,7 +963,7 @@ def render_setup_form():
             safety_net_enabled = st.checkbox("Enable Safety Net", value=st.session_state.safety_net_enabled)
             safety_net_percentage = st.session_state.safety_net_percentage
             if safety_net_enabled:
-                safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=50.0, value=st.session_state.safety_net_percentage, step=5.0)
+                safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=50.0, value=5.0, step=5.0)  # Changed from 10.0 to 5.0
             stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=st.session_state.stop_loss_enabled)
             stop_loss_percentage = st.session_state.stop_loss_percentage
             if stop_loss_enabled:
