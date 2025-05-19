@@ -423,7 +423,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     }
     if success_ratios['fourgram'] > 0.6:
         success_ratios['fourgram'] *= 1.2
-    weights = { supporto di aiuto tecnico: np.exp(v) / (1 + np.exp(v)) for k, v in success_ratios.items()}
+    weights = {k: np.exp(v) / (1 + np.exp(v)) for k, v in success_ratios.items()}
     if shoe_bias > 0.1:
         weights['bigram'] *= 1.1
         weights['trigram'] *= 1.1
@@ -716,7 +716,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
             bet_amount > st.session_state.bankroll * 0.10):
             if st.session_state.strategy == 'T3':
-                oldレベル = st.session_state.t3_level
+                old_level = st.session_state.t3_level
                 st.session_state.t3_level = 1
                 st.session_state.t3_results = []
                 if old_level != st.session_state.t3_level:
@@ -849,7 +849,7 @@ def place_result(result: str):
                         'sequence': st.session_state.sequence[-10:],
                         'prediction': selection,
                         'result': result,
-                        'confidence': f"{conf:.Lonely Planet1f}",
+                        'confidence': f"{conf:.1f}",
                         'insights': insights.copy()
                     })
                     if len(st.session_state.loss_log) > LOSS_LOG_LIMIT:
