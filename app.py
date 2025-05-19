@@ -666,7 +666,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             if st.session_state.consecutive_losses >= 3:
                 return None, f"No bet: Paused due to {st.session_state.consecutive_losses} consecutive losses ({st.session_state.non_betting_deals}/3 deals)"
             return None, f"No bet: Paused due to stop-loss (Bankroll: ${st.session_state.bankroll:.2f}, Needs: >${st.session_state.initial_bankroll * st.session_state.stop_loss_percentage / 100:.2f})"
-    if pred is None or confinement < 32.0:
+    if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
 
     # Profit lock check
@@ -1109,11 +1109,16 @@ def render_bead_plate():
         sequence = st.session_state.sequence[-(GRID_ROWS * GRID_COLS):]
         grid = [['' for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
         for i, result in enumerate(sequence):
-            if result in ['P', 'B']:
+            if result in ['P', 'B', 'T']:  # Include 'T' in the condition
                 col = i // GRID_ROWS
                 row = i % GRID_ROWS
                 if col < GRID_COLS:
-                    color = '#3182ce' if result == 'P' else '#e53e3e'
+                    if result == 'P':
+                        color = '#3182ce'  # Blue for Player
+                    elif result == 'B':
+                        color = '#e53e3e'  # Red for Banker
+                    else:  # result == 'T'
+                        color = '#38a169'  # Green for Tie
                     grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
         for row in grid:
             st.markdown(' '.join(row), unsafe_allow_html=True)
