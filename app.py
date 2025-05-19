@@ -835,17 +835,18 @@ def render_simulation():
 def render_bead_plate():
     with st.expander("Bead Plate", expanded=True):
         st.markdown("**Bead Plate**")
-        sequence = st.session_state.sequence[- (GRID_ROWS * GRID_COLS):]  # Get the last GRID_ROWS * GRID_COLS results
+        sequence = st.session_state.sequence[-(GRID_ROWS * GRID_COLS):]  # Get the last GRID_ROWS * GRID_COLS results
         grid = [['' for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
         
         for i, result in enumerate(sequence[::-1]):  # Reverse to start from the latest
-            if result in ['P', 'B']:
-                row = i // GRID_COLS
-                col = i % GRID_COLS
-                if row < GRID_ROWS:
+            if result in ['P', 'B']:  # Only include Player and Banker outcomes
+                col = i // GRID_ROWS  # Determine column (fill top to bottom)
+                row = i % GRID_ROWS   # Determine row within the column
+                if col < GRID_COLS:   # Ensure we don't exceed the number of columns
                     color = '#1E90FF' if result == 'P' else '#FF4040'  # Blue for Player, Red for Banker
                     grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
 
+        # Render the grid
         for row in grid:
             st.markdown(' '.join(row), unsafe_allow_html=True)
 
