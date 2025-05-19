@@ -22,7 +22,7 @@ SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
 WINDOW_SIZE = 50
-T3_MAX_LEVEL = 10  # Updated to 10 as per prior request
+T3_MAX_LEVEL = 10
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -140,7 +140,9 @@ def initialize_session_state():
         'profit_lock_notification': None,
         'profit_lock_threshold': 5.0,
         'recent_accuracy': 0.0,
-        'smart_skip': True
+        'smart_skip': True,
+        'non_betting_deals': 0,  # Track deals during pause
+        'is_paused': False       # Track pause state
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -190,7 +192,9 @@ def reset_session():
         'profit_lock_notification': None,
         'profit_lock_threshold': 5.0,
         'recent_accuracy': 0.0,
-        'smart_skip': True
+        'smart_skip': True,
+        'non_betting_deals': 0,
+        'is_paused': False
     })
 
 # --- Prediction Logic ---
@@ -262,7 +266,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     success_ratios = {
         'bigram': recent_success.get('bigram', 0.5),
         'trigram': recent_success.get('trigram', 0.5),
-        'fourgram': recent_success.get('fourgram', 0.5) * 1.5,  # Boost fourgram
+        'fourgram': recent_success.get('fourgram', 0.5) * 1.5,
         'streak': 0.6 * (1 + trend_score['streak']) if streak_count >= 2 else 0.3,
         'chop': 0.4 * (1 + trend_score['chop']) if chop_count >= 2 else 0.2,
         'double': 0.4 * (1 + trend_score['double']) if double_count >= 1 else 0.2
@@ -292,7 +296,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
     prob_p = prob_b = total_weight = 0
     insights = {}
     
-    # Bayesian update for probabilities
     if len(recent_sequence) >= 2:
         bigram = tuple(recent_sequence[-2:])
         total = sum(bigram_transitions[bigram].values())
@@ -356,14 +359,12 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         total_weight += weights['double']
         insights['Double'] = f"{weights['double']*100:.0f}% ({recent_sequence[-1]}{recent_sequence[-1]})"
     
-    # Normalize probabilities
     if total_weight > 0:
         prob_p = (prob_p / total_weight) * 100
         prob_b = (prob_b / total_weight) * 100
     else:
         prob_p, prob_b = 44.62, 45.86
     
-    # Adjust for shoe bias and trend
     if shoe_bias > 0.2:
         prob_p *= 1.1
         prob_b *= 0.9
@@ -374,12 +375,10 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         prob_p += 0.5
         prob_b -= 0.5
     
-    # Update recent accuracy
     recent_correct = sum(1 for h in st.session_state.history[-20:] if h['Bet_Placed'] and h['Win'])
     recent_total = sum(1 for h in st.session_state.history[-20:] if h['Bet_Placed'])
     st.session_state.recent_accuracy = (recent_correct / recent_total * 100) if recent_total > 0 else 50.0
     
-    # Dynamic threshold
     threshold = 40.0
     if st.session_state.recent_accuracy > 60.0:
         threshold -= 2.0
@@ -428,11 +427,26 @@ def update_t3_level():
 
 def smart_stop() -> bool:
     if st.session_state.consecutive_losses >= 3:
+        st.session_state.is_paused = True
+        if st.session_state.non_betting_deals >= 3:
+            st.session_state.consecutive_losses = 0
+            st.session_state.non_betting_deals = 0
+            st.session_state.is_paused = False
+            if st.session_state.strategy == 'T3':
+                st.session_state.t3_level = 1
+                st.session_state.t3_results = []
+            return False
         return True
     if st.session_state.stop_loss_enabled:
         stop_loss_threshold = st.session_state.initial_bankroll * (st.session_state.stop_loss_percentage / 100)
         if st.session_state.bankroll <= stop_loss_threshold:
+            st.session_state.is_paused = True
+            if st.session_state.non_betting_deals >= 3 and st.session_state.bankroll >= st.session_state.base_bet:
+                st.session_state.non_betting_deals = 0
+                st.session_state.is_paused = False
+                return False
             return True
+    st.session_state.is_paused = False
     return False
 
 def genius_bet(conf: float, shoe_bias: float) -> float:
@@ -443,25 +457,20 @@ def genius_bet(conf: float, shoe_bias: float) -> float:
         base *= 1.1
     elif shoe_bias < -0.2:
         base *= 1.1
-    # Round to nearest multiple of base_bet
     base_bet = st.session_state.base_bet
-    if base_bet > 0:  # Avoid division by zero
+    if base_bet > 0:
         rounded_bet = round(base / base_bet) * base_bet
-        # Ensure bet is at least base_bet if rounding results in zero
         rounded_bet = max(rounded_bet, base_bet)
     else:
         rounded_bet = base
-    # Cap at 5% of bankroll
     capped_bet = min(rounded_bet, st.session_state.bankroll * 0.05)
-    # Ensure the capped bet is also a multiple of base_bet
     if base_bet > 0:
         capped_bet = (int(capped_bet / base_bet)) * base_bet
-        # If capping reduces bet to zero, use the base bet if possible
         capped_bet = max(capped_bet, base_bet) if capped_bet <= st.session_state.bankroll * 0.05 else 0
     return capped_bet
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
-    if len(st.session_state.sequence) < 8:  # Start on 9th hand
+    if len(st.session_state.sequence) < 8:
         return None, "No bet: Waiting for 9th hand"
     if st.session_state.smart_skip:
         if conf < 45.0:
@@ -472,12 +481,13 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             if st.session_state.strategy == 'T3':
                 st.session_state.t3_level = 1
                 st.session_state.t3_results = []
-            return None, f"No bet: Paused due to {'losses' if st.session_state.consecutive_losses >= 3 else 'stop-loss'}"
+            if st.session_state.consecutive_losses >= 3:
+                return None, f"No bet: Paused due to {st.session_state.consecutive_losses} consecutive losses ({st.session_state.non_betting_deals}/3 deals)"
+            return None, f"No bet: Paused due to stop-loss (Bankroll: ${st.session_state.bankroll:.2f}, Needs: >${st.session_state.initial_bankroll * st.session_state.stop_loss_percentage / 100:.2f})"
     
     if pred is None:
         return None, "No bet: No prediction"
     
-    # Profit lock for T3 and Genius
     if st.session_state.strategy in ['T3', 'Genius'] and st.session_state.bankroll >= st.session_state.profit_lock:
         profit_gained = st.session_state.bankroll - st.session_state.profit_lock
         if profit_gained >= st.session_state.initial_bankroll * (st.session_state.profit_lock_threshold / 100):
@@ -489,7 +499,6 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                 st.session_state.t3_results = []
             st.session_state.profit_lock = st.session_state.bankroll
 
-    # Calculate bet amount
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
             return None, "No bet: Stopped after three losses (Z1003.1)"
@@ -501,15 +510,13 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     elif st.session_state.strategy == 'Genius':
         shoe_bias = analyze_patterns(st.session_state.sequence)[-2]
         bet_amount = genius_bet(conf, shoe_bias)
-    else:  # Parlay16
+    else:
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
         bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
         st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
     
-    # Cap bet at 5% of bankroll
     bet_amount = min(bet_amount, st.session_state.bankroll * 0.05)
     
-    # Safety net check
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if (bet_amount > st.session_state.bankroll or
@@ -561,6 +568,8 @@ def place_result(result: str):
         "pattern_attempts": st.session_state.pattern_attempts.copy(),
         "recent_accuracy": st.session_state.recent_accuracy
     }
+    if st.session_state.is_paused:
+        st.session_state.non_betting_deals += 1
     if st.session_state.pending_bet and result != 'T':
         bet_amount, selection = st.session_state.pending_bet
         win = result == selection
@@ -582,7 +591,7 @@ def place_result(result: str):
                 st.session_state.z1003_loss_count = 0
                 st.session_state.z1003_continue = False
             elif st.session_state.strategy == 'Genius':
-                st.session_state.t3_results.append('W')  # Track for consistency
+                st.session_state.t3_results.append('W')
             st.session_state.wins += 1
             st.session_state.prediction_accuracy[selection] += 1
             st.session_state.consecutive_losses = 0
@@ -641,6 +650,9 @@ def place_result(result: str):
         return
     pred, conf, insights = smart_predict()
     bet_amount, advice = calculate_bet_amount(pred, conf)
+    if not smart_stop() and st.session_state.non_betting_deals == 0 and st.session_state.is_paused:
+        advice = "Betting resumed after 3 deals"
+        st.session_state.is_paused = False
     st.session_state.pending_bet = (bet_amount, pred) if bet_amount else None
     st.session_state.advice = advice
     st.session_state.insights = insights
@@ -826,7 +838,9 @@ def render_setup_form():
                         'stop_loss_percentage': stop_loss_percentage,
                         'profit_lock_threshold': profit_lock_threshold,
                         'recent_accuracy': 50.0,
-                        'smart_skip': smart_skip
+                        'smart_skip': smart_skip,
+                        'non_betting_deals': 0,
+                        'is_paused': False
                     })
                     st.success(f"Session started with {betting_strategy} strategy!")
 
@@ -867,6 +881,8 @@ def render_result_input():
                             else:
                                 st.session_state.advice = "No bet pending."
                             st.session_state.last_was_tie = False
+                            st.session_state.non_betting_deals = previous_state.get('non_betting_deals', 0)
+                            st.session_state.is_paused = previous_state.get('is_paused', False)
                             st.success("Undone last action.")
                             st.rerun()
                     except Exception as e:
@@ -920,7 +936,7 @@ def render_insights():
 @st.cache_data
 def get_chart_data(history, initial_bankroll):
     bankroll_data = [initial_bankroll]
-    accuracy_data = [50.0]  # Default accuracy
+    accuracy_data = [50.0]
     for h in history[-20:]:
         bankroll = h.get('Previous_State', {}).get('bankroll', initial_bankroll)
         accuracy = h.get('Previous_State', {}).get('recent_accuracy', 50.0)
@@ -945,18 +961,15 @@ def render_genius_insights():
             if st.session_state.pattern_attempts.get(k, 0) > 0:
                 st.markdown(f"**{k.capitalize()} Accuracy**: {v:.1f}%")
         
-        # Loss streak risk
         loss_prob = (0.5 ** 5) * (1 - st.session_state.recent_accuracy / 100)
         st.markdown(f"**5+ Loss Streak Risk**: {loss_prob*100:.2f}%")
         
-        # Recommended action
         pred, conf, _ = smart_predict()
         if conf < 45.0 or st.session_state.pattern_volatility > 0.6 or st.session_state.consecutive_losses >= 3:
             st.markdown("**Recommendation**: Skip bet (Low confidence or high risk)")
         else:
             st.markdown(f"**Recommendation**: Bet on {pred} (Confidence: {conf:.1f}%)")
         
-        # Bankroll and accuracy chart
         history = st.session_state.history[-20:]
         if not history and st.session_state.bankroll == st.session_state.initial_bankroll:
             st.info("No betting history yet. Play a hand to see bankroll and accuracy trends.")
