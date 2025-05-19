@@ -137,18 +137,6 @@ def apply_custom_css():
         border-radius: 8px;
         overflow-x: auto;
     }
-    .prediction-banner {
-        background: linear-gradient(to right, #2b6cb0, #63b3ed);
-        color: white;
-        padding: 18px;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-        text-align: center;
-        font-size: 16px;
-        font-weight: bold;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        border-left: 4px solid #90cdf4;
-    }
     @media (max-width: 768px) {
         .stApp {
             padding: 10px;
@@ -165,12 +153,6 @@ def apply_custom_css():
         }
         .stNumberInput, .stSelectbox {
             margin-bottom: 1rem;
-        }
-        .prediction-banner {
-            font-size: 14px;
-            font-weight: bold;
-            padding: 12px;
-            border-left: 3px solid #90cdf4;
         }
     }
     </style>
@@ -1142,14 +1124,6 @@ def render_prediction():
         else:
             st.info(st.session_state.advice or "No prediction available.")
 
-def render_prediction_banner():
-    pred, conf, _ = smart_predict()
-    if pred:
-        bet_amount, advice = calculate_bet_amount(pred, conf)
-        st.markdown(f"<div class='prediction-banner'><strong>Recommended Bet: {advice or 'No bet recommended.'} | Confidence: {conf:.1f}%</strong></div>", unsafe_allow_html=True)
-    else:
-        st.markdown(f"<div class='prediction-banner'><strong>No prediction available. Enter more results.</strong></div>", unsafe_allow_html=True)
-
 def render_insights():
     with st.expander("Prediction Insights", expanded=True):
         if not st.session_state.insights:
@@ -1303,7 +1277,6 @@ def main():
     initialize_session_state()
     col1, col2 = st.columns([2, 1])
     with col1:
-        render_prediction_banner()
         render_setup_form()
         render_result_input()
         render_bead_plate()
