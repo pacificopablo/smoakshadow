@@ -837,10 +837,7 @@ def place_result(result: str):
                         st.session_state.t3_results.append('W')
                     elif st.session_state.strategy == 'Moon':
                         old_level = st.session_state.moon_level
-                        if st.session_state.moon_level == 1:
-                            st.session_state.moon_level = 1  # Stay at level 1 on win
-                        else:
-                            st.session_state.moon_level += 1  # Increment level on win if not at level 1
+                        st.session_state.moon_level = old_level  # Stay at current level on win
                         if old_level != st.session_state.moon_level:
                             st.session_state.moon_level_changes += 1
                         st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
@@ -1101,7 +1098,7 @@ def render_result_input():
                 place_result("B")
                 st.rerun()
         with cols[2]:
-            if st.button("Tie", key="tie_btn", disabled=st.session_state.shoe_completed):
+            if st.button("Tie", key="tieomi_btn", disabled=st.session_state.shoe_completed):
                 place_result("T")
                 st.rerun()
         with cols[3]:
