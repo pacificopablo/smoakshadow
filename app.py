@@ -307,7 +307,7 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         trigram = tuple(recent_sequence[-3:])
         total = sum(trigram_transitions[trigram].values())
         if total > 0:
-            p_prob = trigram_transitions[trigram]['P'] / total
+            p_prob = trigram_transitions[trigram]['P | total
             b_prob = trigram_transitions[trigram]['B'] / total
             prob_p += weights['trigram'] * (prior_p * p_prob) / (prior_p * p_prob + prior_b * b_prob)
             prob_b += weights['trigram'] * (prior_b * b_prob) / (prior_p * p_prob + prior_b * b_prob)
@@ -427,7 +427,7 @@ def update_t3_level():
         st.session_state.t3_results = st.session_state.t3_results[-4:]
 
 def smart_stop() -> bool:
-    if st.session_state.consecutive_losses  >= 3:
+    if st.session_state.consecutive_losses >= 3:
         return True
     if st.session_state.stop_loss_enabled:
         stop_loss_threshold = st.session_state.initial_bankroll * (st.session_state.stop_loss_percentage / 100)
@@ -832,7 +832,7 @@ def render_setup_form():
 
 def render_result_input():
     with st.expander("Enter Result", expanded=True):
-        cols = st.columns(5)
+        cols = st.columns(4)
         with cols[0]:
             if st.button("Player", key="player_btn"):
                 place_result("P")
@@ -846,18 +846,6 @@ def render_result_input():
                 place_result("T")
                 st.rerun()
         with cols[3]:
-            if st.button("Skip Bet", key="skip_btn"):
-                st.session_state.pending_bet = None
-                st.session_state.advice = "Bet skipped manually."
-                st.rerun()
-        with cols[4]:
-            if st.button("Force Bet", key="force_btn", help="Override Smart Skip"):
-                pred, conf, _ = smart_predict()
-                if pred:
-                    bet_amount, advice = calculate_bet_amount(pred, conf)
-                    st.session_state.pending_bet = (bet_amount, pred) if bet_amount else None
-                    st.session_state.advice = advice
-                st.rerun()
             if st.button("Undo Last", key="undo_btn"):
                 if not st.session_state.sequence:
                     st.warning("No results to undo.")
