@@ -446,8 +446,9 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
     if len(sequence) < 8:
         return None, 0.0, {'Status': 'Waiting for 9th hand'}
     recent_sequence = sequence[-WINDOW_SIZE:] if len(sequence) >= WINDOW_SIZE else sequence
-    # Corrected unpacking: Use last 6 elements from analyze_patterns
-    streak_count, chop_count, double_count, volatility, shoe_bias, insights = analyze_patterns(recent_sequence)[-6:]
+    # Corrected unpacking: Include all elements from analyze_patterns
+    (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
+     streak_count, chop_count, double_count, volatility, shoe_bias, insights) = analyze_patterns(recent_sequence)
     st.session_state.pattern_volatility = volatility
     st.session_state.trend_score = {'streak': insights['streak'], 'chop': insights['chop'], 'double': insights['double']}
     
