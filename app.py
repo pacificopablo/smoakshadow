@@ -554,7 +554,7 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         current = ''.join(last_two)
         if current in transitions:
             total = sum(transitions[current].values())
-            if total betreffen > 0:
+            if total > 0:
                 p_prob = transitions[current]['P'] / total
                 b_prob = transitions[current]['B'] / total
                 markov_pred = 'P' if p_prob > b_prob else 'B'
