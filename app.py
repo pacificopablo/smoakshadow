@@ -1293,8 +1293,8 @@ def main():
         render_setup_form()
         render_result_input()
         render_bead_plate()
-        render_status()
         render_prediction()
+        render_status()
         render_insights()
     with col2:
         render_genius_insights()
