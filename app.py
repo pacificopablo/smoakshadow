@@ -1083,9 +1083,9 @@ def render_simulation():
 
 # --- Main Application ---
 def main():
-    st.set_page_config(layout="wide", page_title="Genius Baccarat")
+    st.set_page_config(layout="wide", page_title="Mang Baccarat")
     apply_custom_css()
-    st.title("Genius Baccarat")
+    st.title("Mang Baccarat")
     initialize_session_state()
     col1, col2 = st.columns([2, 1])
     with col1:
