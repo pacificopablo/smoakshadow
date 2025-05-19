@@ -1116,7 +1116,7 @@ def render_prediction():
         if pred:
             bet_amount, advice = calculate_bet_amount(pred, conf)
             color = '#3182ce' if pred == 'P' else '#e53e3e'
-            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><p style='color:{color}; margin:0;'>{advice or 'No bet recommended.'}</p></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><p style='color:{color}; font-size:1.5rem; font-weight:bold; margin:0;'>{advice or 'No bet recommended.'}</p></div>", unsafe_allow_html=True)
         else:
             st.info(st.session_state.advice or "No prediction available.")
 
@@ -1158,19 +1158,6 @@ def render_status():
             st.markdown(f"**Profit**: {units_profit:.2f} units (${profit:.2f})")
         else:
             st.markdown("**Profit**: 0.00 units ($0.00)")
-
-def render_genius_insights():
-    with st.expander("Genius Insights", expanded=True):
-        if not st.session_state.sequence:
-            st.write("No data available.")
-        else:
-            data = []
-            for i, outcome in enumerate(st.session_state.sequence):
-                pred, conf, _ = smart_predict()
-                data.append({'Hand': i+1, 'Outcome': outcome, 'Prediction': pred if pred else 'None', 'Confidence': conf})
-            df = pd.DataFrame(data)
-            fig = px.line(df, x='Hand', y='Confidence', title='Prediction Confidence Over Time', hover_data=['Outcome', 'Prediction'])
-            st.plotly_chart(fig, use_container_width=True)
 
 def render_accuracy():
     with st.expander("Prediction Accuracy", expanded=True):
@@ -1280,7 +1267,6 @@ def main():
         render_status()
         render_insights()
     with col2:
-        render_genius_insights()
         render_accuracy()
         render_loss_log()
         render_history()
