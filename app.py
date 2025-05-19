@@ -48,6 +48,10 @@ def apply_custom_css():
     .result-button-undo { background: linear-gradient(to bottom, #718096, #5a667f); color: white; }
     .result-button-undo:hover { background: linear-gradient(to bottom, #a0aec0, #718096); }
     .bead-plate { background-color: #edf2f7; padding: 10px; border-radius: 8px; overflow-x: auto; }
+    @media (prefers-color-scheme: dark) {
+        .chartjs-render-monitor { filter: brightness(1.2); }
+        .chartjs-legend, .chartjs-title { color: #e2e8f0 !important; }
+    }
     @media (max-width: 768px) {
         .stApp { padding: 10px; }
         h1 { font-size: 2rem; }
@@ -96,7 +100,7 @@ def initialize_session_state():
         'initial_base_bet': 0.10,
         'sequence': [],
         'pending_bet': None,
-        'strategy': 'T3',
+        'strategy': 'Genius',
         't3_level': 1,
         't3_results': [],
         't3_level_changes': 0,
@@ -141,7 +145,7 @@ def initialize_session_state():
         if key not in st.session_state:
             st.session_state[key] = value
     if st.session_state.strategy not in STRATEGIES:
-        st.session_state.strategy = 'T3'
+        st.session_state.strategy = 'Genius'
 
 def reset_session():
     initialize_session_state()
@@ -909,14 +913,29 @@ def render_insights():
         if st.session_state.pattern_volatility > 0.5:
             st.warning(f"High Pattern Volatility: {st.session_state.pattern_volatility:.2f}")
 
+@st.cache_data
+def get_chart_data(history, initial_bankroll):
+    bankroll_data = [initial_bankroll] + [
+        h['Previous_State'].get('bankroll', initial_bankroll) for h in history[-20:]
+    ]
+    accuracy_data = [None] + [
+        h['Previous_State'].get('recent_accuracy', 50.0) for h in history[-20:]
+    ]
+    labels = [str(i) for i in range(len(bankroll_data))]
+    return bankroll_data, accuracy_data, labels
+
 def render_genius_insights():
     with st.expander("Genius Insights", expanded=True):
         st.markdown(f"**Recent Accuracy**: {st.session_state.recent_accuracy:.1f}%")
-        st.markdown(f"**Trend Score**: Streak: {st.session_state.trend_score['streak']:.2f}, "
-                    f"Chop: {st.session_state.trend_score['chop']:.2f}, Double: {st.session_state.trend_score['double']:.2f}")
+        st.markdown(
+            f"**Trend Score**: Streak: {st.session_state.trend_score['streak']:.2f}, "
+            f"Chop: {st.session_state.trend_score['chop']:.2f}, Double: {st.session_state.trend_score['double']:.2f}"
+        )
         st.markdown(f"**Volatility**: {st.session_state.pattern_volatility:.2f}")
-        pattern_acc = {k: st.session_state.pattern_success.get(k, 0) / st.session_state.pattern_attempts.get(k, 1) * 100
-                       for k in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double']}
+        pattern_acc = {
+            k: st.session_state.pattern_success.get(k, 0) / st.session_state.pattern_attempts.get(k, 1) * 100
+            for k in ['bigram', 'trigram', 'fourgram', 'streak', 'chop', 'double']
+        }
         for k, v in pattern_acc.items():
             if st.session_state.pattern_attempts.get(k, 0) > 0:
                 st.markdown(f"**{k.capitalize()} Accuracy**: {v:.1f}%")
@@ -933,55 +952,125 @@ def render_genius_insights():
             st.markdown(f"**Recommendation**: Bet on {pred} (Confidence: {conf:.1f}%)")
         
         # Bankroll and accuracy chart
-        bankroll_data = [st.session_state.initial_bankroll] + [h['Previous_State']['bankroll'] for h in st.session_state.history[-20:]]
-        accuracy_data = [50.0] + [h['Previous_State']['recent_accuracy'] for h in st.session_state.history[-20:]]
-        st.markdown("**Bankroll & Accuracy Trend**")
-        st.code("""
-        ```chartjs
-        {
-            "type": "line",
-            "data": {
-                "labels": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
-                "datasets": [
-                    {
-                        "label": "Bankroll ($)",
-                        "data": """ + str(bankroll_data) + """,
-                        "borderColor": "#3182ce",
-                        "backgroundColor": "rgba(49, 130, 206, 0.2)",
-                        "yAxisID": "y",
-                        "fill": false
+        history = st.session_state.history[-20:]
+        if not history and st.session_state.bankroll == st.session_state.initial_bankroll:
+            st.info("No betting history yet. Play a hand to see bankroll and accuracy trends.")
+            return
+        
+        try:
+            bankroll_data, accuracy_data, labels = get_chart_data(history, st.session_state.initial_bankroll)
+            if not bankroll_data or len(bankroll_data) < 2:
+                st.warning("Insufficient data to display trends. Play more hands.")
+                return
+            
+            st.markdown("**Bankroll & Accuracy Trend**")
+            st.code(
+                """
+                ```chartjs
+                {
+                    "type": "line",
+                    "data": {
+                        "labels": """ + str(labels) + """,
+                        "datasets": [
+                            {
+                                "label": "Bankroll ($)",
+                                "data": """ + str(bankroll_data) + """,
+                                "borderColor": "#0288d1",
+                                "backgroundColor": "rgba(2, 136, 209, 0.1)",
+                                "yAxisID": "y",
+                                "fill": false,
+                                "pointRadius": 4,
+                                "borderWidth": 2
+                            },
+                            {
+                                "label": "Accuracy (%)",
+                                "data": """ + str(accuracy_data) + """,
+                                "borderColor": "#2e7d32",
+                                "backgroundColor": "rgba(46, 125, 50, 0.1)",
+                                "yAxisID": "y1",
+                                "fill": false,
+                                "pointRadius": 4,
+                                "borderWidth": 2
+                            }
+                        ]
                     },
-                    {
-                        "label": "Accuracy (%)",
-                        "data": """ + str(accuracy_data) + """,
-                        "borderColor": "#38a169",
-                        "backgroundColor": "rgba(56, 161, 105, 0.2)",
-                        "yAxisID": "y1",
-                        "fill": false
-                    }
-                ]
-            },
-            "options": {
-                "responsive": true,
-                "scales": {
-                    "y": {
-                        "type": "linear",
-                        "display": true,
-                        "position": "left",
-                        "title": { "display": true, "text": "Bankroll ($)" }
-                    },
-                    "y1": {
-                        "type": "linear",
-                        "display": true,
-                        "position": "right",
-                        "title": { "display": true, "text": "Accuracy (%)" },
-                        "grid": { "drawOnChartArea": false }
+                    "options": {
+                        "responsive": true,
+                        "maintainAspectRatio": false,
+                        "plugins": {
+                            "legend": {
+                                "display": true,
+                                "position": "top",
+                                "labels": {
+                                    "font": { "size": 14 },
+                                    "color": "#1a3c6e"
+                                }
+                            },
+                            "tooltip": {
+                                "enabled": true,
+                                "callbacks": {
+                                    "label": function(context) {
+                                        let label = context.dataset.label || '';
+                                        let value = context.parsed.y;
+                                        return label + ': ' + (label.includes('Bankroll') ? '$' + value.toFixed(2) : value.toFixed(1) + '%');
+                                    }
+                                }
+                            }
+                        },
+                        "scales": {
+                            "y": {
+                                "type": "linear",
+                                "display": true,
+                                "position": "left",
+                                "title": {
+                                    "display": true,
+                                    "text": "Bankroll ($)",
+                                    "font": { "size": 14 },
+                                    "color": "#1a3c6e"
+                                },
+                                "suggestedMin": 7,
+                                "suggestedMax": 10,
+                                "ticks": {
+                                    "callback": function(value) { return '$' + value.toFixed(2); },
+                                    "font": { "size": 12 }
+                                }
+                            },
+                            "y1": {
+                                "type": "linear",
+                                "display": true,
+                                "position": "right",
+                                "title": {
+                                    "display": true,
+                                    "text": "Accuracy (%)",
+                                    "font": { "size": 14 },
+                                    "color": "#1a3c6e"
+                                },
+                                "suggestedMin": 0,
+                                "suggestedMax": 100,
+                                "ticks": {
+                                    "callback": function(value) { return value + '%'; },
+                                    "font": { "size": 12 }
+                                },
+                                "grid": { "drawOnChartArea": false }
+                            },
+                            "x": {
+                                "title": {
+                                    "display": true,
+                                    "text": "Hand Number",
+                                    "font": { "size": 14 },
+                                    "color": "#1a3c6e"
+                                },
+                                "ticks": { "font": { "size": 12 } }
+                            }
+                        }
                     }
                 }
-            }
-        }
-        ```
-        """, language="json")
+                ```
+                """,
+                language="json"
+            )
+        except Exception as e:
+            st.error(f"Error rendering chart: {str(e)}. Please play more hands or check session data.")
 
 def render_status():
     with st.expander("Session Status", expanded=True):
