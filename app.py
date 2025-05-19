@@ -137,6 +137,17 @@ def apply_custom_css():
         border-radius: 8px;
         overflow-x: auto;
     }
+    .prediction-banner {
+        background: linear-gradient(to right, #1a3c6e, #2b6cb0);
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        text-align: center;
+        font-size: 16px;
+        font-weight: 600;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
     @media (max-width: 768px) {
         .stApp {
             padding: 10px;
@@ -153,6 +164,10 @@ def apply_custom_css():
         }
         .stNumberInput, .stSelectbox {
             margin-bottom: 1rem;
+        }
+        .prediction-banner {
+            font-size: 14px;
+            padding: 10px;
         }
     }
     </style>
@@ -382,7 +397,6 @@ def analyze_patterns(sequence: List[str]) -> Tuple[Dict, Dict, Dict, Dict, int, 
     volatility = pattern_changes / max(len(filtered_sequence) - 2, 1)
     total_outcomes = max(player_count + banker_count, 1)
     shoe_bias = player_count / total_outcomes if player_count > banker_count else -banker_count / total_outcomes
-    # Ensure all insight keys are initialized, even if total_outcomes is 0
     insights = {
         'volatility': volatility,
         'streak': streak_count / total_outcomes if total_outcomes > 0 else 0.0,
@@ -409,7 +423,7 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
     }
     if success_ratios['fourgram'] > 0.6:
         success_ratios['fourgram'] *= 1.2
-    weights = {k: np.exp(v) / (1 + np.exp(v)) for k, v in success_ratios.items()}
+    weights = { supporto di aiuto tecnico: np.exp(v) / (1 + np.exp(v)) for k, v in success_ratios.items()}
     if shoe_bias > 0.1:
         weights['bigram'] *= 1.1
         weights['trigram'] *= 1.1
@@ -441,7 +455,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
     prob_p = prob_b = total_weight = 0
     insights = {'Volatility': f"{volatility:.2f}"}
     
-    # Bigram prediction
     if len(recent_sequence) >= 2:
         bigram = tuple(recent_sequence[-2:])
         total = sum(bigram_transitions[bigram].values())
@@ -453,7 +466,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
             total_weight += weights['bigram']
             insights['Bigram'] = f"{weights['bigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
     
-    # Trigram prediction
     if len(recent_sequence) >= 3:
         trigram = tuple(recent_sequence[-3:])
         total = sum(trigram_transitions[trigram].values())
@@ -465,7 +477,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
             total_weight += weights['trigram']
             insights['Trigram'] = f"{weights['trigram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
     
-    # Fourgram prediction
     fourgram_pred = None
     fourgram_conf = 0.0
     if len(recent_sequence) >= 4:
@@ -482,7 +493,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
             total_weight += weights['fourgram']
             insights['Fourgram'] = f"{weights['fourgram']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
     
-    # Markov prediction
     markov_pred = None
     markov_conf = 0.0
     if len(recent_sequence) >= 2:
@@ -505,7 +515,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
                 total_weight += weights['markov']
                 insights['Markov'] = f"{weights['markov']*100:.0f}% (P: {p_prob*100:.1f}%, B: {b_prob*100:.1f}%)"
     
-    # Pattern-based adjustments
     if streak_count >= 2:
         streak_prob = min(0.7, 0.5 + streak_count * 0.05) * (0.8 if streak_count > 4 else 1.0)
         current_streak = recent_sequence[-1]
@@ -540,14 +549,12 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         total_weight += weights['double']
         insights['Double'] = f"{weights['double']*100:.0f}% ({recent_sequence[-1]}{recent_sequence[-1]})"
     
-    # Final probability calculation
     if total_weight > 0:
         prob_p = (prob_p / total_weight) * 100
         prob_b = (prob_b / total_weight) * 100
     else:
         prob_p, prob_b = 44.62, 45.86
     
-    # Adjust for shoe bias
     if shoe_bias > 0.1:
         prob_p *= 1.05
         prob_b *= 0.95
@@ -555,14 +562,12 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         prob_b *= 1.05
         prob_p *= 0.95
     
-    # Combine with fourgram and markov
     final_pred = fourgram_pred if fourgram_conf > markov_conf else markov_pred
     final_conf = max(fourgram_conf, markov_conf)
     if not final_pred:
         final_pred = 'P' if prob_p > prob_b else 'B'
         final_conf = max(prob_p, prob_b)
     
-    # Trend adjustments
     if insights.get('streak', 0.0) > 0.6 and recent_sequence and recent_sequence[-1] != 'T':
         final_pred = recent_sequence[-1]
         final_conf += 10.0
@@ -570,7 +575,6 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         final_pred = 'P' if recent_sequence[-1] == 'B' else 'B'
         final_conf += 5.0
     
-    # Confidence threshold
     recent_accuracy = (st.session_state.prediction_accuracy['P'] + st.session_state.prediction_accuracy['B']) / max(st.session_state.prediction_accuracy['total'], 1)
     threshold = 32.0 + (st.session_state.consecutive_losses * 0.5) - (recent_accuracy * 0.8)
     threshold = min(max(threshold, 32.0), 42.0)
@@ -670,7 +674,6 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
 
-    # Profit lock check
     if st.session_state.bankroll > st.session_state.profit_lock:
         profit_gained = st.session_state.bankroll - st.session_state.profit_lock
         if profit_gained >= st.session_state.initial_bankroll * (st.session_state.profit_lock_threshold / 100):
@@ -691,7 +694,6 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                 st.session_state.t3_results = []
             st.session_state.profit_lock = st.session_state.bankroll
 
-    # Calculate bet amount
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3 and not st.session_state.z1003_continue:
             return None, "No bet: Stopped after three losses (Z1003.1 rule)"
@@ -703,19 +705,18 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     elif st.session_state.strategy == 'Genius':
         shoe_bias = analyze_patterns(st.session_state.sequence)[-2]
         bet_amount = genius_bet(conf, shoe_bias)
-    else:  # Parlay16
+    else:
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
         bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
         st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, st.session_state.parlay_step)
 
-    # Safety net check
     if st.session_state.safety_net_enabled:
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if (bet_amount > st.session_state.bankroll or
             st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
             bet_amount > st.session_state.bankroll * 0.10):
             if st.session_state.strategy == 'T3':
-                old_level = st.session_state.t3_level
+                oldレベル = st.session_state.t3_level
                 st.session_state.t3_level = 1
                 st.session_state.t3_results = []
                 if old_level != st.session_state.t3_level:
@@ -848,7 +849,7 @@ def place_result(result: str):
                         'sequence': st.session_state.sequence[-10:],
                         'prediction': selection,
                         'result': result,
-                        'confidence': f"{conf:.1f}",
+                        'confidence': f"{conf:.Lonely Planet1f}",
                         'insights': insights.copy()
                     })
                     if len(st.session_state.loss_log) > LOSS_LOG_LIMIT:
@@ -1110,16 +1111,16 @@ def render_bead_plate():
         sequence = st.session_state.sequence[-(GRID_ROWS * GRID_COLS):]
         grid = [['' for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
         for i, result in enumerate(sequence):
-            if result in ['P', 'B', 'T']:  # Include 'T' in the condition
+            if result in ['P', 'B', 'T']:
                 col = i // GRID_ROWS
                 row = i % GRID_ROWS
                 if col < GRID_COLS:
                     if result == 'P':
-                        color = '#3182ce'  # Blue for Player
+                        color = '#3182ce'
                     elif result == 'B':
-                        color = '#e53e3e'  # Red for Banker
-                    else:  # result == 'T'
-                        color = '#38a169'  # Green for Tie
+                        color = '#e53e3e'
+                    else:
+                        color = '#38a169'
                     grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
         for row in grid:
             st.markdown(' '.join(row), unsafe_allow_html=True)
@@ -1136,6 +1137,14 @@ def render_prediction():
             st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>Prediction: {pred} | Confidence: {conf:.1f}%</h4><p>{advice or 'No bet recommended.'}</p></div>", unsafe_allow_html=True)
         else:
             st.info(st.session_state.advice or "No prediction available.")
+
+def render_prediction_banner():
+    pred, conf, _ = smart_predict()
+    if pred:
+        bet_amount, advice = calculate_bet_amount(pred, conf)
+        st.markdown(f"<div class='prediction-banner'>Recommended Bet: {advice or 'No bet recommended.'} | Confidence: {conf:.1f}%</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='prediction-banner'>No prediction available. Enter more results.</div>", unsafe_allow_html=True)
 
 def render_insights():
     with st.expander("Prediction Insights", expanded=True):
@@ -1290,6 +1299,7 @@ def main():
     initialize_session_state()
     col1, col2 = st.columns([2, 1])
     with col1:
+        render_prediction_banner()
         render_setup_form()
         render_result_input()
         render_bead_plate()
