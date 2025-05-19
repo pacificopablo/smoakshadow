@@ -15,7 +15,7 @@ SIMULATION_LOG = os.path.join(tempfile.gettempdir(), "simulation_log.txt")
 PARLAY_TABLE = {
     i: {'base': b, 'parlay': p} for i, (b, p) in enumerate([
         (1, 2), (1, 2), (1, 2), (2, 4), (3, 6), (4, 8), (6, 12), (8, 16),
-        (12, 24), (16, 32), (22, 44), (30, 60), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
+        (12, 24), (16, 32), (22, 44), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
     ], 1)
 }
 STRATEGIES = ["T3", "Flatbet", "Parlay16", "Z1003.1", "Genius"]
@@ -822,8 +822,8 @@ def render_simulation():
         if st.button("Run Simulation", key="run_sim_btn"):
             with st.spinner("Running simulation..."):
                 result = simulate_to_target(strategy, num_shoes)
-                st.write(f"Average Accuracy: {result['avg_accuracy']:.1f}% (Â±{result['std_accuracy']:.1f}%)")
-                st.write(f"Average Final Bankroll: ${result['avg_bankroll']:.2f} (Â±${result['std_bankroll']:.2f})")
+                st.write(f"Average Accuracy: {result['avg_accuracy']:.1f}% (±{result['std_accuracy']:.1f}%)")
+                st.write(f"Average Final Bankroll: ${result['avg_bankroll']:.2f} (±${result['std_bankroll']:.2f})")
                 st.write(f"Total Wins: {result['wins']}")
                 st.write(f"Total Losses: {result['losses']}")
                 fig = go.Figure()
@@ -859,11 +859,11 @@ def main():
     with col1:
         render_setup_form()
         render_result_input()
+        render_bead_plate()  # Moved here, below Enter Result
+        render_status()      # Moved here, below Bead Plate
         render_prediction()
         render_insights()
-        render_bead_plate()  # Add bead plate here
     with col2:
-        render_status()
         render_genius_insights()
         render_accuracy()
         render_loss_log()
