@@ -1082,10 +1082,6 @@ def render_result_input():
                             st.rerun()
                     except Exception as e:
                         st.error(f"Error undoing last action: {str(e)}")
-        if st.button("Run Automated Shoe Simulation", key="auto_shoe_btn", disabled=st.session_state.shoe_completed):
-            result = simulate_shoe()
-            st.session_state.shoe_completed = True
-            st.rerun()
         if st.session_state.shoe_completed and st.button("Reset and Start New Shoe", key="new_shoe_btn"):
             reset_session()
             st.session_state.shoe_completed = False
