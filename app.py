@@ -10,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import time
 from typing import Tuple, Dict, Optional, List
+import uuid
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
@@ -20,7 +21,7 @@ PARLAY_TABLE = {
         (12, 24), (16, 32), (22, 44), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
     ], 1)
 }
-STRATEGIES = ["T3", "Flatbet", "Parlay16", "Z1003.1", "Genius"]
+STRATEGIES = ["T3", "Flatbet", "Parlay16", "Z1003.1", "Genius", "Moon"]
 SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
@@ -211,6 +212,9 @@ def initialize_session_state():
         'z1003_bet_factor': 1.0,
         'z1003_continue': False,
         'z1003_level_changes': 0,
+        'moon_level': 1,
+        'moon_level_changes': 0,
+        'moon_peak_level': 1,
         'advice': "",
         'history': [],
         'wins': 0,
@@ -228,7 +232,7 @@ def initialize_session_state():
         'trend_score': {'streak': 0.0, 'chop': 0.0, 'double': 0.0},
         'pattern_success': defaultdict(int),
         'pattern_attempts': defaultdict(int),
-        'safety_net_percentage': 5.0,  # Changed from 10.0 to 5.0
+        'safety_net_percentage': 5.0,
         'safety_net_enabled': True,
         'profit_lock': 519.0,
         'stop_loss_enabled': True,
@@ -291,7 +295,10 @@ def reset_session():
         'z1003_bet_factor': 1.0,
         'z1003_continue': False,
         'z1003_level_changes': 0,
-        'advice': "Session reset: Target or stop loss reached.",
+        'moon_level': 1,  # Explicitly reset to 1 when target is hit
+        'moon_level_changes': 0,
+        'moon_peak_level': 1,
+        'advice': "Session reset: Target or stop loss reached. Moon level reset to 1.",
         'history': [],
         'wins': 0,
         'losses': 0,
@@ -399,11 +406,11 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
                   if st.session_state.pattern_attempts.get('bigram', 0) > 0 else 0.5,
         'trigram': st.session_state.pattern_success.get('trigram', 0) / total_bets
                    if st.session_state.pattern_attempts.get('trigram', 0) > 0 else 0.5,
-        'fourgram': (st.session_state.pattern_success.get('fourgram', 0) / total_bets) * 1.5  # Boosted by 1.5x
-                    if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.75,  # Increased default from 0.5
+        'fourgram': (st.session_state.pattern_success.get('fourgram', 0) / total_bets) * 1.5
+                    if st.session_state.pattern_attempts.get('fourgram', 0) > 0 else 0.75,
         'markov': st.session_state.pattern_success.get('markov', 0) / total_bets
                   if st.session_state.pattern_attempts.get('markov', 0) > 0 else 0.5,
-        'streak': 0.8 if streak_count >= 2 else 0.4,  # Increased from 0.6/0.3
+        'streak': 0.8 if streak_count >= 2 else 0.4,
         'chop': 0.4 if chop_count >= 2 else 0.2,
         'double': 0.4 if double_count >= 1 else 0.2
     }
@@ -582,8 +589,16 @@ def check_target_hit() -> bool:
     if st.session_state.target_mode == 'Profit %':
         profit = st.session_state.bankroll - st.session_state.initial_bankroll
         target = st.session_state.initial_bankroll * (st.session_state.target_value / 100)
-        return profit >= target
-    return st.session_state.wins >= st.session_state.target_value
+        if profit >= target:
+            if st.session_state.strategy == 'Moon':
+                st.session_state.advice = "Target hit: Profit goal reached. Moon level reset to 1."
+            return True
+    elif st.session_state.target_mode == 'Wins':
+        if st.session_state.wins >= st.session_state.target_value:
+            if st.session_state.strategy == 'Moon':
+                st.session_state.advice = "Target hit: Win goal reached. Moon level reset to 1."
+            return True
+    return False
 
 def update_t3_level():
     if len(st.session_state.t3_results) == 3:
@@ -630,8 +645,8 @@ def genius_bet(conf: float, shoe_bias: float) -> float:
 def smart_stop():
     if not st.session_state.stop_loss_enabled:
         return False
-    if st.session_state.consecutive_losses >= 5:  # Changed from 3 to 5
-        if st.session_state.non_betting_deals < 2:  # Changed from 3 to 2
+    if st.session_state.consecutive_losses >= 5:
+        if st.session_state.non_betting_deals < 2:
             st.session_state.is_paused = True
             return True
         st.session_state.is_paused = False
@@ -647,15 +662,15 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     if len(st.session_state.sequence) < 8:
         return None, "No bet: Waiting for 9th hand"
     if st.session_state.smart_skip:
-        if conf < 40.0:  # Changed from 45.0 to 40.0
+        if conf < 40.0:
             return None, f"No bet: Confidence too low ({conf:.1f}%)"
-        if st.session_state.pattern_volatility > 0.7:  # Changed from 0.6 to 0.7
+        if st.session_state.pattern_volatility > 0.7:
             return None, "No bet: High pattern volatility"
         if st.session_state.shoe_completed:
             return None, "No bet: Shoe completed"
         if smart_stop():
-            if st.session_state.consecutive_losses >= 5:  # Changed from 3 to 5
-                return None, f"No bet: Paused due to {st.session_state.consecutive_losses} consecutive losses ({st.session_state.non_betting_deals}/2 deals)"  # Changed from 3 to 2
+            if st.session_state.consecutive_losses >= 5:
+                return None, f"No bet: Paused due to {st.session_state.consecutive_losses} consecutive losses ({st.session_state.non_betting_deals}/2 deals)"
             return None, f"No bet: Paused due to stop-loss (Bankroll: ${st.session_state.bankroll:.2f}, Needs: >${st.session_state.initial_bankroll * st.session_state.stop_loss_percentage / 100:.2f})"
     if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
@@ -678,11 +693,15 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             elif st.session_state.strategy == 'Genius':
                 st.session_state.t3_level = 1
                 st.session_state.t3_results = []
+            elif st.session_state.strategy == 'Moon':
+                st.session_state.moon_level = 1
+                st.session_state.moon_level_changes += 1
+                st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
             st.session_state.profit_lock = st.session_state.bankroll
 
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3:
-            st.session_state.z1003_continue = True  # Allow continuation after 3 losses
+            st.session_state.z1003_continue = True
         bet_amount = enhanced_z1003_bet(st.session_state.z1003_loss_count, st.session_state.base_bet)
     elif st.session_state.strategy == 'Flatbet':
         bet_amount = st.session_state.base_bet
@@ -691,6 +710,8 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
     elif st.session_state.strategy == 'Genius':
         shoe_bias = analyze_patterns(st.session_state.sequence)[-2]
         bet_amount = genius_bet(conf, shoe_bias)
+    elif st.session_state.strategy == 'Moon':
+        bet_amount = st.session_state.base_bet * st.session_state.moon_level
     else:
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
         bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
@@ -700,7 +721,7 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
         if (bet_amount > st.session_state.bankroll or
             st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
-            bet_amount > st.session_state.bankroll * 0.15):  # Changed from 0.10 to 0.15
+            bet_amount > st.session_state.bankroll * 0.15):
             if st.session_state.strategy == 'T3':
                 old_level = st.session_state.t3_level
                 st.session_state.t3_level = 1
@@ -726,6 +747,13 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                     st.session_state.z1003_level_changes += 1
                 bet_amount = st.session_state.base_bet
             elif st.session_state.strategy == 'Genius':
+                bet_amount = st.session_state.base_bet
+            elif st.session_state.strategy == 'Moon':
+                old_level = st.session_state.moon_level
+                st.session_state.moon_level = 1
+                if old_level != st.session_state.moon_level:
+                    st.session_state.moon_level_changes += 1
+                st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, old_level)
                 bet_amount = st.session_state.base_bet
             return None, "No bet: Risk too high for current bankroll. Level/step reset to 1."
 
@@ -756,6 +784,9 @@ def place_result(result: str):
         "z1003_loss_count": st.session_state.z1003_loss_count,
         "z1003_bet_factor": st.session_state.z1003_bet_factor,
         "z1003_continue": st.session_state.z1003_continue,
+        "moon_level": st.session_state.moon_level,
+        "moon_level_changes": st.session_state.moon_level_changes,
+        "moon_peak_level": st.session_state.moon_peak_level,
         "pending_bet": st.session_state.pending_bet,
         "wins": st.session_state.wins,
         "losses": st.session_state.losses,
@@ -804,6 +835,15 @@ def place_result(result: str):
                         st.session_state.z1003_continue = False
                     elif st.session_state.strategy == 'Genius':
                         st.session_state.t3_results.append('W')
+                    elif st.session_state.strategy == 'Moon':
+                        old_level = st.session_state.moon_level
+                        if st.session_state.moon_level == 1:
+                            st.session_state.moon_level = 1  # Stay at level 1 on win
+                        else:
+                            st.session_state.moon_level += 1  # Increment level on win if not at level 1
+                        if old_level != st.session_state.moon_level:
+                            st.session_state.moon_level_changes += 1
+                        st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
                     st.session_state.wins += 1
                     st.session_state.prediction_accuracy[selection] += 1
                     st.session_state.consecutive_losses = 0
@@ -830,6 +870,12 @@ def place_result(result: str):
                             st.session_state.z1003_continue = True
                     elif st.session_state.strategy == 'Genius':
                         st.session_state.t3_results.append('L')
+                    elif st.session_state.strategy == 'Moon':
+                        old_level = st.session_state.moon_level
+                        st.session_state.moon_level += 1  # Increment level on loss
+                        if old_level != st.session_state.moon_level:
+                            st.session_state.moon_level_changes += 1
+                        st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
                     st.session_state.losses += 1
                     st.session_state.consecutive_losses += 1
                     st.session_state.loss_log.append({
@@ -856,6 +902,7 @@ def place_result(result: str):
         "T3_Level": st.session_state.t3_level,
         "Parlay_Step": st.session_state.parlay_step,
         "Z1003_Loss_Count": st.session_state.z1003_loss_count,
+        "Moon_Level": st.session_state.moon_level,
         "Previous_State": previous_state,
         "Bet_Placed": bet_placed
     })
@@ -963,7 +1010,7 @@ def render_setup_form():
             safety_net_enabled = st.checkbox("Enable Safety Net", value=st.session_state.safety_net_enabled)
             safety_net_percentage = st.session_state.safety_net_percentage
             if safety_net_enabled:
-                safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=50.0, value=5.0, step=5.0)  # Changed from 10.0 to 5.0
+                safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=50.0, value=5.0, step=5.0)
             stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=st.session_state.stop_loss_enabled)
             stop_loss_percentage = st.session_state.stop_loss_percentage
             if stop_loss_enabled:
@@ -998,6 +1045,9 @@ def render_setup_form():
                         'z1003_bet_factor': 1.0,
                         'z1003_continue': False,
                         'z1003_level_changes': 0,
+                        'moon_level': 1,
+                        'moon_level_changes': 0,
+                        'moon_peak_level': 1,
                         'advice': "",
                         'history': [],
                         'wins': 0,
@@ -1150,6 +1200,8 @@ def render_status():
                 strategy_status += f"<br>Steps: {st.session_state.parlay_step}/16 | Peak: {st.session_state.parlay_peak_step}<br>Changes: {st.session_state.parlay_step_changes} | Wins: {st.session_state.parlay_wins}"
             elif st.session_state.strategy == 'Z1003.1':
                 strategy_status += f"<br>Loss Count: {st.session_state.z1003_loss_count}<br>Changes: {st.session_state.z1003_level_changes} | Continue: {st.session_state.z1003_continue}"
+            elif st.session_state.strategy == 'Moon':
+                strategy_status += f"<br>Level: {st.session_state.moon_level} | Peak: {st.session_state.moon_peak_level}<br>Changes: {st.session_state.moon_level_changes}"
             st.markdown(strategy_status, unsafe_allow_html=True)
         st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
         st.markdown(f"**Online Users**: {track_user_session()}")
@@ -1213,6 +1265,7 @@ def render_history():
                     "T3_Level": h["T3_Level"] if st.session_state.strategy in ['T3', 'Genius'] else "-",
                     "Parlay_Step": h["Parlay_Step"] if st.session_state.strategy == 'Parlay16' else "-",
                     "Z1003_Loss_Count": h["Z1003_Loss_Count"] if st.session_state.strategy == 'Z1003.1' else "-",
+                    "Moon_Level": h["Moon_Level"] if st.session_state.strategy == 'Moon' else "-",
                 }
                 for h in st.session_state.history[-n:]
             ], use_container_width=True)
