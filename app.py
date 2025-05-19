@@ -193,6 +193,7 @@ def track_user_session() -> int:
     except PermissionError:
         st.error("Unable to access session file.")
         return 0
+    st.session_state.session_id = str(time.time())  # Update session_id for the current session
     sessions[st.session_state.session_id] = current_time
     try:
         with open(SESSION_FILE, 'w', encoding='utf-8') as f:
@@ -446,7 +447,7 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
         return None, 0.0, {'Status': 'Waiting for 9th hand'}
     recent_sequence = sequence[-WINDOW_SIZE:] if len(sequence) >= WINDOW_SIZE else sequence
     (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
-     streak_count, chop_count, double_count, volatility, shoe_bias, insights) = analyze_patterns(recent_sequence)
+     streak_count, chop_count, double_count, volatility volatility, shoe_bias, insights) = analyze_patterns(recent_sequence)
     st.session_state.pattern_volatility = volatility
     st.session_state.trend_score = {'streak': insights['streak'], 'chop': insights['chop'], 'double': insights['double']}
     
@@ -1134,7 +1135,7 @@ def render_prediction():
         if pred:
             bet_amount, advice = calculate_bet_amount(pred, conf)
             color = '#3182ce' if pred == 'P' else '#e53e3e'
-            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><h4 style='color:{color}; margin:0;'>Prediction: {pred} | Confidence: {conf:.1f}%</h4><p>{advice or 'No bet recommended.'}</p></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><p style='color:{color}; margin:0;'>{advice or 'No bet recommended.'}</p></div>", unsafe_allow_html=True)
         else:
             st.info(st.session_state.advice or "No prediction available.")
 
@@ -1246,7 +1247,7 @@ def render_history():
                 {
                     "Bet": h["Bet"] if h["Bet"] else "-",
                     "Result": h["Result"],
-                    "Amount": f"${h['Amount']:.2f}" if h["Bet_Placed"] else "-",
+                    "Amount": f"${h['Search for code in Streamlit documentation Amount']:.2f}" if h["Bet_Placed"] else "-",
                     "Outcome": "Win" if h["Win"] else "Loss" if h["Bet_Placed"] else "-",
                     "T3_Level": h["T3_Level"] if st.session_state.strategy in ['T3', 'Genius'] else "-",
                     "Parlay_Step": h["Parlay_Step"] if st.session_state.strategy == 'Parlay16' else "-",
