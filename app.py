@@ -44,10 +44,10 @@ FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER = sum(
     FLATBET_LEVELUP_TABLE[level] * 5 for level in FLATBET_LEVELUP_TABLE
 )  # (1*5 + 2*5 + 4*5 + 8*5) = 5 + 10 + 20 + 40 = 75
 FLATBET_LEVELUP_THRESHOLDS = {
-    1: -5.0,  # Move to Level 2 at -5 units net loss at Level 1
-    2: -10.0,  # Move to Level 3 at -10 units net loss at Level 2
-    3: -20.0,  # Move to Level 4 at -20 units net loss at Level 3
-    4: -40.0   # Stay at Level 4 after -40 units net loss
+    1: -5.0,  # Move to Level 2 after -5 units net loss at Level 1 (base_bet * 1)
+    2: -10.0,  # Move to Level 3 after -10 units net loss at Level 2 (base_bet * 2)
+    3: -20.0,  # Move to Level 4 after -20 units net loss at Level 3 (base_bet * 4)
+    4: -40.0   # Stay at Level 4 after -40 units net loss (base_bet * 8)
 }
 MONEY_MANAGEMENT_STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon", "FourTier", "FlatbetLevelUp"]
 
@@ -547,10 +547,11 @@ def place_result(result: str):
                             st.session_state.four_tier_step = 1
                             st.session_state.four_tier_losses = 0
                     elif st.session_state.money_management == 'FlatbetLevelUp':
+                        # Progress to next level if net loss reaches threshold for current level
                         current_level = st.session_state.flatbet_levelup_level
                         if current_level < 4 and st.session_state.flatbet_levelup_net_loss <= FLATBET_LEVELUP_THRESHOLDS[current_level]:
                             st.session_state.flatbet_levelup_level = min(st.session_state.flatbet_levelup_level + 1, 4)
-                            st.session_state.flatbet_levelup_net_loss = 0.0
+                            st.session_state.flatbet_levelup_net_loss = 0.0  # Reset net loss for new level
             if st.session_state.money_management == 'T3' and len(st.session_state.t3_results) == 3 and not (st.session_state.shoe_completed and st.session_state.safety_net_enabled):
                 wins = st.session_state.t3_results.count('W')
                 losses = st.session_state.t3_results.count('L')
@@ -954,8 +955,7 @@ def render_bead_plate():
 def render_prediction():
     with st.expander("Prediction", expanded=True):
         try:
-            if st.session_state.ban
-kroll == 0:
+            if st.session_state.bankroll == 0:
                 st.info("Please start a session with bankroll and base bet.")
             elif st.session_state.shoe_completed and not st.session_state.safety_net_enabled:
                 st.info("Session ended. Reset to start a new session.")
