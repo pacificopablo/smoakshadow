@@ -44,10 +44,10 @@ FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER = sum(
     FLATBET_LEVELUP_TABLE[level] * 5 for level in FLATBET_LEVELUP_TABLE
 )  # (1*5 + 2*5 + 4*5 + 8*5) = 5 + 10 + 20 + 40 = 75
 FLATBET_LEVELUP_THRESHOLDS = {
-    1: -5.0,  # Move to Level 2 at -5 units
-    2: -10.0,  # Move to Level 3 at -10 units
-    3: -20.0,  # Move to Level 4 at -20 units
-    4: -40.0   # Stay at Level 4
+    1: -5.0,  # Move to Level 2 at -5 units net loss at Level 1
+    2: -10.0,  # Move to Level 3 at -10 units net loss at Level 2
+    3: -20.0,  # Move to Level 4 at -20 units net loss at Level 3
+    4: -40.0   # Stay at Level 4 after -40 units net loss
 }
 MONEY_MANAGEMENT_STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon", "FourTier", "FlatbetLevelUp"]
 
@@ -954,7 +954,8 @@ def render_bead_plate():
 def render_prediction():
     with st.expander("Prediction", expanded=True):
         try:
-            if st.session_state.bankroll == 0:
+            if st.session_state.ban
+kroll == 0:
                 st.info("Please start a session with bankroll and base bet.")
             elif st.session_state.shoe_completed and not st.session_state.safety_net_enabled:
                 st.info("Session ended. Reset to start a new session.")
