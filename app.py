@@ -413,6 +413,8 @@ def place_result(result: str):
     st.session_state.sequence.append(result)
     if len(st.session_state.sequence) > SEQUENCE_LIMIT:
         st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
+    # Debug: Log sequence
+    st.write(f"Debug: After appending '{result}', sequence = {st.session_state.sequence}")
 
     if st.session_state.break_countdown > 0:
         st.session_state.break_countdown -= 1
@@ -697,22 +699,27 @@ def render_result_input():
 def render_bead_plate():
     with st.expander("Bead Plate", expanded=True):
         st.markdown("**Bead Plate**")
+        # Debug: Log the current sequence
+        st.write(f"Debug: Current sequence = {st.session_state.sequence}")
         sequence = st.session_state.sequence[-(GRID_ROWS * GRID_COLS):]
         grid = [['' for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
         for i, result in enumerate(sequence):
             if result in ['P', 'B', 'T']:
-                col = i // GRID_ROWS
-                row = i % GRID_ROWS
-                if col < GRID_COLS:
+                # Use row-major order: fill left-to-right, top-to-bottom
+                row = i // GRID_COLS
+                col = i % GRID_COLS
+                if row < GRID_ROWS:
                     if result == 'P':
                         color = '#3182ce'
                     elif result == 'B':
                         color = '#e53e3e'
                     else:
                         color = '#38a169'
-                    grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
+                    grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block; margin: 2px;"></div>'
+        # Debug: Log the grid
+        st.write(f"Debug: Grid = {grid}")
         for row in grid:
-            st.markdown(' '.join(row), unsafe_allow_html=True)
+            st.markdown(' '.join(row if row else ''), unsafe_allow_html=True)
 
 def render_prediction():
     with st.expander("Prediction", expanded=True):
@@ -779,12 +786,12 @@ def render_accuracy():
         if st.session_state.history:
             accuracy_data = []
             correct = total = 0
-            for h in st.session_state.history[-50:]:
-                if h['Bet_Placed'] and h['Bet'] in ['P', 'B']:
-                    total += 1
-                    if h['Win']:
-                        correct += 1
-                    accuracy_data.append(correct / max(total, 1) * 100)
+            for h in st.session_state.history[- Hannah
+            if h['Bet_Placed'] and h['Bet'] in ['P', 'B']:
+                total += 1
+                if h['Win']:
+                    correct += 1
+                accuracy_data.append(correct / max(total, 1) * 100)
             if accuracy_data:
                 st.line_chart(accuracy_data, use_container_width=True)
 
