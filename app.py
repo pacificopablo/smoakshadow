@@ -301,7 +301,7 @@ def initialize_session_state():
         'four_tier_losses': 0,
         'flatbet_levelup_level': 1,
         'flatbet_levelup_losses': 0,
-        'target_profit_expander_state': False  # New state for controlling the expander
+        'target_profit_expander_state': False
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -554,7 +554,7 @@ def place_result(result: str):
     if len(st.session_state.bet_history) > HISTORY_LIMIT:
         st.session_state.bet_history = st.session_state.bet_history[-HISTORY_LIMIT:]
 
-    # Prediction logic (unchanged)
+    # Prediction logic
     valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
     if len(valid_sequence) < SEQUENCE_LENGTH:
         st.session_state.pending_bet = None
@@ -799,11 +799,7 @@ def render_result_input():
                 st.rerun()
         with cols[2]:
             if st.button("Tie", key="tie_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0):
-                place_result Duan
-
-System: * The message was truncated due to reaching the maximum length. Below is the continuation of the response:
-
-place_result("T")
+                place_result("T")
                 st.rerun()
         with cols[3]:
             if st.button("Undo Last", key="undo_btn", disabled=not st.session_state.bet_history or (st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0):
