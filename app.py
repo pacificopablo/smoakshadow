@@ -197,18 +197,6 @@ def apply_custom_css():
         }
     }
     </style>
-    <script>
-    // JavaScript to trigger a rerun when radio button changes
-    document.addEventListener('DOMContentLoaded', function() {
-        const radioButtons = document.querySelectorAll('input[type="radio"][name="target_profit_radio"]');
-        radioButtons.forEach(radio => {
-            radio.addEventListener('change', function() {
-                // Trigger a Streamlit rerun
-                window.parent.document.querySelector('button[kind="secondary"]').click();
-            });
-        });
-    });
-    </script>
     """, unsafe_allow_html=True)
 
 # --- Session Tracking ---
@@ -651,6 +639,10 @@ def place_result(result: str):
             st.success(f"Shoe of {SHOE_SIZE} hands completed!")
 
 # --- UI Components ---
+def update_target_profit_option():
+    st.session_state.target_profit_option = st.session_state.target_profit_radio
+    st.session_state.target_profit_expander_state = st.session_state.target_profit_option in ['By Percentage', 'By Units']
+
 def render_setup_form():
     with st.expander("Session Setup", expanded=st.session_state.bankroll == 0):
         # Form to capture all inputs
@@ -672,7 +664,8 @@ def render_setup_form():
                 options=['None', 'By Percentage', 'By Units'],
                 index=['None', 'By Percentage', 'By Units'].index(st.session_state.target_profit_option),
                 help="Choose how to set your target profit: by percentage of bankroll, by fixed units, or none.",
-                key="target_profit_radio"
+                key="target_profit_radio",
+                on_change=update_target_profit_option
             )
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -691,9 +684,9 @@ def render_setup_form():
                     st.error("Base bet cannot exceed 5% of bankroll.")
                 elif stop_loss_percentage <= 0 or stop_loss_percentage >= 100:
                     st.error("Stop loss percentage must be between 0% and 100%.")
-                elif target_profit_option == 'By Percentage' and (st.session_state.target_profit_percentage < 0 or st.session_state.target_profit_percentage > 100):
+                elif st.session_state.target_profit_option == 'By Percentage' and (st.session_state.target_profit_percentage < 0 or st.session_state.target_profit_percentage > 100):
                     st.error("Target profit percentage must be between 0% and 100%.")
-                elif target_profit_option == 'By Units' and st.session_state.target_profit_units < 0:
+                elif st.session_state.target_profit_option == 'By Units' and st.session_state.target_profit_units < 0:
                     st.error("Target profit units must be non-negative.")
                 elif money_management == 'FourTier' and bankroll < minimum_bankroll:
                     st.error(f"Four Tier strategy requires a minimum bankroll of ${minimum_bankroll:.2f} for a base bet of ${base_bet:.2f}.")
@@ -728,9 +721,9 @@ def render_setup_form():
                         'moon_level': 1,
                         'moon_level_changes': 0,
                         'moon_peak_level': 1,
-                        'target_profit_option': target_profit_option,
-                        'target_profit_percentage': st.session_state.target_profit_percentage if target_profit_option == 'By Percentage' else 0.0,
-                        'target_profit_units': st.session_state.target_profit_units if target_profit_option == 'By Units' else 0.0,
+                        'target_profit_option': st.session_state.target_profit_option,
+                        'target_profit_percentage': st.session_state.target_profit_percentage if st.session_state.target_profit_option == 'By Percentage' else 0.0,
+                        'target_profit_units': st.session_state.target_profit_units if st.session_state.target_profit_option == 'By Units' else 0.0,
                         'four_tier_level': 1,
                         'four_tier_step': 1,
                         'four_tier_losses': 0,
@@ -742,7 +735,6 @@ def render_setup_form():
                     st.success(f"Session started with {money_management} strategy and safety net {'enabled' if safety_net_enabled else 'disabled'}!")
 
         # Target Profit Details Expander (outside form)
-        st.session_state.target_profit_expander_state = st.session_state.target_profit_option in ['By Percentage', 'By Units']
         with st.expander("Target Profit Details", expanded=st.session_state.target_profit_expander_state):
             st.markdown('<div class="target-profit-details-expander">', unsafe_allow_html=True)
             if st.session_state.target_profit_option == 'By Percentage':
