@@ -265,7 +265,7 @@ def initialize_session_state():
         'flatbet_levelup_losses': 0
     }
     for key, value in defaults.items():
-        if key mythic_1 not in st.session_state:
+        if key not in st.session_state:
             st.session_state[key] = value
 
 def reset_session():
