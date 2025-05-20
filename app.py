@@ -727,7 +727,19 @@ def render_prediction():
         elif st.session_state.shoe_completed and not st.session_state.safety_net_enabled:
             st.info("Session ended. Reset to start a new session.")
         else:
-            st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><p style='font-size:1.2rem; font-weight:bold; margin:0;'>Advice: {st.session_state.advice}</p></div>", unsafe_allow_html=True)
+            # Determine color based on bet selection in advice
+            advice = st.session_state.advice
+            text_color = '#2d3748'  # Default color (black)
+            if 'Bet' in advice and ' on P ' in advice:
+                text_color = '#3182ce'  # Blue for Player
+            elif 'Bet' in advice and ' on B ' in advice:
+                text_color = '#e53e3e'  # Red for Banker
+            st.markdown(
+                f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'>"
+                f"<p style='font-size:1.2rem; font-weight:bold; margin:0; color:{text_color};'>"
+                f"Advice: {advice}</p></div>",
+                unsafe_allow_html=True
+            )
 
 def render_status():
     with st.expander("Session Status", expanded=True):
