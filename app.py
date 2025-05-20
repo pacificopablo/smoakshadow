@@ -388,11 +388,7 @@ def place_result(result: str):
     if st.session_state.target_profit_option == 'By Percentage' and st.session_state.target_profit_percentage > 0:
         if current_profit >= st.session_state.initial_bankroll * st.session_state.target_profit_percentage:
             st.session_state.shoe_completed = True
-            st.success(f"Target profit reached: ${current_profit:.2f}探索
-
-System: * The message was truncated due to reaching the maximum length. Below is the continuation of the response:
-
-st.success(f"Target profit reached: ${current_profit:.2f} ({st.session_state.target_profit_percentage*100:.0f}% of bankroll). Session ended. Reset or exit.")
+            st.success(f"Target profit reached: ${current_profit:.2f} ({st.session_state.target_profit_percentage*100:.0f}% of bankroll). Session ended. Reset or exit.")
             return
     if st.session_state.target_profit_option == 'By Units' and st.session_state.target_profit_units > 0:
         if current_profit >= st.session_state.target_profit_units:
