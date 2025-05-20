@@ -152,6 +152,12 @@ def apply_custom_css():
         border-radius: 8px;
         overflow-x: auto;
     }
+    .target-profit-section {
+        background-color: #edf2f7;
+        padding: 10px;
+        border-radius: 8px;
+        margin-top: 10px;
+    }
     @media (max-width: 768px) {
         .stApp {
             padding: 10px;
@@ -256,8 +262,8 @@ def initialize_session_state():
         'moon_level_changes': 0,
         'moon_peak_level': 1,
         'target_profit_type': 'none',
-        'target_profit_percentage': 0.0,
-        'target_profit_units': 0.0,
+        'target_profit_percentage': 0.5,  # Default 50%
+        'target_profit_units': 100.0,    # Default $100
         'four_tier_level': 1,
         'four_tier_step': 1,
         'four_tier_losses': 0,
@@ -612,40 +618,46 @@ def place_result(result: str):
 
 # --- UI Components ---
 def render_setup_form():
+    # Keep expander open until a valid session starts
     with st.expander("Session Setup", expanded=st.session_state.bankroll == 0):
         with st.form("setup_form"):
             col1, col2 = st.columns(2)
             with col1:
                 bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll, step=10.0)
                 stop_loss_percentage = st.number_input("Stop Loss (% of Bankroll)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100, step=5.0)
+                money_management = st.selectbox("Money Management", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management))
             with col2:
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10, format="%.2f")
                 safety_net_enabled = st.checkbox("Enable Safety Net (Bet Base Bet on Stop Loss)", value=st.session_state.safety_net_enabled)
-            
-            target_profit_type = st.selectbox(
-                "Target Profit",
-                ["None", "Target Profit by %", "Target Profit by Units"],
-                index=["none", "percentage", "units"].index(st.session_state.target_profit_type)
-            )
-            target_profit_percentage = 0.0
-            target_profit_units = 0.0
-            if target_profit_type == "Target Profit by %":
-                target_profit_percentage = st.number_input(
-                    "Target Profit (% of Bankroll)",
-                    min_value=0.0,
-                    max_value=100.0,
-                    value=st.session_state.target_profit_percentage * 100,
-                    step=5.0
+                # Target Profit section with styling and help text
+                st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
+                target_profit_type = st.selectbox(
+                    "Target Profit",
+                    ["None", "Target Profit by %", "Target Profit by Units"],
+                    index=["none", "percentage", "units"].index(st.session_state.target_profit_type),
+                    help="Set a profit goal to stop the session when reached. Choose 'None' to disable."
                 )
-            elif target_profit_type == "Target Profit by Units":
-                target_profit_units = st.number_input(
-                    "Target Profit (Units $)",
-                    min_value=0.0,
-                    value=st.session_state.target_profit_units,
-                    step=10.0
-                )
-            
-            money_management = st.selectbox("Money Management", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management))
+                target_profit_percentage = 0.0
+                target_profit_units = 0.0
+                if target_profit_type == "Target Profit by %":
+                    target_profit_percentage = st.number_input(
+                        "Target Profit (% of Bankroll)",
+                        min_value=0.0,
+                        max_value=100.0,
+                        value=st.session_state.target_profit_percentage * 100,
+                        step=5.0,
+                        help="Percentage of initial bankroll to aim for (e.g., 50% of $100 = $50 profit)."
+                    )
+                elif target_profit_type == "Target Profit by Units":
+                    target_profit_units = st.number_input(
+                        "Target Profit (Units $)",
+                        min_value=0.0,
+                        value=st.session_state.target_profit_units,
+                        step=10.0,
+                        help="Fixed dollar amount to aim for (e.g., $100 profit)."
+                    )
+                st.markdown('</div>', unsafe_allow_html=True)
+
             if st.form_submit_button("Start Session"):
                 minimum_bankroll = 0
                 if money_management == 'FourTier':
