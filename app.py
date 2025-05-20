@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -23,7 +24,7 @@ PARLAY_TABLE = {
         (12, 24), (16, 32), (22, 44), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
     ], 1)
 }
-STRATEGIES = ["T3", "Flatbet", "Parlay16", "Z1003.1", "Genius", "Moon"]
+STRATEGIES = ["T3", "Flatbet", "Parlay16", "Z1003.1", "Genius", "Moon", "Red District"]
 SEQUENCE_LIMIT = 100
 HISTORY_LIMIT = 1000
 LOSS_LOG_LIMIT = 50
@@ -82,7 +83,7 @@ def apply_custom_css():
     .stButton > button:active {
         transform: translateY(0);
     }
-    .stNumberInput > div > div > input, .stSelectbox > div > div > select {
+    .stNumberInput > div > div > input, .stSelectbox > div > div > select, .stTextInput > div > div > input {
         border-radius: 8px;
         border: 1px solid #e2e8f0;
         padding: 10px;
@@ -154,7 +155,7 @@ def apply_custom_css():
             width: 100%;
             padding: 12px;
         }
-        .stNumberInput, .stSelectbox {
+        .stNumberInput, .stSelectbox, .stTextInput {
             margin-bottom: 1rem;
         }
     }
@@ -446,14 +447,15 @@ def calculate_weights(streak_count: int, chop_count: int, double_count: int, sho
 def prepare_ml_features(sequence: List[str], streak_count: int, chop_count: int, double_count: int, shoe_bias: float) -> np.ndarray:
     le = LabelEncoder()
     le.fit(['P', 'B', 'T', 'None'])
-    padded_sequence = ['None'] * (8 - len(sequence)) + sequence[-8:] if len(sequence) < 8 else sequence[-8:]
+    # Pad sequence to at least 8 outcomes
+    padded_sequence = ['None'] * (8 - len(sequence)) + sequence if len(sequence) < 8 else sequence[-8:]
     encoded_sequence = le.transform(padded_sequence).reshape(1, -1)
     pattern_features = np.array([[streak_count, chop_count, double_count, shoe_bias]])
     features = np.hstack((encoded_sequence, pattern_features))
     return features
 
 def train_ml_model(history: List[Dict]) -> Tuple[RandomForestClassifier, bool]:
-    if len(history) < 10:
+    if len(history) < 2:  # Reduced from 10 to allow earlier training
         return RandomForestClassifier(n_estimators=100, random_state=42), False
     X, y = [], []
     le = LabelEncoder()
@@ -461,11 +463,10 @@ def train_ml_model(history: List[Dict]) -> Tuple[RandomForestClassifier, bool]:
     for i in range(len(history) - 1):
         if history[i]['Result'] in ['P', 'B', 'T']:
             sequence = [h['Result'] for h in history[:i+1] if h['Result'] in ['P', 'B', 'T']]
-            if len(sequence) >= 8:
-                _, _, _, _, streak_count, chop_count, double_count, _, shoe_bias, _ = analyze_patterns(sequence)
-                features = prepare_ml_features(sequence, streak_count, chop_count, double_count, shoe_bias)
-                X.append(features.flatten())
-                y.append(history[i+1]['Result'])
+            _, _, _, _, streak_count, chop_count, double_count, _, shoe_bias, _ = analyze_patterns(sequence)
+            features = prepare_ml_features(sequence, streak_count, chop_count, double_count, shoe_bias)
+            X.append(features.flatten())
+            y.append(history[i+1]['Result'])
     if not X or not y:
         return RandomForestClassifier(n_estimators=100, random_state=42), False
     X = np.array(X)
@@ -476,22 +477,21 @@ def train_ml_model(history: List[Dict]) -> Tuple[RandomForestClassifier, bool]:
 
 def smart_predict() -> Tuple[Optional[str], float, Dict]:
     sequence = [x for x in st.session_state.sequence if x in ['P', 'B', 'T']]
-    if len(sequence) < 8:
-        return None, 0.0, {'Status': 'Waiting for 9th hand'}
-    recent_sequence = sequence[-WINDOW_SIZE:] if len(sequence) >= WINDOW_SIZE else sequence
-    (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
-     streak_count, chop_count, double_count, volatility, shoe_bias, insights) = analyze_patterns(recent_sequence)
-    st.session_state.pattern_volatility = volatility
-    st.session_state.trend_score = {'streak': insights['streak'], 'chop': insights['chop'], 'double': insights['double']}
+    insights = {'Status': 'Predicting with available data'}
     prior_p, prior_b = 44.62 / 100, 45.86 / 100
     ml_model, ml_fitted = train_ml_model(st.session_state.history)
-    weights = calculate_weights(streak_count, chop_count, double_count, shoe_bias, ml_fitted)
+    
+    # Initialize variables
     prob_p = prob_b = total_weight = 0
-    insights = {'Volatility': f"{volatility:.2f}"}
-    ml_pred = None
-    ml_conf = 0.0
     final_pred = None
     final_conf = 0.0
+    recent_sequence = sequence[-WINDOW_SIZE:] if len(sequence) >= WINDOW_SIZE else sequence
+    (bigram_transitions, trigram_transitions, fourgram_transitions, pattern_transitions,
+     streak_count, chop_count, double_count, volatility, shoe_bias, pattern_insights) = analyze_patterns(recent_sequence)
+    st.session_state.pattern_volatility = volatility
+    st.session_state.trend_score = {'streak': pattern_insights['streak'], 'chop': pattern_insights['chop'], 'double': pattern_insights['double']}
+    weights = calculate_weights(streak_count, chop_count, double_count, shoe_bias, ml_fitted)
+    insights.update({'Volatility': f"{volatility:.2f}"})
 
     # Machine Learning Prediction
     if ml_fitted:
@@ -514,7 +514,7 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
     else:
         insights['ML_Model'] = "0% (Not trained: Insufficient data)"
 
-    # Heuristic Predictions (Fallback)
+    # Heuristic Predictions
     if not final_pred:
         if len(recent_sequence) >= 2:
             bigram = tuple(recent_sequence[-2:])
@@ -621,10 +621,10 @@ def smart_predict() -> Tuple[Optional[str], float, Dict]:
             final_conf = max(prob_p, prob_b)
 
     # Adjust for strong patterns
-    if insights.get('streak', 0.0) > 0.6 and recent_sequence and recent_sequence[-1] != 'T':
+    if pattern_insights.get('streak', 0.0) > 0.6 and recent_sequence and recent_sequence[-1] != 'T':
         final_pred = recent_sequence[-1]
         final_conf += 10.0
-    elif insights.get('chop', 0.0) > 0.6 and recent_sequence and recent_sequence[-1] != 'T':
+    elif pattern_insights.get('chop', 0.0) > 0.6 and recent_sequence and recent_sequence[-1] != 'T':
         final_pred = 'P' if recent_sequence[-1] == 'B' else 'B'
         final_conf += 5.0
 
@@ -720,8 +720,6 @@ def smart_stop():
     return False
 
 def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optional[str]]:
-    if len(st.session_state.sequence) < 8:
-        return None, "No bet: Waiting for 9th hand"
     if st.session_state.smart_skip:
         if conf < 40.0:
             return None, f"No bet: Confidence too low ({conf:.1f}%)"
@@ -735,6 +733,8 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
             return None, f"No bet: Paused due to stop-loss (Bankroll: ${st.session_state.bankroll:.2f}, Needs: >${st.session_state.initial_bankroll * st.session_state.stop_loss_percentage / 100:.2f})"
     if pred is None or conf < 32.0:
         return None, f"No bet: Confidence too low"
+    if st.session_state.strategy == 'Red District' and pred != 'B':
+        return None, "No bet: Red District only bets on Banker"
     if st.session_state.bankroll > st.session_state.profit_lock:
         profit_gained = st.session_state.bankroll - st.session_state.profit_lock
         if profit_gained >= st.session_state.initial_bankroll * (st.session_state.profit_lock_threshold / 100):
@@ -757,6 +757,8 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                 st.session_state.moon_level = 1
                 st.session_state.moon_level_changes += 1
                 st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
+            elif st.session_state.strategy == 'Red District':
+                pass  # No state to reset for flat betting
             st.session_state.profit_lock = st.session_state.bankroll
     if st.session_state.strategy == 'Z1003.1':
         if st.session_state.z1003_loss_count >= 3:
@@ -771,6 +773,8 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
         bet_amount = genius_bet(conf, shoe_bias)
     elif st.session_state.strategy == 'Moon':
         bet_amount = st.session_state.base_bet * st.session_state.moon_level
+    elif st.session_state.strategy == 'Red District':
+        bet_amount = st.session_state.base_bet
     else:
         key = 'base' if st.session_state.parlay_using_base else 'parlay'
         bet_amount = st.session_state.initial_base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
@@ -812,6 +816,8 @@ def calculate_bet_amount(pred: str, conf: float) -> Tuple[Optional[float], Optio
                 if old_level != st.session_state.moon_level:
                     st.session_state.moon_level_changes += 1
                 st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, old_level)
+                bet_amount = st.session_state.base_bet
+            elif st.session_state.strategy == 'Red District':
                 bet_amount = st.session_state.base_bet
             return None, "No bet: Risk too high for current bankroll. Level/step reset to 1."
     return bet_amount, f"Next Bet: ${bet_amount:.2f} on {pred}"
@@ -898,6 +904,8 @@ def place_result(result: str):
                         if old_level != st.session_state.moon_level:
                             st.session_state.moon_level_changes += 1
                         st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
+                    elif st.session_state.strategy == 'Red District':
+                        pass  # No state changes for flat betting
                     st.session_state.wins += 1
                     st.session_state.prediction_accuracy[selection] += 1
                     st.session_state.consecutive_losses = 0
@@ -930,6 +938,8 @@ def place_result(result: str):
                         if old_level != st.session_state.moon_level:
                             st.session_state.moon_level_changes += 1
                         st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
+                    elif st.session_state.strategy == 'Red District':
+                        pass  # No state changes for flat betting
                     st.session_state.losses += 1
                     st.session_state.consecutive_losses += 1
                     st.session_state.loss_log.append({
@@ -988,6 +998,7 @@ def render_setup_form():
             with col1:
                 bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll, step=10.0)
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10, format="%.2f")
+                sequence_input = st.text_input("Initial Sequence (e.g., P,B,T)", "")
             with col2:
                 betting_strategy = st.selectbox("Strategy", STRATEGIES, index=STRATEGIES.index(st.session_state.strategy))
                 target_mode = st.selectbox("Target Mode", ['Profit %', 'Wins'], index=0 if st.session_state.target_mode == 'Profit %' else 1)
@@ -1010,12 +1021,24 @@ def render_setup_form():
                 elif base_bet > bankroll:
                     st.error("Base bet cannot exceed bankroll.")
                 else:
+                    # Process sequence input
+                    initial_sequence = []
+                    if sequence_input:
+                        try:
+                            sequence_list = sequence_input.replace(" ", "").split(",")
+                            valid_outcomes = ['P', 'B', 'T']
+                            initial_sequence = [x.upper() for x in sequence_list if x.upper() in valid_outcomes]
+                            if len(initial_sequence) != len(sequence_list):
+                                st.warning("Invalid outcomes in sequence ignored. Use P, B, or T.")
+                        except Exception as e:
+                            st.error(f"Error parsing sequence: {str(e)}")
+                    # Initialize session state
                     st.session_state.update({
                         'bankroll': bankroll,
                         'base_bet': base_bet,
                         'initial_base_bet': base_bet,
                         'strategy': betting_strategy,
-                        'sequence': [],
+                        'sequence': initial_sequence,
                         'pending_bet': None,
                         't3_level': 1,
                         't3_results': [],
@@ -1034,7 +1057,7 @@ def render_setup_form():
                         'moon_level_changes': 0,
                         'moon_peak_level': 1,
                         'advice': "",
-                        'history': [],
+                        'history': [{'Result': r, 'Bet': None, 'Amount': 0, 'Win': False, 'T3_Level': 1, 'Parlay_Step': 1, 'Z1003_Loss_Count': 0, 'Moon_Level': 1, 'Previous_State': {}, 'Bet_Placed': False} for r in initial_sequence],
                         'wins': 0,
                         'losses': 0,
                         'target_mode': target_mode,
@@ -1060,7 +1083,7 @@ def render_setup_form():
                         'smart_skip': smart_skip,
                         'non_betting_deals': 0,
                         'is_paused': False,
-                        'shoe_completed': False
+                        'shoe_completed': len(initial_sequence) >= SHOE_SIZE
                     })
                     st.session_state.pattern_success['bigram'] = 0
                     st.session_state.pattern_attempts['bigram'] = 0
@@ -1070,7 +1093,7 @@ def render_setup_form():
                     st.session_state.pattern_attempts['fourgram'] = 0
                     st.session_state.pattern_success['markov'] = 0
                     st.session_state.pattern_attempts['markov'] = 0
-                    st.success(f"Session started with {betting_strategy} strategy!")
+                    st.success(f"Session started with {betting_strategy} strategy! Sequence loaded: {''.join(initial_sequence)}")
 
 def render_result_input():
     with st.expander("Enter Result", expanded=True):
@@ -1187,6 +1210,8 @@ def render_status():
                 strategy_status += f"<br>Loss Count: {st.session_state.z1003_loss_count}<br>Changes: {st.session_state.z1003_level_changes} | Continue: {st.session_state.z1003_continue}"
             elif st.session_state.strategy == 'Moon':
                 strategy_status += f"<br>Level: {st.session_state.moon_level} | Peak: {st.session_state.moon_peak_level}<br>Changes: {st.session_state.moon_level_changes}"
+            elif st.session_state.strategy == 'Red District':
+                strategy_status += "<br>Flat betting on Banker only"
             st.markdown(strategy_status, unsafe_allow_html=True)
         st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
         st.markdown(f"**Online Users**: {track_user_session()}")
@@ -1292,3 +1317,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
