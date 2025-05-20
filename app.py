@@ -304,7 +304,7 @@ def initialize_session_state():
         'stop_loss_percentage': STOP_LOSS_DEFAULT,
         'win_limit': WIN_LIMIT,
         'shoe_completed': False,
-        'safety_net_enabled': False,
+        'safety_net_enabled': True,  # Enabled by default
         'advice': f"Need {SEQUENCE_LENGTH} results",
         'parlay_step': 1,
         'parlay_wins': 0,
@@ -323,7 +323,7 @@ def initialize_session_state():
         'flatbet_levelup_level': 1,
         'flatbet_levelup_net_loss': 0.0,
         'safety_net_percentage': 0.02,  # Default 2%
-        'smart_skip_enabled': True,
+        'smart_skip_enabled': False,  # Disabled by default
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -712,7 +712,7 @@ def render_setup_form():
 
             st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
             st.markdown('<h3><span class="icon">🎯</span>Safety & Limits</h3>', unsafe_allow_html=True)
-            safety_net_enabled = st.checkbox("Enable Safety Net", value=st.session_state.safety_net_enabled, help="Activates a fallback mode at base bet when bankroll drops to the safety net percentage, allowing continued play.")
+            safety_net_enabled = st.checkbox("Enable Safety Net", value=True, help="Activates a fallback mode at base bet when bankroll drops to the safety net percentage, allowing continued play.")
             safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled, help="Bankroll threshold (e.g., 2%) to trigger safety net. Must be between 0% and 100%.")
 
             stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=True, help="Stops the session when bankroll falls below the stop-loss percentage.")
@@ -720,7 +720,7 @@ def render_setup_form():
 
             profit_lock_threshold = st.number_input("Profit Lock Threshold (% of Initial Bankroll)", min_value=100.0, max_value=1000.0, value=st.session_state.win_limit * 100 or 600.00, step=1.0, help="Stops the session when bankroll exceeds this percentage of the initial bankroll (e.g., 600% of $1000 = $6000).")
 
-            smart_skip_enabled = st.checkbox("Enable Smart Skip", value=st.session_state.smart_skip_enabled, help="Skips bets when confidence is low (below 60%) to reduce risk.")
+            smart_skip_enabled = st.checkbox("Enable Smart Skip", value=False, help="Skips bets when confidence is low (below 60%) to reduce risk.")
 
             st.markdown('</div>', unsafe_allow_html=True)
 
