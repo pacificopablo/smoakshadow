@@ -153,10 +153,23 @@ def apply_custom_css():
         overflow-x: auto;
     }
     .target-profit-section {
-        background-color: #edf2f7;
+        background-color: #f7fafc;
         padding: 10px;
         border-radius: 8px;
         margin-top: 10px;
+        border: 1px solid #e2e8f0;
+    }
+    .target-profit-section h3 {
+        color: #2c5282;
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+    .target-profit-section .stCheckbox {
+        margin-bottom: 5px;
+    }
+    .target-profit-section .stNumberInput {
+        margin-bottom: 5px;
     }
     @media (max-width: 768px) {
         .stApp {
@@ -621,7 +634,7 @@ def place_result(result: str):
 
 # --- UI Components ---
 def render_setup_form():
-    # Keep expander open until a valid session starts
+    # Keep expander, open until a valid session starts
     with st.expander("Session Setup", expanded=st.session_state.bankroll == 0):
         with st.form("setup_form"):
             col1, col2 = st.columns(2)
@@ -632,9 +645,17 @@ def render_setup_form():
             with col2:
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10, format="%.2f")
                 safety_net_enabled = st.checkbox("Enable Safety Net (Bet Base Bet on Stop Loss)", value=st.session_state.safety_net_enabled)
-                # Target Profit section with checkboxes
-                st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
-                target_profit_by_percentage_enabled = st.checkbox("Target Profit by %", value=st.session_state.target_profit_by_percentage_enabled, help="Enable a profit goal based on a percentage of the initial bankroll (e.g., 5% of $100 = $5 profit).")
+
+            # Target Profit section with improved layout
+            st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
+            st.markdown('<h3>Target Profit Settings</h3>', unsafe_allow_html=True)
+            col3, col4 = st.columns(2)
+            with col3:
+                target_profit_by_percentage_enabled = st.checkbox(
+                    "Target Profit by %",
+                    value=st.session_state.target_profit_by_percentage_enabled,
+                    help="Enable a profit goal based on a percentage of the initial bankroll (e.g., 5% of $100 = $5 profit)."
+                )
                 target_profit_percentage = 0.0
                 if target_profit_by_percentage_enabled:
                     target_profit_percentage = st.number_input(
@@ -642,18 +663,25 @@ def render_setup_form():
                         min_value=0.0,
                         max_value=100.0,
                         value=st.session_state.target_profit_percentage * 100,
-                        step=1.0
+                        step=1.0,
+                        key="target_profit_percentage"
                     )
-                target_profit_by_units_enabled = st.checkbox("Target Profit by Units", value=st.session_state.target_profit_by_units_enabled, help="Enable a profit goal based on a fixed dollar amount (e.g., $50 profit).")
+            with col4:
+                target_profit_by_units_enabled = st.checkbox(
+                    "Target Profit by Units",
+                    value=st.session_state.target_profit_by_units_enabled,
+                    help="Enable a profit goal based on a fixed dollar amount (e.g., $50 profit)."
+                )
                 target_profit_units = 0.0
                 if target_profit_by_units_enabled:
                     target_profit_units = st.number_input(
                         "Target Profit (Units $)",
                         min_value=0.0,
                         value=st.session_state.target_profit_units,
-                        step=10.0
+                        step=10.0,
+                        key="target_profit_units"
                     )
-                st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
             if st.form_submit_button("Start Session"):
                 minimum_bankroll = 0
