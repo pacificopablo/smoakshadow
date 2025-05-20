@@ -214,7 +214,8 @@ def initialize_session_state():
         'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
         'stop_loss': STOP_LOSS,
         'win_limit': WIN_LIMIT,
-        'shoe_completed': False
+        'shoe_completed': False,
+        'advice': f"Need {SEQUENCE_LENGTH} results"
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -244,7 +245,8 @@ def reset_session():
         'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
         'stop_loss': STOP_LOSS,
         'win_limit': WIN_LIMIT,
-        'shoe_completed': False
+        'shoe_completed': False,
+        'advice': f"Need {SEQUENCE_LENGTH} results"
     })
 
 # --- Betting and Prediction Logic ---
@@ -301,8 +303,6 @@ def place_result(result: str):
     # Add result to sequence
     if result in ['P', 'B', 'T']:
         st.session_state.sequence.append(result)
-        if len(st.session_state.sequence) > SEQUENCE_LENGTH:
-            st.session_state.sequence.pop(0)
 
     # Store bet history
     st.session_state.bet_history.append({
@@ -317,10 +317,15 @@ def place_result(result: str):
     if len(st.session_state.bet_history) > HISTORY_LIMIT:
         st.session_state.bet_history = st.session_state.bet_history[-HISTORY_LIMIT:]
 
-    # Make prediction and set pending bet
-    advice = f"Need {SEQUENCE_LENGTH - len(st.session_state.sequence)} more results"
-    if len(st.session_state.sequence) == SEQUENCE_LENGTH and result in ['P', 'B']:
-        encoded_input = st.session_state.le.transform(st.session_state.sequence)
+    # Filter sequence for prediction (exclude 'T')
+    valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
+    if len(valid_sequence) < SEQUENCE_LENGTH:
+        st.session_state.pending_bet = None
+        st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
+    elif len(valid_sequence) >= SEQUENCE_LENGTH and result in ['P', 'B']:
+        # Use the last 6 non-tie outcomes for prediction
+        prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
+        encoded_input = st.session_state.le.transform(prediction_sequence)
         input_array = np.array([encoded_input])
         prediction_probs = st.session_state.model.predict_proba(input_array)[0]
         predicted_class = np.argmax(prediction_probs)
@@ -331,8 +336,8 @@ def place_result(result: str):
         lb6_selection = None
         lb6_confidence = 0
         sixth_prior = 'N/A'
-        if len(st.session_state.sequence) >= 6:
-            sixth_prior = st.session_state.sequence[-6]
+        if len(valid_sequence) >= 6:
+            sixth_prior = valid_sequence[-6]
             outcome_index = st.session_state.le.transform([sixth_prior])[0]
             lb6_confidence = prediction_probs[outcome_index] * 100
             if lb6_confidence > 40 and sixth_prior == predicted_outcome:
@@ -341,7 +346,7 @@ def place_result(result: str):
         # Markov strategy: Calculate transition probabilities, select if matches Model
         markov_selection = None
         markov_confidence = 0
-        last_outcome = st.session_state.sequence[-1]
+        last_outcome = valid_sequence[-1]
         total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
         total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
         if last_outcome == 'P' and total_from_p > 0:
@@ -387,15 +392,14 @@ def place_result(result: str):
                 bet_amount = st.session_state.base_bet * st.session_state.t3_level
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
-                advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({st.session_state.money_management}{' Level ' + str(st.session_state.t3_level) if st.session_state.money_management == 'T3' else ''}, {strategy_used}: {confidence:.1f}%)"
+                st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({st.session_state.money_management}{' Level ' + str(st.session_state.t3_level) if st.session_state.money_management == 'T3' else ''}, {strategy_used}: {confidence:.1f}%)"
             else:
                 st.session_state.pending_bet = None
-                advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
+                st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
         else:
             st.session_state.pending_bet = None
-            advice = f"Skip betting (low confidence or no matching strategy: Model {model_confidence:.1f}% ({predicted_outcome}), LB6 {lb6_confidence:.1f}% ({sixth_prior}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
+            st.session_state.advice = f"Skip betting (low confidence or no matching strategy: Model {model_confidence:.1f}% ({predicted_outcome}), LB6 {lb6_confidence:.1f}% ({sixth_prior}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
 
-    st.session_state.advice = advice
     if len(st.session_state.sequence) >= SHOE_SIZE:
         st.session_state.shoe_completed = True
 
@@ -434,7 +438,8 @@ def render_setup_form():
                         'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
                         'stop_loss': STOP_LOSS,
                         'win_limit': WIN_LIMIT,
-                        'shoe_completed': False
+                        'shoe_completed': False,
+                        'advice': f"Need {SEQUENCE_LENGTH} results"
                     })
                     st.session_state.model, st.session_state.le = train_model()
                     st.success(f"Session started with {money_management} strategy!")
@@ -481,8 +486,9 @@ def render_result_input():
                             transition = f"{st.session_state.sequence[-1]}{last_bet['Result']}"
                             st.session_state.transition_counts[transition] = max(0, st.session_state.transition_counts[transition] - 1)
                         st.session_state.pending_bet = None
+                        valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
+                        st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
                         st.session_state.shoe_completed = False
-                        st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(st.session_state.sequence)} more results"
                         st.success("Undone last action.")
                         st.rerun()
                     except Exception as e:
