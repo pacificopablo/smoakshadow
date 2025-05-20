@@ -444,11 +444,16 @@ def place_result(result: str):
         st.session_state.insights = {"Explanation": explanation}
         return
 
+    st.session_state.sequence.append(result)
+    if len(st.session_state.sequence) > SEQUENCE_LIMIT:
+        st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
+
     bet_amount = 0
     bet_placed = False
     selection = None
     win = False
-    if result in ["P", "B"]:
+
+    if result in ["P", "B"] and len(st.session_state.sequence) >= 1:
         prediction, explanation = predict_next()
         selection = prediction if prediction in ["P", "B"] else None
         if selection:
@@ -490,11 +495,8 @@ def place_result(result: str):
         else:
             st.session_state.advice = explanation
     else:
-        st.session_state.advice = "No bet placed: Tie result."
+        st.session_state.advice = "No bet placed: Insufficient history or Tie result."
 
-    st.session_state.sequence.append(result)
-    if len(st.session_state.sequence) > SEQUENCE_LIMIT:
-        st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
     st.session_state.history.append({
         "Bet": selection,
         "Result": result,
@@ -509,9 +511,9 @@ def place_result(result: str):
 
     prediction, explanation = predict_next()
     st.session_state.last_prediction = prediction if prediction in ["P", "B"] else None
+    st.session_state.insights = {"Explanation": explanation}
     bet_amount, advice = calculate_bet_amount(prediction, explanation)
     st.session_state.advice = advice
-    st.session_state.insights = {"Explanation": explanation}
 
     if check_target_hit():
         st.session_state.target_hit = True
