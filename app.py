@@ -261,9 +261,10 @@ def initialize_session_state():
         'moon_level': 1,
         'moon_level_changes': 0,
         'moon_peak_level': 1,
-        'target_profit_type': 'percentage',  # Default to percentage
-        'target_profit_percentage': 0.05,   # Default 5%
-        'target_profit_units': 0.0,         # Disabled by default
+        'target_profit_by_percentage_enabled': False,  # New checkbox state
+        'target_profit_percentage': 0.0,              # Default value
+        'target_profit_by_units_enabled': False,      # New checkbox state
+        'target_profit_units': 0.0,                   # Default value
         'four_tier_level': 1,
         'four_tier_step': 1,
         'four_tier_losses': 0,
@@ -281,8 +282,9 @@ def reset_session():
         'money_management': st.session_state.money_management,
         'stop_loss_percentage': st.session_state.stop_loss_percentage,
         'safety_net_enabled': st.session_state.safety_net_enabled,
-        'target_profit_type': st.session_state.target_profit_type,
+        'target_profit_by_percentage_enabled': st.session_state.target_profit_by_percentage_enabled,
         'target_profit_percentage': st.session_state.target_profit_percentage,
+        'target_profit_by_units_enabled': st.session_state.target_profit_by_units_enabled,
         'target_profit_units': st.session_state.target_profit_units
     }
     initialize_session_state()
@@ -314,8 +316,9 @@ def reset_session():
         'moon_level': 1,
         'moon_level_changes': 0,
         'moon_peak_level': 1,
-        'target_profit_type': setup_values['target_profit_type'],
+        'target_profit_by_percentage_enabled': setup_values['target_profit_by_percentage_enabled'],
         'target_profit_percentage': setup_values['target_profit_percentage'],
+        'target_profit_by_units_enabled': setup_values['target_profit_by_units_enabled'],
         'target_profit_units': setup_values['target_profit_units'],
         'four_tier_level': 1,
         'four_tier_step': 1,
@@ -360,12 +363,12 @@ def place_result(result: str):
 
     # Check target profit
     current_profit = st.session_state.bankroll - st.session_state.initial_bankroll
-    if st.session_state.target_profit_type == 'percentage' and st.session_state.target_profit_percentage > 0:
+    if st.session_state.target_profit_by_percentage_enabled and st.session_state.target_profit_percentage > 0:
         if current_profit >= st.session_state.initial_bankroll * st.session_state.target_profit_percentage:
             st.session_state.shoe_completed = True
             st.success(f"Target profit reached: ${current_profit:.2f} ({st.session_state.target_profit_percentage*100:.0f}% of bankroll). Session ended. Reset or exit.")
             return
-    elif st.session_state.target_profit_type == 'units' and st.session_state.target_profit_units > 0:
+    if st.session_state.target_profit_by_units_enabled and st.session_state.target_profit_units > 0:
         if current_profit >= st.session_state.target_profit_units:
             st.session_state.shoe_completed = True
             st.success(f"Target profit reached: ${current_profit:.2f}. Session ended. Reset or exit.")
@@ -629,16 +632,27 @@ def render_setup_form():
             with col2:
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10, format="%.2f")
                 safety_net_enabled = st.checkbox("Enable Safety Net (Bet Base Bet on Stop Loss)", value=st.session_state.safety_net_enabled)
-                # Target Profit section always visible with percentage default
+                # Target Profit section with checkboxes
                 st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
-                target_profit_percentage = st.number_input(
-                    "Target Profit (% of Bankroll)",
-                    min_value=0.0,
-                    max_value=100.0,
-                    value=st.session_state.target_profit_percentage * 100,
-                    step=1.0,
-                    help="Set a profit goal as a percentage of the initial bankroll (e.g., 5% of $100 = $5 profit). Set to 0 to disable."
-                )
+                target_profit_by_percentage_enabled = st.checkbox("Target Profit by %", value=st.session_state.target_profit_by_percentage_enabled, help="Enable a profit goal based on a percentage of the initial bankroll (e.g., 5% of $100 = $5 profit).")
+                target_profit_percentage = 0.0
+                if target_profit_by_percentage_enabled:
+                    target_profit_percentage = st.number_input(
+                        "Target Profit (% of Bankroll)",
+                        min_value=0.0,
+                        max_value=100.0,
+                        value=st.session_state.target_profit_percentage * 100,
+                        step=1.0
+                    )
+                target_profit_by_units_enabled = st.checkbox("Target Profit by Units", value=st.session_state.target_profit_by_units_enabled, help="Enable a profit goal based on a fixed dollar amount (e.g., $50 profit).")
+                target_profit_units = 0.0
+                if target_profit_by_units_enabled:
+                    target_profit_units = st.number_input(
+                        "Target Profit (Units $)",
+                        min_value=0.0,
+                        value=st.session_state.target_profit_units,
+                        step=10.0
+                    )
                 st.markdown('</div>', unsafe_allow_html=True)
 
             if st.form_submit_button("Start Session"):
@@ -655,8 +669,10 @@ def render_setup_form():
                     st.error("Base bet cannot exceed 5% of bankroll.")
                 elif stop_loss_percentage <= 0 or stop_loss_percentage >= 100:
                     st.error("Stop loss percentage must be between 0% and 100%.")
-                elif target_profit_percentage < 0 or target_profit_percentage > 100:
+                elif target_profit_by_percentage_enabled and (target_profit_percentage < 0 or target_profit_percentage > 100):
                     st.error("Target profit percentage must be between 0% and 100%.")
+                elif target_profit_by_units_enabled and target_profit_units < 0:
+                    st.error("Target profit units must be non-negative.")
                 elif money_management == 'FourTier' and bankroll < minimum_bankroll:
                     st.error(f"Four Tier strategy requires a minimum bankroll of ${minimum_bankroll:.2f} for a base bet of ${base_bet:.2f}.")
                 elif money_management == 'FlatbetLevelUp' and bankroll < minimum_bankroll:
@@ -690,9 +706,10 @@ def render_setup_form():
                         'moon_level': 1,
                         'moon_level_changes': 0,
                         'moon_peak_level': 1,
-                        'target_profit_type': 'percentage',  # Always percentage by default
-                        'target_profit_percentage': target_profit_percentage / 100,
-                        'target_profit_units': 0.0,  # Units disabled since percentage is default
+                        'target_profit_by_percentage_enabled': target_profit_by_percentage_enabled,
+                        'target_profit_percentage': target_profit_percentage / 100 if target_profit_by_percentage_enabled else 0.0,
+                        'target_profit_by_units_enabled': target_profit_by_units_enabled,
+                        'target_profit_units': target_profit_units if target_profit_by_units_enabled else 0.0,
                         'four_tier_level': 1,
                         'four_tier_step': 1,
                         'four_tier_losses': 0,
@@ -879,8 +896,12 @@ def render_status():
             st.markdown(f"**Current Profit**: ${st.session_state.bankroll - st.session_state.initial_bankroll:.2f}")
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
             st.markdown(f"**Stop Loss**: {st.session_state.stop_loss_percentage*100:.0f}%")
-            target_profit_display = f"{st.session_state.target_profit_percentage*100:.0f}%"
-            st.markdown(f"**Target Profit**: {target_profit_display}")
+            target_profit_display = []
+            if st.session_state.target_profit_by_percentage_enabled and st.session_state.target_profit_percentage > 0:
+                target_profit_display.append(f"{st.session_state.target_profit_percentage*100:.0f}%")
+            if st.session_state.target_profit_by_units_enabled and st.session_state.target_profit_units > 0:
+                target_profit_display.append(f"${st.session_state.target_profit_units:.2f}")
+            st.markdown(f"**Target Profit**: {'None' if not target_profit_display else ', '.join(target_profit_display)}")
         with col2:
             st.markdown(f"**Safety Net**: {'On' if st.session_state.safety_net_enabled else 'Off'}")
             st.markdown(f"**Hands Played**: {len(st.session_state.sequence)}")
