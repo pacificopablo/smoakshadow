@@ -157,6 +157,7 @@ def apply_custom_css():
         padding: 10px;
         border-radius: 8px;
         margin-top: 10px;
+        margin-bottom: 10px;
         border: 1px solid #e2e8f0;
     }
     .target-profit-section h3 {
@@ -168,7 +169,13 @@ def apply_custom_css():
     .target-profit-section .stRadio {
         margin-bottom: 5px;
     }
-    .target-profit-section .stNumberInput {
+    .target-profit-details-expander {
+        background-color: #edf2f7;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .target-profit-details-expander .stNumberInput {
         margin-bottom: 5px;
     }
     @media (max-width: 768px) {
@@ -293,7 +300,8 @@ def initialize_session_state():
         'four_tier_step': 1,
         'four_tier_losses': 0,
         'flatbet_levelup_level': 1,
-        'flatbet_levelup_losses': 0
+        'flatbet_levelup_losses': 0,
+        'target_profit_expander_state': False  # New state for controlling the expander
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -346,7 +354,8 @@ def reset_session():
         'four_tier_step': 1,
         'four_tier_losses': 0,
         'flatbet_levelup_level': 1,
-        'flatbet_levelup_losses': 0
+        'flatbet_levelup_losses': 0,
+        'target_profit_expander_state': False
     })
 
 # --- Betting and Prediction Logic ---
@@ -680,27 +689,34 @@ def render_setup_form():
             if st.session_state.target_profit_option != target_profit_option:
                 st.session_state.target_profit_option = target_profit_option
 
-            target_profit_percentage = 0.0
-            target_profit_units = 0.0
-            if st.session_state.target_profit_option == 'By Percentage':
-                target_profit_percentage = st.number_input(
-                    "Target Profit (% of Bankroll)",
-                    min_value=0.0,
-                    max_value=100.0,
-                    value=st.session_state.target_profit_percentage * 100 if st.session_state.target_profit_percentage > 0 else 10.0,
-                    step=1.0,
-                    key="target_profit_percentage"
-                )
-            elif st.session_state.target_profit_option == 'By Units':
-                target_profit_units = st.number_input(
-                    "Target Profit (Units $)",
-                    min_value=0.0,
-                    value=st.session_state.target_profit_units if st.session_state.target_profit_units > 0 else 50.0,
-                    step=10.0,
-                    key="target_profit_units"
-                )
+            # Control the expander state based on radio button selection
+            st.session_state.target_profit_expander_state = st.session_state.target_profit_option in ['By Percentage', 'By Units']
 
             st.markdown('</div>', unsafe_allow_html=True)
+
+            # Target Profit Details Expander
+            with st.expander("Target Profit Details", expanded=st.session_state.target_profit_expander_state):
+                st.markdown('<div class="target-profit-details-expander">', unsafe_allow_html=True)
+                target_profit_percentage = 0.0
+                target_profit_units = 0.0
+                if st.session_state.target_profit_option == 'By Percentage':
+                    target_profit_percentage = st.number_input(
+                        "Target Profit (% of Bankroll)",
+                        min_value=0.0,
+                        max_value=100.0,
+                        value=st.session_state.target_profit_percentage * 100 if st.session_state.target_profit_percentage > 0 else 10.0,
+                        step=1.0,
+                        key="target_profit_percentage"
+                    )
+                elif st.session_state.target_profit_option == 'By Units':
+                    target_profit_units = st.number_input(
+                        "Target Profit (Units $)",
+                        min_value=0.0,
+                        value=st.session_state.target_profit_units if st.session_state.target_profit_units > 0 else 50.0,
+                        step=10.0,
+                        key="target_profit_units"
+                    )
+                st.markdown('</div>', unsafe_allow_html=True)
 
             if st.form_submit_button("Start Session"):
                 minimum_bankroll = 0
@@ -760,7 +776,8 @@ def render_setup_form():
                         'four_tier_step': 1,
                         'four_tier_losses': 0,
                         'flatbet_levelup_level': 1,
-                        'flatbet_levelup_losses': 0
+                        'flatbet_levelup_losses': 0,
+                        'target_profit_expander_state': False
                     })
                     st.session_state.model, st.session_state.le = train_model()
                     st.success(f"Session started with {money_management} strategy and safety net {'enabled' if safety_net_enabled else 'disabled'}!")
@@ -782,7 +799,11 @@ def render_result_input():
                 st.rerun()
         with cols[2]:
             if st.button("Tie", key="tie_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0):
-                place_result("T")
+                place_result Duan
+
+System: * The message was truncated due to reaching the maximum length. Below is the continuation of the response:
+
+place_result("T")
                 st.rerun()
         with cols[3]:
             if st.button("Undo Last", key="undo_btn", disabled=not st.session_state.bet_history or (st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0):
