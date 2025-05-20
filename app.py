@@ -236,7 +236,9 @@ def initialize_session_state():
         'parlay_peak_step': 1,
         'moon_level': 1,
         'moon_level_changes': 0,
-        'moon_peak_level': 1
+        'moon_peak_level': 1,
+        'target_profit_percentage': 0.0,  # New: Target profit as percentage
+        'target_profit_units': 0.0       # New: Target profit as units
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -248,7 +250,9 @@ def reset_session():
         'base_bet': st.session_state.base_bet,
         'money_management': st.session_state.money_management,
         'stop_loss_percentage': st.session_state.stop_loss_percentage,
-        'safety_net_enabled': st.session_state.safety_net_enabled
+        'safety_net_enabled': st.session_state.safety_net_enabled,
+        'target_profit_percentage': st.session_state.target_profit_percentage,  # New
+        'target_profit_units': st.session_state.target_profit_units            # New
     }
     initialize_session_state()
     st.session_state.update({
@@ -278,7 +282,9 @@ def reset_session():
         'parlay_peak_step': 1,
         'moon_level': 1,
         'moon_level_changes': 0,
-        'moon_peak_level': 1
+        'moon_peak_level': 1,
+        'target_profit_percentage': setup_values['target_profit_percentage'],  # New
+        'target_profit_units': setup_values['target_profit_units']            # New
     })
 
 # --- Betting and Prediction Logic ---
@@ -297,17 +303,32 @@ def calculate_bet_amount(bet_selection: str) -> float:
     return 0.0
 
 def place_result(result: str):
+    # Check stop loss
     stop_loss_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.stop_loss_percentage
     if stop_loss_triggered and not st.session_state.safety_net_enabled:
         st.session_state.shoe_completed = True
         st.warning(f"Bankroll below {st.session_state.stop_loss_percentage*100:.0f}% of initial bankroll. Session ended. Reset or exit.")
         return
+
+    # Check win limit
     if st.session_state.bankroll >= st.session_state.initial_bankroll * st.session_state.win_limit:
         st.session_state.shoe_completed = True
         st.success(f"Bankroll above {st.session_state.win_limit*100:.0f}% of initial bankroll. Session ended. Reset or exit.")
         return
+
+    # Check target profit (percentage or units)
+    current_profit = st.session_state.bankroll - st.session_state.initial_bankroll
+    target_profit_percentage = st.session_state.target_profit_percentage
+    target_profit_units = st.session_state.target_profit_units
+    if (target_profit_percentage > 0 and current_profit >= st.session_state.initial_bankroll * target_profit_percentage) or \
+       (target_profit_units > 0 and current_profit >= target_profit_units):
+        st.session_state.shoe_completed = True
+        st.success(f"Target profit reached: ${current_profit:.2f}. Session ended. Reset or exit.")
+        return
+
+    # Check safety net
     if stop_loss_triggered and st.session_state.safety_net_enabled:
-        st.session_state.shoe_completed = True  # Trigger safety net mode
+        st.session_state.shoe_completed = True
         st.info(f"Stop loss triggered at {st.session_state.stop_loss_percentage*100:.0f}%. Betting at base bet with safety net.")
 
     # Save previous state for undo
@@ -471,7 +492,7 @@ def place_result(result: str):
             if prob_b_to_p > prob_b_to_b and prob_b_to_p > 0.5 and 'P' == predicted_outcome:
                 markov_selection = 'P'
                 markov_confidence = prob_b_to_p * 100
-            elif prob_b_to_b > prob_b_to_p and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
+            elif prob_b_to_b > prob_b_to_b and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
                 markov_selection = 'B'
                 markov_confidence = prob_b_to_b * 100
 
@@ -528,9 +549,11 @@ def render_setup_form():
             with col1:
                 bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll, step=10.0)
                 stop_loss_percentage = st.number_input("Stop Loss (% of Bankroll)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100, step=5.0)
+                target_profit_percentage = st.number_input("Target Profit (% of Bankroll)", min_value=0.0, max_value=100.0, value=st.session_state.target_profit_percentage * 100, step=5.0, help="Set 0 to disable.")
             with col2:
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10, format="%.2f")
                 safety_net_enabled = st.checkbox("Enable Safety Net (Bet Base Bet on Stop Loss)", value=st.session_state.safety_net_enabled)
+                target_profit_units = st.number_input("Target Profit (Units $)", min_value=0.0, value=st.session_state.target_profit_units, step=10.0, help="Set 0 to disable.")
             money_management = st.selectbox("Money Management", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management))
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
@@ -541,6 +564,10 @@ def render_setup_form():
                     st.error("Base bet cannot exceed 5% of bankroll.")
                 elif stop_loss_percentage <= 0 or stop_loss_percentage >= 100:
                     st.error("Stop loss percentage must be between 0% and 100%.")
+                elif target_profit_percentage < 0 or target_profit_percentage > 100:
+                    st.error("Target profit percentage must be between 0% and 100%.")
+                elif target_profit_units < 0:
+                    st.error("Target profit units must be non-negative.")
                 else:
                     st.session_state.update({
                         'bankroll': bankroll,
@@ -569,7 +596,9 @@ def render_setup_form():
                         'parlay_peak_step': 1,
                         'moon_level': 1,
                         'moon_level_changes': 0,
-                        'moon_peak_level': 1
+                        'moon_peak_level': 1,
+                        'target_profit_percentage': target_profit_percentage / 100,
+                        'target_profit_units': target_profit_units
                     })
                     st.session_state.model, st.session_state.le = train_model()
                     st.success(f"Session started with {money_management} strategy and safety net {'enabled' if safety_net_enabled else 'disabled'}!")
@@ -746,11 +775,14 @@ def render_status():
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
+            st.markdown(f"**Current Profit**: ${st.session_state.bankroll - st.session_state.initial_bankroll:.2f}")
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
             st.markdown(f"**Stop Loss**: {st.session_state.stop_loss_percentage*100:.0f}%")
+            st.markdown(f"**Target Profit (%):** {st.session_state.target_profit_percentage*100:.0f}%")
+            st.markdown(f"**Target Profit (Units):** ${st.session_state.target_profit_units:.2f}")
+        with col2:
             st.markdown(f"**Safety Net**: {'On' if st.session_state.safety_net_enabled else 'Off'}")
             st.markdown(f"**Hands Played**: {len(st.session_state.sequence)}")
-        with col2:
             strategy_status = f"**Money Management**: {st.session_state.money_management}"
             if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
                 strategy_status += "<br>**Mode**: Safety Net (Flatbet)"
