@@ -25,7 +25,13 @@ PARLAY_TABLE = {
         (12, 24), (16, 32), (22, 44), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
     ], 1)
 }
-MONEY_MANAGEMENT_STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon"]
+FOUR_TIER_TABLE = {
+    1: {'step1': 1, 'step2': 3},
+    2: {'step1': 7, 'step2': 21},
+    3: {'step1': 50, 'step2': 150},
+    4: {'step1': 350, 'step2': 1050}
+}
+MONEY_MANAGEMENT_STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon", "FourTier"]
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -237,9 +243,12 @@ def initialize_session_state():
         'moon_level': 1,
         'moon_level_changes': 0,
         'moon_peak_level': 1,
-        'target_profit_type': 'none',  # New: 'none', 'percentage', or 'units'
+        'target_profit_type': 'none',
         'target_profit_percentage': 0.0,
-        'target_profit_units': 0.0
+        'target_profit_units': 0.0,
+        'four_tier_level': 1,
+        'four_tier_step': 1,
+        'four_tier_losses': 0
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -287,13 +296,16 @@ def reset_session():
         'moon_peak_level': 1,
         'target_profit_type': setup_values['target_profit_type'],
         'target_profit_percentage': setup_values['target_profit_percentage'],
-        'target_profit_units': setup_values['target_profit_units']
+        'target_profit_units': setup_values['target_profit_units'],
+        'four_tier_level': 1,
+        'four_tier_step': 1,
+        'four_tier_losses': 0
     })
 
 # --- Betting and Prediction Logic ---
 def calculate_bet_amount(bet_selection: str) -> float:
     if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
-        return st.session_state.base_bet  # Use base bet for safety net
+        return st.session_state.base_bet
     if st.session_state.money_management == 'Flatbet':
         return st.session_state.base_bet
     elif st.session_state.money_management == 'T3':
@@ -303,6 +315,9 @@ def calculate_bet_amount(bet_selection: str) -> float:
         return st.session_state.base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
     elif st.session_state.money_management == 'Moon':
         return st.session_state.base_bet * st.session_state.moon_level
+    elif st.session_state.money_management == 'FourTier':
+        step_key = 'step1' if st.session_state.four_tier_step == 1 else 'step2'
+        return FOUR_TIER_TABLE[st.session_state.four_tier_level][step_key]
     return 0.0
 
 def place_result(result: str):
@@ -319,7 +334,7 @@ def place_result(result: str):
         st.success(f"Bankroll above {st.session_state.win_limit*100:.0f}% of initial bankroll. Session ended. Reset or exit.")
         return
 
-    # Check target profit based on selected type
+    # Check target profit
     current_profit = st.session_state.bankroll - st.session_state.initial_bankroll
     if st.session_state.target_profit_type == 'percentage' and st.session_state.target_profit_percentage > 0:
         if current_profit >= st.session_state.initial_bankroll * st.session_state.target_profit_percentage:
@@ -350,6 +365,9 @@ def place_result(result: str):
         'moon_level': st.session_state.moon_level,
         'moon_level_changes': st.session_state.moon_level_changes,
         'moon_peak_level': st.session_state.moon_peak_level,
+        'four_tier_level': st.session_state.four_tier_level,
+        'four_tier_step': st.session_state.four_tier_step,
+        'four_tier_losses': st.session_state.four_tier_losses,
         'bets_placed': st.session_state.bets_placed,
         'bets_won': st.session_state.bets_won,
         'transition_counts': st.session_state.transition_counts.copy(),
@@ -364,7 +382,7 @@ def place_result(result: str):
             transition = f"{prev_result}{result}"
             st.session_state.transition_counts[transition] += 1
 
-    # Resolve pending bet if exists
+    # Resolve pending bet
     bet_amount = 0
     bet_selection = None
     bet_outcome = None
@@ -374,7 +392,7 @@ def place_result(result: str):
         if result == bet_selection:
             if bet_selection == 'B':
                 st.session_state.bankroll += bet_amount * 0.95
-            else:  # Player
+            else:
                 st.session_state.bankroll += bet_amount
             st.session_state.bets_won += 1
             bet_outcome = 'win'
@@ -397,10 +415,16 @@ def place_result(result: str):
                         st.session_state.parlay_using_base = False
                 elif st.session_state.money_management == 'Moon':
                     old_level = st.session_state.moon_level
-                    st.session_state.moon_level = old_level  # Stay at current level on win
+                    st.session_state.moon_level = old_level
                     if old_level != st.session_state.moon_level:
                         st.session_state.moon_level_changes += 1
                     st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
+                elif st.session_state.money_management == 'FourTier':
+                    st.session_state.four_tier_level = 1
+                    st.session_state.four_tier_step = 1
+                    st.session_state.four_tier_losses = 0
+                    st.session_state.shoe_completed = True
+                    st.session_state.advice = "Win recorded. Reset for a new shoe."
         else:
             st.session_state.bankroll -= bet_amount
             bet_outcome = 'loss'
@@ -417,10 +441,18 @@ def place_result(result: str):
                     st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
                 elif st.session_state.money_management == 'Moon':
                     old_level = st.session_state.moon_level
-                    st.session_state.moon_level += 1  # Increment level on loss
+                    st.session_state.moon_level += 1
                     if old_level != st.session_state.moon_level:
                         st.session_state.moon_level_changes += 1
                     st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
+                elif st.session_state.money_management == 'FourTier':
+                    st.session_state.four_tier_losses += 1
+                    if st.session_state.four_tier_losses == 1:
+                        st.session_state.four_tier_step = 2
+                    elif st.session_state.four_tier_losses >= 2:
+                        st.session_state.four_tier_level = min(st.session_state.four_tier_level + 1, 4)
+                        st.session_state.four_tier_step = 1
+                        st.session_state.four_tier_losses = 0
         if st.session_state.money_management == 'T3' and len(st.session_state.t3_results) == 3 and not (st.session_state.shoe_completed and st.session_state.safety_net_enabled):
             wins = st.session_state.t3_results.count('W')
             losses = st.session_state.t3_results.count('L')
@@ -444,6 +476,8 @@ def place_result(result: str):
         "T3_Level": st.session_state.t3_level if st.session_state.money_management == 'T3' else "-",
         "Parlay_Step": st.session_state.parlay_step if st.session_state.money_management == 'Parlay16' else "-",
         "Moon_Level": st.session_state.moon_level if st.session_state.money_management == 'Moon' else "-",
+        "FourTier_Level": st.session_state.four_tier_level if st.session_state.money_management == 'FourTier' else "-",
+        "FourTier_Step": st.session_state.four_tier_step if st.session_state.money_management == 'FourTier' else "-",
         "Money_Management": st.session_state.money_management,
         "Safety_Net": "On" if st.session_state.safety_net_enabled else "Off",
         "Previous_State": previous_state
@@ -451,13 +485,12 @@ def place_result(result: str):
     if len(st.session_state.bet_history) > HISTORY_LIMIT:
         st.session_state.bet_history = st.session_state.bet_history[-HISTORY_LIMIT:]
 
-    # Filter sequence for prediction (exclude 'T')
+    # Prediction logic (unchanged)
     valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
     if len(valid_sequence) < SEQUENCE_LENGTH:
         st.session_state.pending_bet = None
         st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
     elif len(valid_sequence) >= SEQUENCE_LENGTH and result in ['P', 'B']:
-        # Use the last 6 non-tie outcomes for prediction
         prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
         encoded_input = st.session_state.le.transform(prediction_sequence)
         input_array = np.array([encoded_input])
@@ -466,7 +499,6 @@ def place_result(result: str):
         predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
         model_confidence = np.max(prediction_probs) * 100
 
-        # LB 6 Rep: Bet same as 6th prior result if confidence > 40% and matches Model
         lb6_selection = None
         lb6_confidence = 0
         sixth_prior = 'N/A'
@@ -477,7 +509,6 @@ def place_result(result: str):
             if lb6_confidence > 40 and sixth_prior == predicted_outcome:
                 lb6_selection = sixth_prior
 
-        # Markov strategy: Calculate transition probabilities, select if matches Model
         markov_selection = None
         markov_confidence = 0
         last_outcome = valid_sequence[-1]
@@ -502,7 +533,6 @@ def place_result(result: str):
                 markov_selection = 'B'
                 markov_confidence = prob_b_to_b * 100
 
-        # Combine strategies: Bet only if Model > 50% and LB6 or Markov matches Model
         strategy_used = None
         bet_selection = None
         confidence = 0
@@ -532,6 +562,8 @@ def place_result(result: str):
                     strategy_info += f" Step {st.session_state.parlay_step}/16"
                 elif st.session_state.money_management == 'Moon':
                     strategy_info += f" Level {st.session_state.moon_level}"
+                elif st.session_state.money_management == 'FourTier':
+                    strategy_info += f" Level {st.session_state.four_tier_level} Step {st.session_state.four_tier_step}"
                 st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {strategy_used}: {confidence:.1f}%)"
             else:
                 st.session_state.pending_bet = None
@@ -559,12 +591,10 @@ def render_setup_form():
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10, format="%.2f")
                 safety_net_enabled = st.checkbox("Enable Safety Net (Bet Base Bet on Stop Loss)", value=st.session_state.safety_net_enabled)
             
-            # Target profit selection
             target_profit_type = st.selectbox(
                 "Target Profit",
                 ["None", "Target Profit by %", "Target Profit by Units"],
-                index=["none", "percentage", "units"].index(st.session_state.target_profit_type),
-                help="Choose how to set your target profit. Select 'None' to disable."
+                index=["none", "percentage", "units"].index(st.session_state.target_profit_type)
             )
             target_profit_percentage = 0.0
             target_profit_units = 0.0
@@ -574,16 +604,14 @@ def render_setup_form():
                     min_value=0.0,
                     max_value=100.0,
                     value=st.session_state.target_profit_percentage * 100,
-                    step=5.0,
-                    help="Set 0 to disable."
+                    step=5.0
                 )
             elif target_profit_type == "Target Profit by Units":
                 target_profit_units = st.number_input(
                     "Target Profit (Units $)",
                     min_value=0.0,
                     value=st.session_state.target_profit_units,
-                    step=10.0,
-                    help="Set 0 to disable."
+                    step=10.0
                 )
             
             money_management = st.selectbox("Money Management", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management))
@@ -600,6 +628,8 @@ def render_setup_form():
                     st.error("Target profit percentage must be between 0% and 100%.")
                 elif target_profit_type == "Target Profit by Units" and target_profit_units < 0:
                     st.error("Target profit units must be non-negative.")
+                elif money_management == 'FourTier' and bankroll < 550:
+                    st.error("Four Tier strategy recommends a minimum bankroll of $550.")
                 else:
                     st.session_state.update({
                         'bankroll': bankroll,
@@ -631,7 +661,10 @@ def render_setup_form():
                         'moon_peak_level': 1,
                         'target_profit_type': 'percentage' if target_profit_type == "Target Profit by %" else 'units' if target_profit_type == "Target Profit by Units" else 'none',
                         'target_profit_percentage': target_profit_percentage / 100,
-                        'target_profit_units': target_profit_units
+                        'target_profit_units': target_profit_units,
+                        'four_tier_level': 1,
+                        'four_tier_step': 1,
+                        'four_tier_losses': 0
                     })
                     st.session_state.model, st.session_state.le = train_model()
                     st.success(f"Session started with {money_management} strategy and safety net {'enabled' if safety_net_enabled else 'disabled'}!")
@@ -682,7 +715,6 @@ def render_result_input():
                             st.session_state.pending_bet = None
                             st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
                         else:
-                            # Recalculate prediction
                             prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
                             encoded_input = st.session_state.le.transform(prediction_sequence)
                             input_array = np.array([encoded_input])
@@ -746,6 +778,8 @@ def render_result_input():
                                         strategy_info += f" Step {st.session_state.parlay_step}/16"
                                     elif st.session_state.money_management == 'Moon':
                                         strategy_info += f" Level {st.session_state.moon_level}"
+                                    elif st.session_state.money_management == 'FourTier':
+                                        strategy_info += f" Level {st.session_state.four_tier_level} Step {st.session_state.four_tier_step}"
                                     st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {strategy_used}: {confidence:.1f}%)"
                                 else:
                                     st.session_state.pending_bet = None
@@ -789,13 +823,12 @@ def render_prediction():
         elif st.session_state.shoe_completed and not st.session_state.safety_net_enabled:
             st.info("Session ended. Reset to start a new session.")
         else:
-            # Determine color based on bet selection in advice
             advice = st.session_state.advice
-            text_color = '#2d3748'  # Default color (black)
+            text_color = '#2d3748'
             if 'Bet' in advice and ' on P ' in advice:
-                text_color = '#3182ce'  # Blue for Player
+                text_color = '#3182ce'
             elif 'Bet' in advice and ' on B ' in advice:
-                text_color = '#e53e3e'  # Red for Banker
+                text_color = '#e53e3e'
             st.markdown(
                 f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'>"
                 f"<p style='font-size:1.2rem; font-weight:bold; margin:0; color:{text_color};'>"
@@ -829,6 +862,8 @@ def render_status():
                 strategy_status += f"<br>**Parlay Step**: {st.session_state.parlay_step}/16<br>**Parlay Wins**: {st.session_state.parlay_wins}<br>**Peak Step**: {st.session_state.parlay_peak_step}<br>**Step Changes**: {st.session_state.parlay_step_changes}"
             elif st.session_state.money_management == 'Moon':
                 strategy_status += f"<br>**Moon Level**: {st.session_state.moon_level}<br>**Peak Level**: {st.session_state.moon_peak_level}<br>**Level Changes**: {st.session_state.moon_level_changes}"
+            elif st.session_state.money_management == 'FourTier':
+                strategy_status += f"<br>**FourTier Level**: {st.session_state.four_tier_level}<br>**FourTier Step**: {st.session_state.four_tier_step}<br>**Consecutive Losses**: {st.session_state.four_tier_losses}"
             st.markdown(strategy_status, unsafe_allow_html=True)
             st.markdown(f"**Bets Placed**: {st.session_state.bets_placed}")
             st.markdown(f"**Bets Won**: {st.session_state.bets_won}")
@@ -849,7 +884,9 @@ def render_history():
                     "T3_Level": h["T3_Level"] if h["Money_Management"] == 'T3' else "-",
                     "Parlay_Step": h["Parlay_Step"] if h["Money_Management"] == 'Parlay16' else "-",
                     "Moon_Level": h["Moon_Level"] if h["Money_Management"] == 'Moon' else "-",
-                    "Safety_Net": h.get("Safety_Net", "N/A")  # Default to "N/A" if key is missing
+                    "FourTier_Level": h["FourTier_Level"] if h["Money_Management"] == 'FourTier' else "-",
+                    "FourTier_Step": h["FourTier_Step"] if h["Money_Management"] == 'FourTier' else "-",
+                    "Safety_Net": h.get("Safety_Net", "N/A")
                 }
                 for h in st.session_state.bet_history[-n:]
             ], use_container_width=True)
