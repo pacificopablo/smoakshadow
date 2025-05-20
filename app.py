@@ -214,28 +214,27 @@ def initialize_session_state():
         'profit_lock_threshold': 5.0,
         'is_paused': False,
         'shoe_completed': False,
-        'advice': "No prediction available yet.",
+        'advice': "Session initialized: Ready for bets.",
         'status': "Base"
     }
     for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+        st.session_state[key] = value
     if st.session_state.strategy not in STRATEGIES:
         st.session_state.strategy = 'Flat Bet'
 
 def reset_session():
     setup_values = {
-        'initial_bankroll': st.session_state.initial_bankroll,
-        'base_bet': st.session_state.base_bet,
-        'initial_base_bet': st.session_state.initial_base_bet,
-        'strategy': st.session_state.strategy,
-        'target_mode': st.session_state.target_mode,
-        'target_value': st.session_state.target_value,
-        'safety_net_enabled': st.session_state.safety_net_enabled,
-        'safety_net_percentage': st.session_state.safety_net_percentage,
-        'stop_loss_enabled': st.session_state.stop_loss_enabled,
-        'stop_loss_percentage': st.session_state.stop_loss_percentage,
-        'profit_lock_threshold': st.session_state.profit_lock_threshold
+        'initial_bankroll': st.session_state.get('initial_bankroll', 519.0),
+        'base_bet': st.session_state.get('base_bet', 5.0),
+        'initial_base_bet': st.session_state.get('initial_base_bet', 5.0),
+        'strategy': st.session_state.get('strategy', 'Flat Bet'),
+        'target_mode': st.session_state.get('target_mode', 'Profit %'),
+        'target_value': st.session_state.get('target_value', 5.0),
+        'safety_net_enabled': st.session_state.get('safety_net_enabled', True),
+        'safety_net_percentage': st.session_state.get('safety_net_percentage', 5.0),
+        'stop_loss_enabled': st.session_state.get('stop_loss_enabled', True),
+        'stop_loss_percentage': st.session_state.get('stop_loss_percentage', 15.0),
+        'profit_lock_threshold': st.session_state.get('profit_lock_threshold', 5.0)
     }
     initialize_session_state()
     st.session_state.update({
@@ -449,7 +448,8 @@ def place_result(result: str):
                 bet_placed = True
                 win = result == selection
                 if win:
-                    st.session_state.bankroll += bet_amount * (0.95 if selection == 'B' else 1.0)
+                    winnings = bet_amount * (0.95 if selection == 'B' else 1.0)
+                    st.session_state.bankroll += winnings
                     st.session_state.profit += st.session_state.bet
                     st.session_state.wins += 1
                     st.session_state.consecutive_losses = 0
