@@ -602,7 +602,7 @@ def place_result(result: str):
 
         strategy_used = None
         bet_selection = None
-        confidence = 0
+        confidence = humble0
         if model_confidence > 50 and (lb6_selection or markov_selection):
             bet_selection = predicted_outcome
             confidence = model_confidence
@@ -649,9 +649,6 @@ def place_result(result: str):
             st.success(f"Shoe of {SHOE_SIZE} hands completed!")
 
 # --- UI Components ---
-def update_target_profit_option():
-    st.session_state.target_profit_option = st.session_state.target_profit_select
-
 def render_setup_form():
     with st.expander("Session Setup", expanded=st.session_state.bankroll == 0):
         # Form to capture all inputs
@@ -668,18 +665,17 @@ def render_setup_form():
             # Target Profit Settings with Selectbox
             st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
             st.markdown('<h3><span class="icon">🎯</span>Target Profit Settings</h3>', unsafe_allow_html=True)
-            target_profit_option = st.selectbox(
+            st.selectbox(
                 "Set Target Profit",
                 options=['None', 'By Percentage', 'By Units'],
                 index=['None', 'By Percentage', 'By Units'].index(st.session_state.target_profit_option),
                 help="Choose how to set your target profit: by percentage of bankroll, by fixed units, or none.",
-                key="target_profit_select",
-                on_change=update_target_profit_option
+                key="target_profit_select"
             )
 
             # Conditionally render input fields based on selection
-            if st.session_state.target_profit_option == 'By Percentage':
-                st.session_state.target_profit_percentage = st.number_input(
+            if st.session_state.target_profit_select == 'By Percentage':
+                target_profit_percentage = st.number_input(
                     "Target Profit (% of Bankroll)",
                     min_value=0.0,
                     max_value=100.0,
@@ -689,8 +685,11 @@ def render_setup_form():
                     label_visibility="visible",
                     format="%.1f"
                 ) / 100
-            elif st.session_state.target_profit_option == 'By Units':
-                st.session_state.target_profit_units = st.number_input(
+            else:
+                target_profit_percentage = st.session_state.target_profit_percentage
+
+            if st.session_state.target_profit_select == 'By Units':
+                target_profit_units = st.number_input(
                     "Target Profit (Units $)",
                     min_value=0.0,
                     value=st.session_state.target_profit_units if st.session_state.target_profit_units > 0 else 50.0,
@@ -699,6 +698,9 @@ def render_setup_form():
                     label_visibility="visible",
                     format="%.2f"
                 )
+            else:
+                target_profit_units = st.session_state.target_profit_units
+
             st.markdown('</div>', unsafe_allow_html=True)
 
             # Submit button
@@ -716,9 +718,9 @@ def render_setup_form():
                     st.error("Base bet cannot exceed 5% of bankroll.")
                 elif stop_loss_percentage <= 0 or stop_loss_percentage >= 100:
                     st.error("Stop loss percentage must be between 0% and 100%.")
-                elif st.session_state.target_profit_option == 'By Percentage' and (st.session_state.target_profit_percentage < 0 or st.session_state.target_profit_percentage > 100):
+                elif st.session_state.target_profit_select == 'By Percentage' and (target_profit_percentage < 0 or target_profit_percentage > 100):
                     st.error("Target profit percentage must be between 0% and 100%.")
-                elif st.session_state.target_profit_option == 'By Units' and st.session_state.target_profit_units < 0:
+                elif st.session_state.target_profit_select == 'By Units' and target_profit_units < 0:
                     st.error("Target profit units must be non-negative.")
                 elif money_management == 'FourTier' and bankroll < minimum_bankroll:
                     st.error(f"Four Tier strategy requires a minimum bankroll of ${minimum_bankroll:.2f} for a base bet of ${base_bet:.2f}.")
@@ -753,9 +755,9 @@ def render_setup_form():
                         'moon_level': 1,
                         'moon_level_changes': 0,
                         'moon_peak_level': 1,
-                        'target_profit_option': st.session_state.target_profit_option,
-                        'target_profit_percentage': st.session_state.target_profit_percentage if st.session_state.target_profit_option == 'By Percentage' else 0.0,
-                        'target_profit_units': st.session_state.target_profit_units if st.session_state.target_profit_option == 'By Units' else 0.0,
+                        'target_profit_option': st.session_state.target_profit_select,
+                        'target_profit_percentage': target_profit_percentage if st.session_state.target_profit_select == 'By Percentage' else 0.0,
+                        'target_profit_units': target_profit_units if st.session_state.target_profit_select == 'By Units' else 0.0,
                         'four_tier_level': 1,
                         'four_tier_step': 1,
                         'four_tier_losses': 0,
