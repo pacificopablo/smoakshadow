@@ -35,19 +35,21 @@ FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER = sum(
     FOUR_TIER_TABLE[tier][step] for tier in FOUR_TIER_TABLE for step in FOUR_TIER_TABLE[tier]
 )  # 1 + 3 + 7 + 21 + 50 + 150 + 350 = 537
 FLATBET_LEVELUP_TABLE = {
-    1: 1,
-    2: 2,
-    3: 4,
-    4: 8
+    1: 1,  # Level 1: Bet base_bet * 1
+    2: 2,  # Level 2: Bet base_bet * 2
+    3: 4,  # Level 3: Bet base_bet * 4
+    4: 8,  # Level 4: Bet base_bet * 8
+    5: 16  # Level 5: Bet base_bet * 16
 }
 FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER = sum(
     FLATBET_LEVELUP_TABLE[level] * 5 for level in FLATBET_LEVELUP_TABLE
-)  # (1*5 + 2*5 + 4*5 + 8*5) = 5 + 10 + 20 + 40 = 75
+)  # (1*5 + 2*5 + 4*5 + 8*5 + 16*5) = 5 + 10 + 20 + 40 + 80 = 155
 FLATBET_LEVELUP_THRESHOLDS = {
-    1: -5.0,  # Move to Level 2 after -5 units net loss at Level 1 (base_bet * 1)
+    1: -5.0,   # Move to Level 2 after -5 units net loss at Level 1 (base_bet * 1)
     2: -10.0,  # Move to Level 3 after -10 units net loss at Level 2 (base_bet * 2)
     3: -20.0,  # Move to Level 4 after -20 units net loss at Level 3 (base_bet * 4)
-    4: -40.0   # Stay at Level 4 after -40 units net loss (base_bet * 8)
+    4: -40.0,  # Move to Level 5 after -40 units net loss at Level 4 (base_bet * 8)
+    5: -40.0   # Stay at Level 5 after -40 units net loss (base_bet * 16)
 }
 MONEY_MANAGEMENT_STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon", "FourTier", "FlatbetLevelUp"]
 
@@ -549,8 +551,8 @@ def place_result(result: str):
                     elif st.session_state.money_management == 'FlatbetLevelUp':
                         # Progress to next level if net loss reaches threshold for current level
                         current_level = st.session_state.flatbet_levelup_level
-                        if current_level < 4 and st.session_state.flatbet_levelup_net_loss <= FLATBET_LEVELUP_THRESHOLDS[current_level]:
-                            st.session_state.flatbet_levelup_level = min(st.session_state.flatbet_levelup_level + 1, 4)
+                        if current_level < 5 and st.session_state.flatbet_levelup_net_loss <= FLATBET_LEVELUP_THRESHOLDS[current_level]:
+                            st.session_state.flatbet_levelup_level = min(st.session_state.flatbet_levelup_level + 1, 5)
                             st.session_state.flatbet_levelup_net_loss = 0.0  # Reset net loss for new level
             if st.session_state.money_management == 'T3' and len(st.session_state.t3_results) == 3 and not (st.session_state.shoe_completed and st.session_state.safety_net_enabled):
                 wins = st.session_state.t3_results.count('W')
