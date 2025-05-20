@@ -31,6 +31,9 @@ FOUR_TIER_TABLE = {
     3: {'step1': 50, 'step2': 150},
     4: {'step1': 350, 'step2': 1050}
 }
+FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER = sum(
+    FOUR_TIER_TABLE[tier][step] for tier in FOUR_TIER_TABLE for step in FOUR_TIER_TABLE[tier]
+)  # 1 + 3 + 7 + 21 + 50 + 150 + 350 = 537
 MONEY_MANAGEMENT_STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon", "FourTier"]
 
 # --- CSS for Professional Styling ---
@@ -317,7 +320,7 @@ def calculate_bet_amount(bet_selection: str) -> float:
         return st.session_state.base_bet * st.session_state.moon_level
     elif st.session_state.money_management == 'FourTier':
         step_key = 'step1' if st.session_state.four_tier_step == 1 else 'step2'
-        return FOUR_TIER_TABLE[st.session_state.four_tier_level][step_key]
+        return st.session_state.base_bet * FOUR_TIER_TABLE[st.session_state.four_tier_level][step_key]
     return 0.0
 
 def place_result(result: str):
@@ -616,6 +619,7 @@ def render_setup_form():
             
             money_management = st.selectbox("Money Management", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management))
             if st.form_submit_button("Start Session"):
+                minimum_bankroll = base_bet * FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER if money_management == 'FourTier' else 0
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
                 elif base_bet < 0.10:
@@ -628,8 +632,8 @@ def render_setup_form():
                     st.error("Target profit percentage must be between 0% and 100%.")
                 elif target_profit_type == "Target Profit by Units" and target_profit_units < 0:
                     st.error("Target profit units must be non-negative.")
-                elif money_management == 'FourTier' and bankroll < 550:
-                    st.error("Four Tier strategy recommends a minimum bankroll of $550.")
+                elif money_management == 'FourTier' and bankroll < minimum_bankroll:
+                    st.error(f"Four Tier strategy requires a minimum bankroll of ${minimum_bankroll:.2f} for a base bet of ${base_bet:.2f}.")
                 else:
                     st.session_state.update({
                         'bankroll': bankroll,
