@@ -215,7 +215,8 @@ def initialize_session_state():
         'profit_lock_threshold': 5.0,
         'is_paused': False,
         'shoe_completed': False,
-        'advice': "No prediction available yet."
+        'advice': "No prediction available yet.",
+        'status': "Base"
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -271,7 +272,8 @@ def reset_session():
         'profit_lock_threshold': setup_values['profit_lock_threshold'],
         'is_paused': False,
         'shoe_completed': False,
-        'advice': "Session reset: Ready for new bets."
+        'advice': "Session reset: Ready for new bets.",
+        'status': "Base"
     })
 
 # --- Prediction Logic ---
@@ -415,7 +417,8 @@ def place_result(result: str):
         "losses": st.session_state.losses,
         "prediction_accuracy": st.session_state.prediction_accuracy.copy(),
         "consecutive_losses": st.session_state.consecutive_losses,
-        "is_paused": st.session_state.is_paused
+        "is_paused": st.session_state.is_paused,
+        "status": st.session_state.get('status', '')
     }
 
     if st.session_state.break_countdown > 0:
@@ -429,7 +432,7 @@ def place_result(result: str):
             "Result": result,
             "Amount": 0.0,
             "Win": False,
-            "Status": st.session_state.status,
+            "Status": st.session_state.get('status', ''),
             "Previous_State": previous_state,
             "Bet_Placed": False
         })
@@ -497,7 +500,7 @@ def place_result(result: str):
         "Result": result,
         "Amount": bet_amount,
         "Win": win,
-        "Status": st.session_state.status,
+        "Status": st.session_state.get('status', ''),
         "Previous_State": previous_state,
         "Bet_Placed": bet_placed
     })
@@ -640,7 +643,8 @@ def render_setup_form():
                         'profit_lock_threshold': profit_lock_threshold,
                         'is_paused': False,
                         'shoe_completed': False,
-                        'advice': "Session started: Ready for bets."
+                        'advice': "Session started: Ready for bets.",
+                        'status': "Base"
                     })
                     st.success(f"Session started with {betting_strategy} strategy!")
 
@@ -749,7 +753,7 @@ def render_status():
         with col2:
             strategy_status = f"**Strategy**: {st.session_state.strategy}"
             if st.session_state.strategy == "Suchi Masterline":
-                strategy_status += f"<br>Status: {st.session_state.status}<br>Step: {st.session_state.masterline_step}"
+                strategy_status += f"<br>Status: {st.session_state.get('status', '')}<br>Step: {st.session_state.masterline_step}"
             st.markdown(strategy_status, unsafe_allow_html=True)
         st.markdown(f"**Wins**: {st.session_state.wins} | **Losses**: {st.session_state.losses}")
         st.markdown(f"**Profit (Units)**: {st.session_state.profit:.2f}")
