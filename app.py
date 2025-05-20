@@ -261,9 +261,9 @@ def initialize_session_state():
         'moon_level': 1,
         'moon_level_changes': 0,
         'moon_peak_level': 1,
-        'target_profit_type': 'none',
-        'target_profit_percentage': 0.5,  # Default 50%
-        'target_profit_units': 100.0,    # Default $100
+        'target_profit_type': 'percentage',  # Default to percentage
+        'target_profit_percentage': 0.05,   # Default 5%
+        'target_profit_units': 0.0,         # Disabled by default
         'four_tier_level': 1,
         'four_tier_step': 1,
         'four_tier_losses': 0,
@@ -629,33 +629,16 @@ def render_setup_form():
             with col2:
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10, format="%.2f")
                 safety_net_enabled = st.checkbox("Enable Safety Net (Bet Base Bet on Stop Loss)", value=st.session_state.safety_net_enabled)
-                # Target Profit section with styling and help text
+                # Target Profit section always visible with percentage default
                 st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
-                target_profit_type = st.selectbox(
-                    "Target Profit",
-                    ["None", "Target Profit by %", "Target Profit by Units"],
-                    index=["none", "percentage", "units"].index(st.session_state.target_profit_type),
-                    help="Set a profit goal to stop the session when reached. Choose 'None' to disable."
+                target_profit_percentage = st.number_input(
+                    "Target Profit (% of Bankroll)",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=st.session_state.target_profit_percentage * 100,
+                    step=1.0,
+                    help="Set a profit goal as a percentage of the initial bankroll (e.g., 5% of $100 = $5 profit). Set to 0 to disable."
                 )
-                target_profit_percentage = 0.0
-                target_profit_units = 0.0
-                if target_profit_type == "Target Profit by %":
-                    target_profit_percentage = st.number_input(
-                        "Target Profit (% of Bankroll)",
-                        min_value=0.0,
-                        max_value=100.0,
-                        value=st.session_state.target_profit_percentage * 100,
-                        step=5.0,
-                        help="Percentage of initial bankroll to aim for (e.g., 50% of $100 = $50 profit)."
-                    )
-                elif target_profit_type == "Target Profit by Units":
-                    target_profit_units = st.number_input(
-                        "Target Profit (Units $)",
-                        min_value=0.0,
-                        value=st.session_state.target_profit_units,
-                        step=10.0,
-                        help="Fixed dollar amount to aim for (e.g., $100 profit)."
-                    )
                 st.markdown('</div>', unsafe_allow_html=True)
 
             if st.form_submit_button("Start Session"):
@@ -672,10 +655,8 @@ def render_setup_form():
                     st.error("Base bet cannot exceed 5% of bankroll.")
                 elif stop_loss_percentage <= 0 or stop_loss_percentage >= 100:
                     st.error("Stop loss percentage must be between 0% and 100%.")
-                elif target_profit_type == "Target Profit by %" and (target_profit_percentage < 0 or target_profit_percentage > 100):
+                elif target_profit_percentage < 0 or target_profit_percentage > 100:
                     st.error("Target profit percentage must be between 0% and 100%.")
-                elif target_profit_type == "Target Profit by Units" and target_profit_units < 0:
-                    st.error("Target profit units must be non-negative.")
                 elif money_management == 'FourTier' and bankroll < minimum_bankroll:
                     st.error(f"Four Tier strategy requires a minimum bankroll of ${minimum_bankroll:.2f} for a base bet of ${base_bet:.2f}.")
                 elif money_management == 'FlatbetLevelUp' and bankroll < minimum_bankroll:
@@ -709,9 +690,9 @@ def render_setup_form():
                         'moon_level': 1,
                         'moon_level_changes': 0,
                         'moon_peak_level': 1,
-                        'target_profit_type': 'percentage' if target_profit_type == "Target Profit by %" else 'units' if target_profit_type == "Target Profit by Units" else 'none',
+                        'target_profit_type': 'percentage',  # Always percentage by default
                         'target_profit_percentage': target_profit_percentage / 100,
-                        'target_profit_units': target_profit_units,
+                        'target_profit_units': 0.0,  # Units disabled since percentage is default
                         'four_tier_level': 1,
                         'four_tier_step': 1,
                         'four_tier_losses': 0,
@@ -898,11 +879,7 @@ def render_status():
             st.markdown(f"**Current Profit**: ${st.session_state.bankroll - st.session_state.initial_bankroll:.2f}")
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
             st.markdown(f"**Stop Loss**: {st.session_state.stop_loss_percentage*100:.0f}%")
-            target_profit_display = "None"
-            if st.session_state.target_profit_type == 'percentage' and st.session_state.target_profit_percentage > 0:
-                target_profit_display = f"{st.session_state.target_profit_percentage*100:.0f}%"
-            elif st.session_state.target_profit_type == 'units' and st.session_state.target_profit_units > 0:
-                target_profit_display = f"${st.session_state.target_profit_units:.2f}"
+            target_profit_display = f"{st.session_state.target_profit_percentage*100:.0f}%"
             st.markdown(f"**Target Profit**: {target_profit_display}")
         with col2:
             st.markdown(f"**Safety Net**: {'On' if st.session_state.safety_net_enabled else 'Off'}")
