@@ -17,7 +17,7 @@ GRID_ROWS = 6
 GRID_COLS = 16
 HISTORY_LIMIT = 1000
 SEQUENCE_LENGTH = 6
-STOP_LOSS = 0.8  # Stop at 80% of initial bankroll
+STOP_LOSS_DEFAULT = 0.8  # Default stop loss at 80% of initial bankroll
 WIN_LIMIT = 1.5   # Stop at 150% of initial bankroll
 PARLAY_TABLE = {
     i: {'base': b, 'parlay': p} for i, (b, p) in enumerate([
@@ -83,6 +83,10 @@ def apply_custom_css():
         font-size: 14px;
         width: 100%;
     }
+    .stCheckbox > label {
+        font-size: 14px;
+        color: #2d3748;
+    }
     .st-expander {
         border: 1px solid #e2e8f0;
         border-radius: 8px;
@@ -144,7 +148,7 @@ def apply_custom_css():
             width: 100%;
             padding: 12px;
         }
-        .stNumberInput, .stSelectbox {
+        .stNumberInput, .stSelectbox, .stCheckbox {
             margin-bottom: 1rem;
         }
     }
@@ -220,9 +224,10 @@ def initialize_session_state():
         't3_results': [],
         'money_management': 'T3',
         'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
-        'stop_loss': STOP_LOSS,
+        'stop_loss_percentage': STOP_LOSS_DEFAULT,
         'win_limit': WIN_LIMIT,
         'shoe_completed': False,
+        'safety_net_enabled': False,
         'advice': f"Need {SEQUENCE_LENGTH} results",
         'parlay_step': 1,
         'parlay_wins': 0,
@@ -241,7 +246,9 @@ def reset_session():
     setup_values = {
         'initial_bankroll': st.session_state.initial_bankroll,
         'base_bet': st.session_state.base_bet,
-        'money_management': st.session_state.money_management
+        'money_management': st.session_state.money_management,
+        'stop_loss_percentage': st.session_state.stop_loss_percentage,
+        'safety_net_enabled': st.session_state.safety_net_enabled
     }
     initialize_session_state()
     st.session_state.update({
@@ -259,9 +266,10 @@ def reset_session():
         't3_results': [],
         'money_management': setup_values['money_management'],
         'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
-        'stop_loss': STOP_LOSS,
+        'stop_loss_percentage': setup_values['stop_loss_percentage'],
         'win_limit': WIN_LIMIT,
         'shoe_completed': False,
+        'safety_net_enabled': setup_values['safety_net_enabled'],
         'advice': f"Need {SEQUENCE_LENGTH} results",
         'parlay_step': 1,
         'parlay_wins': 0,
@@ -275,6 +283,8 @@ def reset_session():
 
 # --- Betting and Prediction Logic ---
 def calculate_bet_amount(bet_selection: str) -> float:
+    if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
+        return st.session_state.base_bet  # Use base bet for safety net
     if st.session_state.money_management == 'Flatbet':
         return st.session_state.base_bet
     elif st.session_state.money_management == 'T3':
@@ -287,14 +297,18 @@ def calculate_bet_amount(bet_selection: str) -> float:
     return 0.0
 
 def place_result(result: str):
-    if st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.stop_loss:
+    stop_loss_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.stop_loss_percentage
+    if stop_loss_triggered and not st.session_state.safety_net_enabled:
         st.session_state.shoe_completed = True
-        st.warning(f"Bankroll below {st.session_state.stop_loss*100:.0f}%. Session ended. Reset or exit.")
+        st.warning(f"Bankroll below {st.session_state.stop_loss_percentage*100:.0f}% of initial bankroll. Session ended. Reset or exit.")
         return
     if st.session_state.bankroll >= st.session_state.initial_bankroll * st.session_state.win_limit:
         st.session_state.shoe_completed = True
-        st.success(f"Bankroll above {st.session_state.win_limit*100:.0f}%. Session ended. Reset or exit.")
+        st.success(f"Bankroll above {st.session_state.win_limit*100:.0f}% of initial bankroll. Session ended. Reset or exit.")
         return
+    if stop_loss_triggered and st.session_state.safety_net_enabled:
+        st.session_state.shoe_completed = True  # Trigger safety net mode
+        st.info(f"Stop loss triggered at {st.session_state.stop_loss_percentage*100:.0f}%. Betting at base bet with safety net.")
 
     # Save previous state for undo
     previous_state = {
@@ -312,7 +326,8 @@ def place_result(result: str):
         'bets_placed': st.session_state.bets_placed,
         'bets_won': st.session_state.bets_won,
         'transition_counts': st.session_state.transition_counts.copy(),
-        'pending_bet': st.session_state.pending_bet
+        'pending_bet': st.session_state.pending_bet,
+        'shoe_completed': st.session_state.shoe_completed
     }
 
     # Update Markov transition counts
@@ -336,48 +351,50 @@ def place_result(result: str):
                 st.session_state.bankroll += bet_amount
             st.session_state.bets_won += 1
             bet_outcome = 'win'
-            if st.session_state.money_management == 'T3':
-                if len(st.session_state.t3_results) == 0:
-                    st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
-                st.session_state.t3_results.append('W')
-            elif st.session_state.money_management == 'Parlay16':
-                st.session_state.parWINS += 1
-                if st.session_state.parlay_wins == 2:
-                    old_step = st.session_state.parlay_step
-                    st.session_state.parlay_step = 1
+            if not (st.session_state.shoe_completed and st.session_state.safety_net_enabled):
+                if st.session_state.money_management == 'T3':
+                    if len(st.session_state.t3_results) == 0:
+                        st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
+                    st.session_state.t3_results.append('W')
+                elif st.session_state.money_management == 'Parlay16':
+                    st.session_state.parlay_wins += 1
+                    if st.session_state.parlay_wins == 2:
+                        old_step = st.session_state.parlay_step
+                        st.session_state.parlay_step = 1
+                        st.session_state.parlay_wins = 0
+                        st.session_state.parlay_using_base = True
+                        if old_step != st.session_state.parlay_step:
+                            st.session_state.parlay_step_changes += 1
+                        st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+                    else:
+                        st.session_state.parlay_using_base = False
+                elif st.session_state.money_management == 'Moon':
+                    old_level = st.session_state.moon_level
+                    st.session_state.moon_level = old_level  # Stay at current level on win
+                    if old_level != st.session_state.moon_level:
+                        st.session_state.moon_level_changes += 1
+                    st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
+        else:
+            st.session_state.bankroll -= bet_amount
+            bet_outcome = 'loss'
+            if not (st.session_state.shoe_completed and st.session_state.safety_net_enabled):
+                if st.session_state.money_management == 'T3':
+                    st.session_state.t3_results.append('L')
+                elif st.session_state.money_management == 'Parlay16':
                     st.session_state.parlay_wins = 0
+                    old_step = st.session_state.parlay_step
+                    st.session_state.parlay_step = min(st.session_state.parlay_step + 1, 16)
                     st.session_state.parlay_using_base = True
                     if old_step != st.session_state.parlay_step:
                         st.session_state.parlay_step_changes += 1
                     st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
-                else:
-                    st.session_state.parlay_using_base = False
-            elif st.session_state.money_management == 'Moon':
-                old_level = st.session_state.moon_level
-                st.session_state.moon_level = old_level  # Stay at current level on win
-                if old_level != st.session_state.moon_level:
-                    st.session_state.moon_level_changes += 1
-                st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
-        else:
-            st.session_state.bankroll -= bet_amount
-            bet_outcome = 'loss'
-            if st.session_state.money_management == 'T3':
-                st.session_state.t3_results.append('L')
-            elif st.session_state.money_management == 'Parlay16':
-                st.session_state.parlay_wins = 0
-                old_step = st.session_state.parlay_step
-                st.session_state.parlay_step = min(st.session_state.parlay_step + 1, 16)
-                st.session_state.parlay_using_base = True
-                if old_step != st.session_state.parlay_step:
-                    st.session_state.parlay_step_changes += 1
-                st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
-            elif st.session_state.money_management == 'Moon':
-                old_level = st.session_state.moon_level
-                st.session_state.moon_level += 1  # Increment level on loss
-                if old_level != st.session_state.moon_level:
-                    st.session_state.moon_level_changes += 1
-                st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
-        if st.session_state.money_management == 'T3' and len(st.session_state.t3_results) == 3:
+                elif st.session_state.money_management == 'Moon':
+                    old_level = st.session_state.moon_level
+                    st.session_state.moon_level += 1  # Increment level on loss
+                    if old_level != st.session_state.moon_level:
+                        st.session_state.moon_level_changes += 1
+                    st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
+        if st.session_state.money_management == 'T3' and len(st.session_state.t3_results) == 3 and not (st.session_state.shoe_completed and st.session_state.safety_net_enabled):
             wins = st.session_state.t3_results.count('W')
             losses = st.session_state.t3_results.count('L')
             if wins > losses:
@@ -401,6 +418,7 @@ def place_result(result: str):
         "Parlay_Step": st.session_state.parlay_step if st.session_state.money_management == 'Parlay16' else "-",
         "Moon_Level": st.session_state.moon_level if st.session_state.money_management == 'Moon' else "-",
         "Money_Management": st.session_state.money_management,
+        "Safety_Net": "On" if st.session_state.safety_net_enabled else "Off",
         "Previous_State": previous_state
     })
     if len(st.session_state.bet_history) > HISTORY_LIMIT:
@@ -453,7 +471,7 @@ def place_result(result: str):
             if prob_b_to_p > prob_b_to_b and prob_b_to_p > 0.5 and 'P' == predicted_outcome:
                 markov_selection = 'P'
                 markov_confidence = prob_b_to_p * 100
-            elif prob_b_to_b > prob_b_to_p and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
+            elif prob_b_to_b > prob_b_to_b and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
                 markov_selection = 'B'
                 markov_confidence = prob_b_to_b * 100
 
@@ -479,7 +497,9 @@ def place_result(result: str):
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
                 strategy_info = f"{st.session_state.money_management}"
-                if st.session_state.money_management == 'T3':
+                if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
+                    strategy_info = "Safety Net (Flatbet)"
+                elif st.session_state.money_management == 'T3':
                     strategy_info += f" Level {st.session_state.t3_level}"
                 elif st.session_state.money_management == 'Parlay16':
                     strategy_info += f" Step {st.session_state.parlay_step}/16"
@@ -495,6 +515,10 @@ def place_result(result: str):
 
     if len(st.session_state.sequence) >= SHOE_SIZE:
         st.session_state.shoe_completed = True
+        if st.session_state.safety_net_enabled and stop_loss_triggered:
+            st.info(f"Shoe completed, but continuing with safety net at base bet.")
+        else:
+            st.success(f"Shoe of {SHOE_SIZE} hands completed!")
 
 # --- UI Components ---
 def render_setup_form():
@@ -503,8 +527,10 @@ def render_setup_form():
             col1, col2 = st.columns(2)
             with col1:
                 bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll, step=10.0)
+                stop_loss_percentage = st.number_input("Stop Loss (% of Bankroll)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100, step=5.0)
             with col2:
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10, format="%.2f")
+                safety_net_enabled = st.checkbox("Enable Safety Net (Bet Base Bet on Stop Loss)", value=st.session_state.safety_net_enabled)
             money_management = st.selectbox("Money Management", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management))
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
@@ -513,6 +539,8 @@ def render_setup_form():
                     st.error("Base bet must be at least $0.10.")
                 elif base_bet > bankroll * 0.05:
                     st.error("Base bet cannot exceed 5% of bankroll.")
+                elif stop_loss_percentage <= 0 or stop_loss_percentage >= 100:
+                    st.error("Stop loss percentage must be between 0% and 100%.")
                 else:
                     st.session_state.update({
                         'bankroll': bankroll,
@@ -529,9 +557,10 @@ def render_setup_form():
                         't3_results': [],
                         'money_management': money_management,
                         'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
-                        'stop_loss': STOP_LOSS,
+                        'stop_loss_percentage': stop_loss_percentage / 100,
                         'win_limit': WIN_LIMIT,
                         'shoe_completed': False,
+                        'safety_net_enabled': safety_net_enabled,
                         'advice': f"Need {SEQUENCE_LENGTH} results",
                         'parlay_step': 1,
                         'parlay_wins': 0,
@@ -543,27 +572,29 @@ def render_setup_form():
                         'moon_peak_level': 1
                     })
                     st.session_state.model, st.session_state.le = train_model()
-                    st.success(f"Session started with {money_management} strategy!")
+                    st.success(f"Session started with {money_management} strategy and safety net {'enabled' if safety_net_enabled else 'disabled'}!")
 
 def render_result_input():
     with st.expander("Enter Result", expanded=True):
-        if st.session_state.shoe_completed:
+        if st.session_state.shoe_completed and not st.session_state.safety_net_enabled:
             st.success(f"Shoe of {SHOE_SIZE} hands completed or limits reached!")
+        elif st.session_state.shoe_completed and st.session_state.safety_net_enabled:
+            st.info("Continuing with safety net at base bet.")
         cols = st.columns(4)
         with cols[0]:
-            if st.button("Player", key="player_btn", disabled=st.session_state.shoe_completed or st.session_state.bankroll == 0):
+            if st.button("Player", key="player_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0):
                 place_result("P")
                 st.rerun()
         with cols[1]:
-            if st.button("Banker", key="banker_btn", disabled=st.session_state.shoe_completed or st.session_state.bankroll == 0):
+            if st.button("Banker", key="banker_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0):
                 place_result("B")
                 st.rerun()
         with cols[2]:
-            if st.button("Tie", key="tie_btn", disabled=st.session_state.shoe_completed or st.session_state.bankroll == 0):
+            if st.button("Tie", key="tie_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0):
                 place_result("T")
                 st.rerun()
         with cols[3]:
-            if st.button("Undo Last", key="undo_btn", disabled=not st.session_state.bet_history or st.session_state.shoe_completed or st.session_state.bankroll == 0):
+            if st.button("Undo Last", key="undo_btn", disabled=not st.session_state.bet_history or (st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0):
                 if not st.session_state.sequence:
                     st.warning("No results to undo.")
                 else:
@@ -626,7 +657,7 @@ def render_result_input():
                                 if prob_b_to_p > prob_b_to_b and prob_b_to_p > 0.5 and 'P' == predicted_outcome:
                                     markov_selection = 'P'
                                     markov_confidence = prob_b_to_p * 100
-                                elif prob_b_to_b > prob_b_to_p and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
+                                elif prob_b_to_b > prob_b_to_b and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
                                     markov_selection = 'B'
                                     markov_confidence = prob_b_to_b * 100
                             if model_confidence > 50 and (lb6_selection or markov_selection):
@@ -645,7 +676,9 @@ def render_result_input():
                                 if bet_amount <= st.session_state.bankroll:
                                     st.session_state.pending_bet = (bet_amount, bet_selection)
                                     strategy_info = f"{st.session_state.money_management}"
-                                    if st.session_state.money_management == 'T3':
+                                    if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
+                                        strategy_info = "Safety Net (Flatbet)"
+                                    elif st.session_state.money_management == 'T3':
                                         strategy_info += f" Level {st.session_state.t3_level}"
                                     elif st.session_state.money_management == 'Parlay16':
                                         strategy_info += f" Step {st.session_state.parlay_step}/16"
@@ -658,7 +691,6 @@ def render_result_input():
                             else:
                                 st.session_state.pending_bet = None
                                 st.session_state.advice = f"Skip betting (low confidence or no matching strategy: Model {model_confidence:.1f}% ({predicted_outcome}), LB6 {lb6_confidence:.1f}% ({sixth_prior}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
-                        st.session_state.shoe_completed = False
                         st.success("Undone last action.")
                         st.rerun()
                     except Exception as e:
@@ -692,7 +724,7 @@ def render_prediction():
     with st.expander("Prediction", expanded=True):
         if st.session_state.bankroll == 0:
             st.info("Please start a session with bankroll and base bet.")
-        elif st.session_state.shoe_completed:
+        elif st.session_state.shoe_completed and not st.session_state.safety_net_enabled:
             st.info("Session ended. Reset to start a new session.")
         else:
             st.markdown(f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'><p style='font-size:1.2rem; font-weight:bold; margin:0;'>Advice: {st.session_state.advice}</p></div>", unsafe_allow_html=True)
@@ -703,10 +735,14 @@ def render_status():
         with col1:
             st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
+            st.markdown(f"**Stop Loss**: {st.session_state.stop_loss_percentage*100:.0f}%")
+            st.markdown(f"**Safety Net**: {'On' if st.session_state.safety_net_enabled else 'Off'}")
             st.markdown(f"**Hands Played**: {len(st.session_state.sequence)}")
         with col2:
             strategy_status = f"**Money Management**: {st.session_state.money_management}"
-            if st.session_state.money_management == 'T3':
+            if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
+                strategy_status += "<br>**Mode**: Safety Net (Flatbet)"
+            elif st.session_state.money_management == 'T3':
                 strategy_status += f"<br>**T3 Level**: {st.session_state.t3_level}<br>**T3 Results**: {st.session_state.t3_results}"
             elif st.session_state.money_management == 'Parlay16':
                 strategy_status += f"<br>**Parlay Step**: {st.session_state.parlay_step}/16<br>**Parlay Wins**: {st.session_state.parlay_wins}<br>**Peak Step**: {st.session_state.parlay_peak_step}<br>**Step Changes**: {st.session_state.parlay_step_changes}"
@@ -732,6 +768,7 @@ def render_history():
                     "T3_Level": h["T3_Level"] if h["Money_Management"] == 'T3' else "-",
                     "Parlay_Step": h["Parlay_Step"] if h["Money_Management"] == 'Parlay16' else "-",
                     "Moon_Level": h["Moon_Level"] if h["Money_Management"] == 'Moon' else "-",
+                    "Safety_Net": h["Safety_Net"]
                 }
                 for h in st.session_state.bet_history[-n:]
             ], use_container_width=True)
