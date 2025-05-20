@@ -1,226 +1,195 @@
 import streamlit as st
-import numpy as np
-from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import RandomForestClassifier
-import random
+from collections import defaultdict, Counter
+import uuid
 
-# Simulate Baccarat game data for training
-def generate_baccarat_data(num_games=10000):
-    outcomes = ['P', 'B']  # Player or Banker
-    return [random.choice(outcomes) for _ in range(num_games)]
+class BaccaratPredictor:
+    def __init__(self):
+        # Initialize session state variables if not already set
+        if 'history' not in st.session_state:
+            st.session_state.history = []
+            st.session_state.transitions = defaultdict(Counter)
+            st.session_state.bet = 1
+            st.session_state.profit = 0
+            st.session_state.last_prediction = None
+            st.session_state.strategy = "Flat Bet"
+            st.session_state.masterline_step = 0
+            st.session_state.in_force2 = False
+            st.session_state.force2_failed = False
+            st.session_state.break_countdown = 0
 
-# Preprocess data: Create sequences for prediction
-def prepare_data(outcomes, sequence_length=10):
-    le = LabelEncoder()
-    encoded_outcomes = le.fit_transform(outcomes)
-    X, y = [], []
-    for i in range(len(encoded_outcomes) - sequence_length):
-        X.append(encoded_outcomes[i:i + sequence_length])
-        y.append(encoded_outcomes[i + sequence_length])
-    return np.array(X), np.array(y), le
+    def update(self, result):
+        # Update transitions with the new result
+        if st.session_state.history:
+            prev = st.session_state.history[-1]
+            st.session_state.transitions[prev][result] += 1
 
-# Initialize session state
-def init_session_state():
-    if 'bankroll' not in st.session_state:
-        st.session_state.bankroll = 0.0
-        st.session_state.base_bet = 0.0
-        st.session_state.initial_bankroll = 0.0
-        st.session_state.user_sequence = []
-        st.session_state.bet_history = []  # Tracks (result, bet_amount, bet_selection, bet_outcome, t3_level, t3_results)
-        st.session_state.pending_bet = None  # Stores (bet_amount, bet_selection)
-        st.session_state.bets_placed = 0
-        st.session_state.bets_won = 0
-        st.session_state.model = None
-        st.session_state.le = None
-        st.session_state.t3_level = 1
-        st.session_state.t3_results = []
-        st.session_state.session_started = False
-        st.session_state.sequence_length = 10
-        st.session_state.stop_loss = 0.8  # Stop at 80%
-        st.session_state.win_limit = 1.5  # Stop at 150%
+        # Append result to history
+        st.session_state.history.append(result)
 
-# Main Streamlit app
-def main():
-    st.set_page_config(page_title="Grok vs. Baccarat", layout="centered")
-    st.title("EDMELG BACCARAT")
-    
-    init_session_state()
+        # Handle break countdown
+        if st.session_state.break_countdown > 0:
+            st.session_state.break_countdown -= 1
+            return "?", f"Status: Break ({st.session_state.break_countdown} left)\nPrediction paused."
 
-    # Input section
-    st.subheader("Session Setup")
-    bankroll = st.number_input("Enter Initial Bankroll ($):", min_value=0.0, step=1.0, format="%.2f")
-    base_bet = st.number_input("Enter Base Bet ($):", min_value=0.0, step=1.0, format="%.2f")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Start Session", type="primary"):
-            if bankroll <= 0 or base_bet <= 0:
-                st.error("Bankroll and bet must be positive numbers.")
-            elif base_bet > bankroll * 0.05:
-                st.error("Base bet cannot exceed 5% of bankroll.")
-            else:
-                # Initialize session
-                st.session_state.bankroll = bankroll
-                st.session_state.base_bet = base_bet
-                st.session_state.initial_bankroll = bankroll
-                st.session_state.user_sequence = []
-                st.session_state.bet_history = []
-                st.session_state.pending_bet = None
-                st.session_state.bets_placed = 0
-                st.session_state.bets_won = 0
-                st.session_state.t3_level = 1
-                st.session_state.t3_results = []
-                # Train model
-                outcomes = generate_baccarat_data()
-                X, y, st.session_state.le = prepare_data(outcomes, st.session_state.sequence_length)
-                st.session_state.model = RandomForestClassifier(n_estimators=100, random_state=42)
-                st.session_state.model.fit(X, y)
-                st.session_state.session_started = True
-                st.success(f"Session started! Bankroll: ${bankroll:.2f}, Base Bet: ${base_bet:.2f}")
-    
-    with col2:
-        if st.button("Reset Session"):
-            init_session_state()
-            st.info("Session reset. Enter new bankroll and bet to start.")
+        # Update bet and profit based on strategy
+        win = st.session_state.last_prediction == result if result in ("P", "B") and st.session_state.last_prediction else False
+        strategy = st.session_state.strategy
 
-    # Game controls
-    if st.session_state.session_started:
-        st.subheader("Enter Game Results")
-        col_p, col_b, col_u = st.columns(3)
-        with col_p:
-            if st.button("P (Player)", disabled=not st.session_state.session_started):
-                add_result('P')
-        with col_b:
-            if st.button("B (Banker)", disabled=not st.session_state.session_started):
-                add_result('B')
-        with col_u:
-            if st.button("Undo Last Result", disabled=not st.session_state.session_started):
-                undo_result()
+        if result in ("P", "B") and st.session_state.last_prediction in ("P", "B"):
+            if strategy == "Flat Bet":
+                st.session_state.bet = 1
+                st.session_state.profit += st.session_state.bet if win else -st.session_state.bet
 
-        # Display game state
-        st.subheader("Game Status")
-        st.write(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
-        st.write(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
-        st.write(f"**Session**: {st.session_state.bets_placed} bets, {st.session_state.bets_won} wins")
-        st.write(f"**Sequence**: {st.session_state.user_sequence if st.session_state.user_sequence else 'None'}")
-        st.write("**Model Prediction**: Hidden")
-        st.write(f"**Advice**: {get_advice()}")
-        st.write(f"**T3 Status**: Level {st.session_state.t3_level}, Results: {st.session_state.t3_results}")
-
-# Function to add a result
-def add_result(result):
-    if not st.session_state.session_started or st.session_state.model is None:
-        st.warning("Please start a session with bankroll and bet.")
-        return
-    if st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.stop_loss:
-        st.warning(f"Bankroll below {st.session_state.stop_loss*100:.0f}%. Session ended. Reset or exit.")
-        st.session_state.session_started = False
-        return
-    if st.session_state.bankroll >= st.session_state.initial_bankroll * st.session_state.win_limit:
-        st.info(f"Bankroll above {st.session_state.win_limit*100:.0f}%. Session ended. Reset or exit.")
-        st.session_state.session_started = False
-        return
-
-    # Resolve pending bet if exists
-    bet_amount = 0
-    bet_selection = None
-    bet_outcome = None
-    if st.session_state.pending_bet:
-        bet_amount, bet_selection = st.session_state.pending_bet
-        st.session_state.bets_placed += 1
-        if result == bet_selection:
-            if bet_selection == 'B':
-                st.session_state.bankroll += bet_amount * 0.95
-            else:  # Player
-                st.session_state.bankroll += bet_amount
-            st.session_state.bets_won += 1
-            bet_outcome = 'win'
-            # Modified T3 logic: Decrease level by 1 on first-step win, minimum 1
-            if len(st.session_state.t3_results) == 0:
-                st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
-            st.session_state.t3_results.append('W')
-        else:
-            st.session_state.bankroll -= bet_amount
-            bet_outcome = 'loss'
-            st.session_state.t3_results.append('L')
-        # Update T3 level after 3 results
-        if len(st.session_state.t3_results) == 3:
-            wins = st.session_state.t3_results.count('W')
-            losses = st.session_state.t3_results.count('L')
-            if wins > losses:
-                st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
-            elif losses > wins:
-                st.session_state.t3_level += 1
-            st.session_state.t3_results = []
-        st.session_state.pending_bet = None
-
-    st.session_state.user_sequence.append(result)
-    if len(st.session_state.user_sequence) > st.session_state.sequence_length:
-        st.session_state.user_sequence.pop(0)
-
-    # Make prediction and apply LB 6 Rep (Mirror) with T3
-    if len(st.session_state.user_sequence) == st.session_state.sequence_length:
-        encoded_input = st.session_state.le.transform(st.session_state.user_sequence)
-        input_array = np.array([encoded_input])
-        prediction_probs = st.session_state.model.predict_proba(input_array)[0]
-        predicted_class = np.argmax(prediction_probs)
-        predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
-        confidence = np.max(prediction_probs) * 100
-
-        # LB 6 Rep: Bet same as 6th prior result
-        bet_selection = None
-        if len(st.session_state.user_sequence) >= 6:
-            sixth_prior = st.session_state.user_sequence[-6]
-            outcome_index = st.session_state.le.transform([sixth_prior])[0]
-            sixth_confidence = prediction_probs[outcome_index] * 100
-            if sixth_confidence > 40:
-                bet_selection = sixth_prior
-
-        if bet_selection:
-            bet_amount = st.session_state.base_bet * st.session_state.t3_level
-            if bet_amount <= st.session_state.bankroll:
-                st.session_state.pending_bet = (bet_amount, bet_selection)
-            else:
-                st.session_state.pending_bet = None
-        else:
-            st.session_state.pending_bet = None
-
-    # Store bet history with T3 state
-    st.session_state.bet_history.append((result, bet_amount, bet_selection, bet_outcome, st.session_state.t3_level, st.session_state.t3_results[:]))
-
-# Function to undo last result
-def undo_result():
-    if not st.session_state.user_sequence:
-        st.warning("No results to undo.")
-        return
-    st.session_state.user_sequence.pop()
-    if st.session_state.bet_history:
-        last_bet = st.session_state.bet_history.pop()
-        result, bet_amount, bet_selection, bet_outcome, t3_level, t3_results = last_bet
-        if bet_amount > 0:
-            st.session_state.bets_placed -= 1
-            if bet_outcome == 'win':
-                if bet_selection == 'B':
-                    st.session_state.bankroll -= bet_amount * 0.95
+            elif strategy == "D'Alembert":
+                if win:
+                    st.session_state.profit += st.session_state.bet
+                    st.session_state.bet = max(1, st.session_state.bet - 2)
                 else:
-                    st.session_state.bankroll -= bet_amount
-                st.session_state.bets_won -= 1
-            elif bet_outcome == 'loss':
-                st.session_state.bankroll += bet_amount
-            st.session_state.t3_level = t3_level
-            st.session_state.t3_results = t3_results[:]
-    if st.session_state.pending_bet and len(st.session_state.user_sequence) >= st.session_state.sequence_length - 1:
-        st.session_state.pending_bet = None
+                    st.session_state.profit -= st.session_state.bet
+                    st.session_state.bet += 1
 
-# Function to get advice
-def get_advice():
-    if len(st.session_state.user_sequence) < st.session_state.sequence_length:
-        return f"Need {st.session_state.sequence_length - len(st.session_state.user_sequence)} more results"
-    elif st.session_state.pending_bet:
-        bet_amount, bet_selection = st.session_state.pending_bet
-        return f"Bet ${bet_amount:.2f} on {bet_selection} (T3 Level {st.session_state.t3_level}, mirroring 6th prior)."
-    else:
-        return "Skip betting (no 6th prior or low confidence)."
+            elif strategy == "-1 +2":
+                if win:
+                    st.session_state.profit += st.session_state.bet
+                    st.session_state.bet += 2
+                else:
+                    st.session_state.profit -= st.session_state.bet
+                    st.session_state.bet = max(1, st.session_state.bet - 1)
+
+            elif strategy == "Suchi Masterline":
+                self.handle_masterline(win)
+
+        # Predict next outcome
+        prediction, explanation = self.predict_next()
+        st.session_state.last_prediction = prediction if prediction in ("P", "B") else None
+        return prediction, explanation
+
+    def handle_masterline(self, win):
+        if st.session_state.in_force2:
+            if win:
+                st.session_state.profit += 2
+                st.session_state.in_force2 = False
+                st.session_state.bet = 1
+                st.session_state.masterline_step = 0
+            else:
+                st.session_state.profit -= 2
+                st.session_state.force2_failed = True
+                st.session_state.in_force2 = False
+                st.session_state.break_countdown = 3
+        elif st.session_state.force2_failed:
+            st.session_state.force2_failed = False
+            st.session_state.bet = 1
+            st.session_state.masterline_step = 0
+        elif win:
+            ladder = [1, 3, 2, 5]
+            st.session_state.profit += ladder[st.session_state.masterline_step]
+            st.session_state.masterline_step += 1
+            if st.session_state.masterline_step > 3:
+                st.session_state.masterline_step = 0
+                st.session_state.bet = 1
+            else:
+                st.session_state.bet = ladder[st.session_state.masterline_step]
+        else:
+            if st.session_state.masterline_step == 0:
+                st.session_state.in_force2 = True
+                st.session_state.bet = 2
+            else:
+                st.session_state.profit -= st.session_state.bet
+                st.session_state.break_countdown = 3
+                st.session_state.masterline_step = 0
+                st.session_state.bet = 1
+
+    def predict_next(self):
+        if st.session_state.break_countdown > 0:
+            return "?", "In break. Prediction paused."
+
+        if not st.session_state.history:
+            return "?", "No history yet."
+
+        last = st.session_state.history[-1]
+        counts = st.session_state.transitions[last]
+        total = sum(counts.values())
+
+        if not counts:
+            return "?", f"No data available after '{last}' to predict next."
+
+        probabilities = {k: v / total for k, v in counts.items()}
+        sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+        prediction = sorted_probs[0][0]
+
+        explanation = f"Last result: {last}\n"
+        explanation += "Transition probabilities:\n"
+        for outcome, prob in sorted_probs:
+            explanation += f"  {last} → {outcome}: {prob:.2f}\n"
+
+        return prediction, explanation
+
+    def reset(self):
+        st.session_state.history.clear()
+        st.session_state.transitions.clear()
+        st.session_state.bet = 1
+        st.session_state.profit = 0
+        st.session_state.masterline_step = 0
+        st.session_state.in_force2 = False
+        st.session_state.force2_failed = False
+        st.session_state.break_countdown = 0
+        st.session_state.last_prediction = None
+        st.session_state.strategy = "Flat Bet"
+
+def main():
+    st.title("Baccarat Predictor with Masterline Strategy")
+
+    # Initialize predictor
+    predictor = BaccaratPredictor()
+
+    # Strategy selection
+    st.session_state.strategy = st.selectbox(
+        "Select Betting Strategy",
+        ["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline"],
+        index=["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline"].index(st.session_state.strategy)
+    )
+
+    # Display current state
+    status = "Normal" if st.session_state.break_countdown == 0 else f"Break ({st.session_state.break_countdown} left)"
+    st.write(f"**Status:** {status}")
+    st.write(f"**Current Bet:** {st.session_state.bet}")
+    st.write(f"**Profit by Unit:** {st.session_state.profit}")
+
+    # Input buttons
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("P", use_container_width=True):
+            prediction, explanation = predictor.update("P")
+            st.session_state.prediction = prediction
+            st.session_state.explanation = explanation
+    with col2:
+        if st.button("B", use_container_width=True):
+            prediction, explanation = predictor.update("B")
+            st.session_state.prediction = prediction
+            st.session_state.explanation = explanation
+    with col3:
+        if st.button("T", use_container_width=True):
+            prediction, explanation = predictor.update("T")
+            st.session_state.prediction = prediction
+            st.session_state.explanation = explanation
+
+    # Display prediction
+    prediction = st.session_state.get("prediction", "?")
+    st.markdown(f"**Next Prediction:** {prediction}")
+
+    # Display explanation
+    explanation = st.session_state.get("explanation", "Explanation:\n")
+    st.text_area("Explanation", explanation, height=150, disabled=True)
+
+    # Display history
+    history_display = " ".join(st.session_state.history) if st.session_state.history else "No results yet."
+    st.text_area("Outcome History", history_display, height=100, disabled=True)
+
+    # Reset button
+    if st.button("Reset"):
+        predictor.reset()
+        st.session_state.prediction = "?"
+        st.session_state.explanation = "Explanation:\n"
 
 if __name__ == "__main__":
     main()
