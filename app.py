@@ -261,15 +261,15 @@ def initialize_session_state():
         'moon_level': 1,
         'moon_level_changes': 0,
         'moon_peak_level': 1,
-        'target_profit_by_percentage_enabled': False,  # New checkbox state
-        'target_profit_percentage': 0.0,              # Default value
-        'target_profit_by_units_enabled': False,      # New checkbox state
-        'target_profit_units': 0.0,                   # Default value
+        'target_profit_by_percentage_enabled': False,
+        'target_profit_percentage': 0.0,
+        'target_profit_by_units_enabled': False,
+        'target_profit_units': 0.0,
         'four_tier_level': 1,
         'four_tier_step': 1,
         'four_tier_losses': 0,
         'flatbet_levelup_level': 1,
-        'flatbet_levelup_losses': 0
+        'flatbet_levelup_losses': 0  # Tracks cumulative losses in current level
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -455,7 +455,7 @@ def place_result(result: str):
                     st.session_state.shoe_completed = True
                     st.session_state.advice = "Win recorded. Reset for a new shoe."
                 elif st.session_state.money_management == 'FlatbetLevelUp':
-                    st.session_state.flatbet_levelup_losses = 0
+                    pass  # No change on win
         else:
             st.session_state.bankroll -= bet_amount
             bet_outcome = 'loss'
@@ -917,7 +917,7 @@ def render_status():
             elif st.session_state.money_management == 'FourTier':
                 strategy_status += f"<br>**FourTier Level**: {st.session_state.four_tier_level}<br>**FourTier Step**: {st.session_state.four_tier_step}<br>**Consecutive Losses**: {st.session_state.four_tier_losses}"
             elif st.session_state.money_management == 'FlatbetLevelUp':
-                strategy_status += f"<br>**FlatbetLevelUp Level**: {st.session_state.flatbet_levelup_level}<br>**Consecutive Losses**: {st.session_state.flatbet_levelup_losses}/5"
+                strategy_status += f"<br>**FlatbetLevelUp Level**: {st.session_state.flatbet_levelup_level}<br>**Losses**: {st.session_state.flatbet_levelup_losses}/5"
             st.markdown(strategy_status, unsafe_allow_html=True)
             st.markdown(f"**Bets Placed**: {st.session_state.bets_placed}")
             st.markdown(f"**Bets Won**: {st.session_state.bets_won}")
