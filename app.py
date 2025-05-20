@@ -169,7 +169,6 @@ def track_user_session() -> int:
     except PermissionError:
         st.error("Unable to access session file.")
         return 0
-    st.session_state.session_id = str(time.time())
     sessions[st.session_state.session_id] = current_time
     try:
         with open(SESSION_FILE, 'w', encoding='utf-8') as f:
@@ -279,8 +278,8 @@ def reset_session():
 # --- Prediction Logic ---
 def predict_next() -> Tuple[Optional[str], str]:
     if st.session_state.break_countdown > 0:
-        return "?", "In break. Prediction paused."
-    if len(st.session_state.sequence) < 2:  # Modified to require at least two results
+        return "?", f"In break. Prediction paused ({st.session_state.break_countdown} left)."
+    if len(st.session_state.sequence) < 2:
         return "?", "Insufficient history (need at least two results)."
     last = st.session_state.sequence[-1]
     counts = st.session_state.transitions[last]
@@ -315,6 +314,7 @@ def smart_stop() -> bool:
     stop_loss_threshold = st.session_state.initial_bankroll * (st.session_state.stop_loss_percentage / 100)
     if st.session_state.bankroll <= stop_loss_threshold:
         st.session_state.is_paused = True
+        st.session_state.advice = f"Paused: Stop-loss triggered (Bankroll: ${st.session_state.bankroll:.2f}, Needs: >${stop_loss_threshold:.2f})"
         return True
     return False
 
@@ -362,7 +362,7 @@ def handle_masterline(win: bool):
 def calculate_bet_amount(pred: str, conf: str) -> Tuple[Optional[float], Optional[str]]:
     if st.session_state.break_countdown > 0:
         return None, f"No bet: In break ({st.session_state.break_countdown} left)"
-    if len(st.session_state.sequence) < 2:  # Modified to require at least two results
+    if len(st.session_state.sequence) < 2:
         return None, "No bet: Waiting for at least two results"
     if st.session_state.is_paused:
         return None, "No bet: Paused due to stop-loss"
@@ -378,31 +378,18 @@ def calculate_bet_amount(pred: str, conf: str) -> Tuple[Optional[float], Optiona
         if (bet_amount > st.session_state.bankroll or
             st.session_state.bankroll - bet_amount < safe_bankroll * 0.5 or
             bet_amount > st.session_state.bankroll * 0.15):
-            st.session_state.bet = 1
-            st.session_state.masterline_step = 0
-            st.session_state.in_force2 = False
-            st.session_state.force2_failed = False
-            st.session_state.break_countdown = 0
-            bet_amount = st.session_state.base_bet
-            return None, "No bet: Risk too high for current bankroll. Strategy reset."
+            return None, "No bet: Risk too high for current bankroll."
 
     return bet_amount, f"Next Bet: ${bet_amount:.2f} on {pred}"
 
 def place_result(result: str):
     if st.session_state.target_hit:
         reset_session()
+        st.session_state.advice = "Session reset: Target hit."
         return
-    if st.session_state.safety_net_enabled:
-        safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
-        if st.session_state.bankroll <= safe_bankroll:
-            st.session_state.advice = "Session reset: Stop loss reached."
-            reset_session()
-            return
-    st.session_state.last_was_tie = (result == 'T')
-
-    if st.session_state.sequence:
-        prev = st.session_state.sequence[-1]
-        st.session_state.transitions[prev][result] += 1
+    if st.session_state.shoe_completed:
+        st.session_state.advice = "No action: Shoe completed."
+        return
 
     previous_state = {
         "bankroll": st.session_state.bankroll,
@@ -421,12 +408,16 @@ def place_result(result: str):
         "status": st.session_state.get('status', '')
     }
 
+    if st.session_state.sequence:
+        prev = st.session_state.sequence[-1]
+        st.session_state.transitions[prev][result] += 1
+    st.session_state.sequence.append(result)
+    if len(st.session_state.sequence) > SEQUENCE_LIMIT:
+        st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
+
     if st.session_state.break_countdown > 0:
         st.session_state.break_countdown -= 1
         st.session_state.status = f"Break ({st.session_state.break_countdown} left)"
-        st.session_state.sequence.append(result)
-        if len(st.session_state.sequence) > SEQUENCE_LIMIT:
-            st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
         st.session_state.history.append({
             "Bet": None,
             "Result": result,
@@ -438,27 +429,22 @@ def place_result(result: str):
         })
         if len(st.session_state.history) > HISTORY_LIMIT:
             st.session_state.history = st.session_state.history[-HISTORY_LIMIT:]
-        st.session_state.advice = f"No bet: In break ({st.session_state.break_countdown} left)"
         prediction, explanation = predict_next()
         st.session_state.last_prediction = prediction if prediction in ["P", "B"] else None
         st.session_state.insights = {"Explanation": explanation}
+        st.session_state.advice = f"No bet: In break ({st.session_state.break_countdown} left)"
         return
 
-    st.session_state.sequence.append(result)
-    if len(st.session_state.sequence) > SEQUENCE_LIMIT:
-        st.session_state.sequence = st.session_state.sequence[-SEQUENCE_LIMIT:]
-
-    bet_amount = 0
+    bet_amount = None
     bet_placed = False
     selection = None
     win = False
 
-    if result in ["P", "B"] and len(st.session_state.sequence) >= 2:  # Modified to require at least two results
+    if result in ["P", "B"] and len(st.session_state.sequence) >= 2:
         prediction, explanation = predict_next()
         selection = prediction if prediction in ["P", "B"] else None
         if selection:
             bet_amount, advice = calculate_bet_amount(selection, explanation)
-            st.session_state.advice = advice
             if bet_amount:
                 bet_placed = True
                 win = result == selection
@@ -490,6 +476,7 @@ def place_result(result: str):
                         st.session_state.bet = max(1, st.session_state.bet - 1)
                 elif st.session_state.strategy == "Suchi Masterline":
                     handle_masterline(win)
+                st.session_state.advice = advice
             else:
                 st.session_state.advice = advice or "No bet placed: Insufficient conditions."
         else:
@@ -500,7 +487,7 @@ def place_result(result: str):
     st.session_state.history.append({
         "Bet": selection,
         "Result": result,
-        "Amount": bet_amount,
+        "Amount": bet_amount if bet_amount else 0.0,
         "Win": win,
         "Status": st.session_state.get('status', ''),
         "Previous_State": previous_state,
@@ -509,22 +496,31 @@ def place_result(result: str):
     if len(st.session_state.history) > HISTORY_LIMIT:
         st.session_state.history = st.session_state.history[-HISTORY_LIMIT:]
 
-    prediction, explanation = predict_next()
-    st.session_state.last_prediction = prediction if prediction in ["P", "B"] else None
-    st.session_state.insights = {"Explanation": explanation}
-    bet_amount, advice = calculate_bet_amount(prediction, explanation)
-    st.session_state.advice = advice
+    if st.session_state.safety_net_enabled:
+        safe_bankroll = st.session_state.initial_bankroll * (st.session_state.safety_net_percentage / 100)
+        if st.session_state.bankroll <= safe_bankroll:
+            st.session_state.advice = "Session reset: Safety net triggered."
+            reset_session()
+            return
+
+    if smart_stop():
+        return
 
     if check_target_hit():
         st.session_state.target_hit = True
+        st.session_state.advice = "Target hit: Session reset."
         reset_session()
         return
-    if smart_stop():
-        st.session_state.advice = f"No bet: Paused due to stop-loss (Bankroll: ${st.session_state.bankroll:.2f}, Needs: >${st.session_state.initial_bankroll * st.session_state.stop_loss_percentage / 100:.2f})"
+
     if len(st.session_state.sequence) >= SHOE_SIZE:
         st.session_state.shoe_completed = True
+        st.session_state.advice = f"Shoe of {SHOE_SIZE} hands completed."
+
     st.session_state.profit_lock = max(st.session_state.profit_lock, st.session_state.bankroll)
-    st.rerun()
+
+    prediction, explanation = predict_next()
+    st.session_state.last_prediction = prediction if prediction in ["P", "B"] else None
+    st.session_state.insights = {"Explanation": explanation}
 
 # --- Simulation Logic ---
 def simulate_shoe(num_hands: int = SHOE_SIZE, strategy: str = 'Flat Bet') -> dict:
