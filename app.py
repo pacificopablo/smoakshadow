@@ -8,6 +8,7 @@ import time
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 import random
+from collections import defaultdict
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
@@ -18,6 +19,13 @@ HISTORY_LIMIT = 1000
 SEQUENCE_LENGTH = 6
 STOP_LOSS = 0.8  # Stop at 80% of initial bankroll
 WIN_LIMIT = 1.5   # Stop at 150% of initial bankroll
+PARLAY_TABLE = {
+    i: {'base': b, 'parlay': p} for i, (b, p) in enumerate([
+        (1, 2), (1, 2), (1, 2), (2, 4), (3, 6), (4, 8), (6, 12), (8, 16),
+        (12, 24), (16, 32), (22, 44), (30, 60), (40, 80), (52, 104), (70, 140), (95, 190)
+    ], 1)
+}
+MONEY_MANAGEMENT_STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon"]
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -215,7 +223,15 @@ def initialize_session_state():
         'stop_loss': STOP_LOSS,
         'win_limit': WIN_LIMIT,
         'shoe_completed': False,
-        'advice': f"Need {SEQUENCE_LENGTH} results"
+        'advice': f"Need {SEQUENCE_LENGTH} results",
+        'parlay_step': 1,
+        'parlay_wins': 0,
+        'parlay_using_base': True,
+        'parlay_step_changes': 0,
+        'parlay_peak_step': 1,
+        'moon_level': 1,
+        'moon_level_changes': 0,
+        'moon_peak_level': 1
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -246,10 +262,30 @@ def reset_session():
         'stop_loss': STOP_LOSS,
         'win_limit': WIN_LIMIT,
         'shoe_completed': False,
-        'advice': f"Need {SEQUENCE_LENGTH} results"
+        'advice': f"Need {SEQUENCE_LENGTH} results",
+        'parlay_step': 1,
+        'parlay_wins': 0,
+        'parlay_using_base': True,
+        'parlay_step_changes': 0,
+        'parlay_peak_step': 1,
+        'moon_level': 1,
+        'moon_level_changes': 0,
+        'moon_peak_level': 1
     })
 
 # --- Betting and Prediction Logic ---
+def calculate_bet_amount(bet_selection: str) -> float:
+    if st.session_state.money_management == 'Flatbet':
+        return st.session_state.base_bet
+    elif st.session_state.money_management == 'T3':
+        return st.session_state.base_bet * st.session_state.t3_level
+    elif st.session_state.money_management == 'Parlay16':
+        key = 'base' if st.session_state.parlay_using_base else 'parlay'
+        return st.session_state.base_bet * PARLAY_TABLE[st.session_state.parlay_step][key]
+    elif st.session_state.money_management == 'Moon':
+        return st.session_state.base_bet * st.session_state.moon_level
+    return 0.0
+
 def place_result(result: str):
     if st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.stop_loss:
         st.session_state.shoe_completed = True
@@ -259,6 +295,25 @@ def place_result(result: str):
         st.session_state.shoe_completed = True
         st.success(f"Bankroll above {st.session_state.win_limit*100:.0f}%. Session ended. Reset or exit.")
         return
+
+    # Save previous state for undo
+    previous_state = {
+        'bankroll': st.session_state.bankroll,
+        't3_level': st.session_state.t3_level,
+        't3_results': st.session_state.t3_results.copy(),
+        'parlay_step': st.session_state.parlay_step,
+        'parlay_wins': st.session_state.parlay_wins,
+        'parlay_using_base': st.session_state.parlay_using_base,
+        'parlay_step_changes': st.session_state.parlay_step_changes,
+        'parlay_peak_step': st.session_state.parlay_peak_step,
+        'moon_level': st.session_state.moon_level,
+        'moon_level_changes': st.session_state.moon_level_changes,
+        'moon_peak_level': st.session_state.moon_peak_level,
+        'bets_placed': st.session_state.bets_placed,
+        'bets_won': st.session_state.bets_won,
+        'transition_counts': st.session_state.transition_counts.copy(),
+        'pending_bet': st.session_state.pending_bet
+    }
 
     # Update Markov transition counts
     if len(st.session_state.sequence) >= 1:
@@ -285,11 +340,43 @@ def place_result(result: str):
                 if len(st.session_state.t3_results) == 0:
                     st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
                 st.session_state.t3_results.append('W')
+            elif st.session_state.money_management == 'Parlay16':
+                st.session_state.parWINS += 1
+                if st.session_state.parlay_wins == 2:
+                    old_step = st.session_state.parlay_step
+                    st.session_state.parlay_step = 1
+                    st.session_state.parlay_wins = 0
+                    st.session_state.parlay_using_base = True
+                    if old_step != st.session_state.parlay_step:
+                        st.session_state.parlay_step_changes += 1
+                    st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+                else:
+                    st.session_state.parlay_using_base = False
+            elif st.session_state.money_management == 'Moon':
+                old_level = st.session_state.moon_level
+                st.session_state.moon_level = old_level  # Stay at current level on win
+                if old_level != st.session_state.moon_level:
+                    st.session_state.moon_level_changes += 1
+                st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
         else:
             st.session_state.bankroll -= bet_amount
             bet_outcome = 'loss'
             if st.session_state.money_management == 'T3':
                 st.session_state.t3_results.append('L')
+            elif st.session_state.money_management == 'Parlay16':
+                st.session_state.parlay_wins = 0
+                old_step = st.session_state.parlay_step
+                st.session_state.parlay_step = min(st.session_state.parlay_step + 1, 16)
+                st.session_state.parlay_using_base = True
+                if old_step != st.session_state.parlay_step:
+                    st.session_state.parlay_step_changes += 1
+                st.session_state.parlay_peak_step = max(st.session_state.parlay_peak_step, old_step)
+            elif st.session_state.money_management == 'Moon':
+                old_level = st.session_state.moon_level
+                st.session_state.moon_level += 1  # Increment level on loss
+                if old_level != st.session_state.moon_level:
+                    st.session_state.moon_level_changes += 1
+                st.session_state.moon_peak_level = max(st.session_state.moon_peak_level, st.session_state.moon_level)
         if st.session_state.money_management == 'T3' and len(st.session_state.t3_results) == 3:
             wins = st.session_state.t3_results.count('W')
             losses = st.session_state.t3_results.count('L')
@@ -310,9 +397,11 @@ def place_result(result: str):
         "Bet_Amount": bet_amount,
         "Bet_Selection": bet_selection,
         "Bet_Outcome": bet_outcome,
-        "T3_Level": st.session_state.t3_level,
-        "T3_Results": st.session_state.t3_results.copy(),
-        "Money_Management": st.session_state.money_management
+        "T3_Level": st.session_state.t3_level if st.session_state.money_management == 'T3' else "-",
+        "Parlay_Step": st.session_state.parlay_step if st.session_state.money_management == 'Parlay16' else "-",
+        "Moon_Level": st.session_state.moon_level if st.session_state.money_management == 'Moon' else "-",
+        "Money_Management": st.session_state.money_management,
+        "Previous_State": previous_state
     })
     if len(st.session_state.bet_history) > HISTORY_LIMIT:
         st.session_state.bet_history = st.session_state.bet_history[-HISTORY_LIMIT:]
@@ -386,13 +475,17 @@ def place_result(result: str):
                 confidence = max(model_confidence, markov_confidence)
 
         if bet_selection:
-            if st.session_state.money_management == 'Flatbet':
-                bet_amount = st.session_state.base_bet
-            else:  # T3
-                bet_amount = st.session_state.base_bet * st.session_state.t3_level
+            bet_amount = calculate_bet_amount(bet_selection)
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
-                st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({st.session_state.money_management}{' Level ' + str(st.session_state.t3_level) if st.session_state.money_management == 'T3' else ''}, {strategy_used}: {confidence:.1f}%)"
+                strategy_info = f"{st.session_state.money_management}"
+                if st.session_state.money_management == 'T3':
+                    strategy_info += f" Level {st.session_state.t3_level}"
+                elif st.session_state.money_management == 'Parlay16':
+                    strategy_info += f" Step {st.session_state.parlay_step}/16"
+                elif st.session_state.money_management == 'Moon':
+                    strategy_info += f" Level {st.session_state.moon_level}"
+                st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {strategy_used}: {confidence:.1f}%)"
             else:
                 st.session_state.pending_bet = None
                 st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
@@ -412,7 +505,7 @@ def render_setup_form():
                 bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll, step=10.0)
             with col2:
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10), step=0.10, format="%.2f")
-            money_management = st.selectbox("Money Management", ["T3", "Flatbet"], index=0 if st.session_state.money_management == 'T3' else 1)
+            money_management = st.selectbox("Money Management", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management))
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
@@ -439,7 +532,15 @@ def render_setup_form():
                         'stop_loss': STOP_LOSS,
                         'win_limit': WIN_LIMIT,
                         'shoe_completed': False,
-                        'advice': f"Need {SEQUENCE_LENGTH} results"
+                        'advice': f"Need {SEQUENCE_LENGTH} results",
+                        'parlay_step': 1,
+                        'parlay_wins': 0,
+                        'parlay_using_base': True,
+                        'parlay_step_changes': 0,
+                        'parlay_peak_step': 1,
+                        'moon_level': 1,
+                        'moon_level_changes': 0,
+                        'moon_peak_level': 1
                     })
                     st.session_state.model, st.session_state.le = train_model()
                     st.success(f"Session started with {money_management} strategy!")
@@ -469,6 +570,9 @@ def render_result_input():
                     try:
                         last_bet = st.session_state.bet_history.pop()
                         st.session_state.sequence.pop()
+                        previous_state = last_bet["Previous_State"]
+                        for key, value in previous_state.items():
+                            st.session_state[key] = value
                         if last_bet["Bet_Amount"] > 0:
                             st.session_state.bets_placed -= 1
                             if last_bet["Bet_Outcome"] == 'win':
@@ -477,17 +581,83 @@ def render_result_input():
                                 else:
                                     st.session_state.bankroll -= last_bet["Bet_Amount"]
                                 st.session_state.bets_won -= 1
-                            elif last_bet["Bet_Outcome"] == 'loss':
-                                st.session_state.bankroll += last_bet["Bet_Amount"]
-                            if last_bet["Money_Management"] == 'T3':
-                                st.session_state.t3_level = last_bet["T3_Level"]
-                                st.session_state.t3_results = last_bet["T3_Results"].copy()
                         if len(st.session_state.sequence) >= 1 and last_bet["Result"] in ['P', 'B'] and st.session_state.sequence[-1] in ['P', 'B']:
                             transition = f"{st.session_state.sequence[-1]}{last_bet['Result']}"
                             st.session_state.transition_counts[transition] = max(0, st.session_state.transition_counts[transition] - 1)
-                        st.session_state.pending_bet = None
                         valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
-                        st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
+                        if len(valid_sequence) < SEQUENCE_LENGTH:
+                            st.session_state.pending_bet = None
+                            st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
+                        else:
+                            # Recalculate prediction
+                            prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
+                            encoded_input = st.session_state.le.transform(prediction_sequence)
+                            input_array = np.array([encoded_input])
+                            prediction_probs = st.session_state.model.predict_proba(input_array)[0]
+                            predicted_class = np.argmax(prediction_probs)
+                            predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
+                            model_confidence = np.max(prediction_probs) * 100
+                            lb6_selection = None
+                            lb6_confidence = 0
+                            sixth_prior = 'N/A'
+                            if len(valid_sequence) >= 6:
+                                sixth_prior = valid_sequence[-6]
+                                outcome_index = st.session_state.le.transform([sixth_prior])[0]
+                                lb6_confidence = prediction_probs[outcome_index] * 100
+                                if lb6_confidence > 40 and sixth_prior == predicted_outcome:
+                                    lb6_selection = sixth_prior
+                            markov_selection = None
+                            markov_confidence = 0
+                            last_outcome = valid_sequence[-1]
+                            total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
+                            total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
+                            if last_outcome == 'P' and total_from_p > 0:
+                                prob_p_to_p = st.session_state.transition_counts['PP'] / total_from_p
+                                prob_p_to_b = st.session_state.transition_counts['PB'] / total_from_p
+                                if prob_p_to_p > prob_p_to_b and prob_p_to_p > 0.5 and 'P' == predicted_outcome:
+                                    markov_selection = 'P'
+                                    markov_confidence = prob_p_to_p * 100
+                                elif prob_p_to_b > prob_p_to_p and prob_p_to_b > 0.5 and 'B' == predicted_outcome:
+                                    markov_selection = 'B'
+                                    markov_confidence = prob_p_to_b * 100
+                            elif last_outcome == 'B' and total_from_b > 0:
+                                prob_b_to_p = st.session_state.transition_counts['BP'] / total_from_b
+                                prob_b_to_b = st.session_state.transition_counts['BB'] / total_from_b
+                                if prob_b_to_p > prob_b_to_b and prob_b_to_p > 0.5 and 'P' == predicted_outcome:
+                                    markov_selection = 'P'
+                                    markov_confidence = prob_b_to_p * 100
+                                elif prob_b_to_b > prob_b_to_p and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
+                                    markov_selection = 'B'
+                                    markov_confidence = prob_b_to_b * 100
+                            if model_confidence > 50 and (lb6_selection or markov_selection):
+                                bet_selection = predicted_outcome
+                                confidence = model_confidence
+                                if lb6_selection and markov_selection:
+                                    strategy_used = 'Model+LB6+Markov'
+                                    confidence = max(model_confidence, lb6_confidence, markov_confidence)
+                                elif lb6_selection:
+                                    strategy_used = 'Model+LB6'
+                                    confidence = max(model_confidence, lb6_confidence)
+                                elif markov_selection:
+                                    strategy_used = 'Model+Markov'
+                                    confidence = max(model_confidence, markov_confidence)
+                                bet_amount = calculate_bet_amount(bet_selection)
+                                if bet_amount <= st.session_state.bankroll:
+                                    st.session_state.pending_bet = (bet_amount, bet_selection)
+                                    strategy_info = f"{st.session_state.money_management}"
+                                    if st.session_state.money_management == 'T3':
+                                        strategy_info += f" Level {st.session_state.t3_level}"
+                                    elif st.session_state.money_management == 'Parlay16':
+                                        strategy_info += f" Step {st.session_state.parlay_step}/16"
+                                    elif st.session_state.money_management == 'Moon':
+                                        strategy_info += f" Level {st.session_state.moon_level}"
+                                    st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {strategy_used}: {confidence:.1f}%)"
+                                else:
+                                    st.session_state.pending_bet = None
+                                    st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
+                            else:
+                                st.session_state.pending_bet = None
+                                st.session_state.advice = f"Skip betting (low confidence or no matching strategy: Model {model_confidence:.1f}% ({predicted_outcome}), LB6 {lb6_confidence:.1f}% ({sixth_prior}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
                         st.session_state.shoe_completed = False
                         st.success("Undone last action.")
                         st.rerun()
@@ -535,10 +705,14 @@ def render_status():
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
             st.markdown(f"**Hands Played**: {len(st.session_state.sequence)}")
         with col2:
-            st.markdown(f"**Money Management**: {st.session_state.money_management}")
+            strategy_status = f"**Money Management**: {st.session_state.money_management}"
             if st.session_state.money_management == 'T3':
-                st.markdown(f"**T3 Level**: {st.session_state.t3_level}")
-                st.markdown(f"**T3 Results**: {st.session_state.t3_results}")
+                strategy_status += f"<br>**T3 Level**: {st.session_state.t3_level}<br>**T3 Results**: {st.session_state.t3_results}"
+            elif st.session_state.money_management == 'Parlay16':
+                strategy_status += f"<br>**Parlay Step**: {st.session_state.parlay_step}/16<br>**Parlay Wins**: {st.session_state.parlay_wins}<br>**Peak Step**: {st.session_state.parlay_peak_step}<br>**Step Changes**: {st.session_state.parlay_step_changes}"
+            elif st.session_state.money_management == 'Moon':
+                strategy_status += f"<br>**Moon Level**: {st.session_state.moon_level}<br>**Peak Level**: {st.session_state.moon_peak_level}<br>**Level Changes**: {st.session_state.moon_level_changes}"
+            st.markdown(strategy_status, unsafe_allow_html=True)
             st.markdown(f"**Bets Placed**: {st.session_state.bets_placed}")
             st.markdown(f"**Bets Won**: {st.session_state.bets_won}")
             st.markdown(f"**Online Users**: {track_user_session()}")
@@ -556,6 +730,8 @@ def render_history():
                     "Amount": f"${h['Bet_Amount']:.2f}" if h["Bet_Amount"] > 0 else "-",
                     "Outcome": h["Bet_Outcome"] if h["Bet_Outcome"] else "-",
                     "T3_Level": h["T3_Level"] if h["Money_Management"] == 'T3' else "-",
+                    "Parlay_Step": h["Parlay_Step"] if h["Money_Management"] == 'Parlay16' else "-",
+                    "Moon_Level": h["Moon_Level"] if h["Money_Management"] == 'Moon' else "-",
                 }
                 for h in st.session_state.bet_history[-n:]
             ], use_container_width=True)
