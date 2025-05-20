@@ -1,6 +1,5 @@
 import streamlit as st
 from collections import defaultdict, Counter
-import uuid
 
 class BaccaratPredictor:
     def __init__(self):
@@ -124,17 +123,31 @@ class BaccaratPredictor:
 
         return prediction, explanation
 
-    def reset(self):
-        st.session_state.history.clear()
-        st.session_state.transitions.clear()
-        st.session_state.bet = 1
-        st.session_state.profit = 0
-        st.session_state.masterline_step = 0
-        st.session_state.in_force2 = False
-        st.session_state.force2_failed = False
-        st.session_state.break_countdown = 0
-        st.session_state.last_prediction = None
-        st.session_state.strategy = "Flat Bet"
+def render_bead_plate():
+    history = st.session_state.history
+    if not history:
+        st.markdown("**Bead Plate**: No results yet.")
+        return
+
+    # Initialize 6-row grid
+    rows = 6
+    cols = (len(history) + rows - 1) // rows  # Calculate required columns
+    bead_plate = [[" " for _ in range(cols)] for _ in range(rows)]
+
+    # Fill bead plate: left-to-right, top-to-bottom
+    for i, outcome in enumerate(history):
+        row = i % rows
+        col = i // rows
+        symbol = "🟢" if outcome == "T" else "🔵" if outcome == "P" else "🔴"
+        bead_plate[row][col] = symbol
+
+    # Render bead plate using markdown table
+    st.markdown("**Bead Plate**")
+    table = "| " + " | ".join([""] * cols) + " |\n"
+    table += "|---" * cols + "|\n"
+    for row in bead_plate:
+        table += "| " + " | ".join(row) + " |\n"
+    st.markdown(table)
 
 def main():
     st.title("Baccarat Predictor with Masterline Strategy")
@@ -181,9 +194,8 @@ def main():
     explanation = st.session_state.get("explanation", "Explanation:\n")
     st.text_area("Explanation", explanation, height=150, disabled=True)
 
-    # Display history
-    history_display = " ".join(st.session_state.history) if st.session_state.history else "No results yet."
-    st.text_area("Outcome History", history_display, height=100, disabled=True)
+    # Display bead plate
+    render_bead_plate()
 
     # Reset button
     if st.button("Reset"):
