@@ -314,7 +314,7 @@ def initialize_session_state():
         'moon_level': 1,
         'moon_level_changes': 0,
         'moon_peak_level': 1,
-        'target_profit_option': 'None',
+        'target_profit_option': 'Profit %',
         'target_profit_percentage': 0.0,
         'target_profit_units': 0.0,
         'four_tier_level': 1,
@@ -437,6 +437,11 @@ def place_result(result: str):
             if current_profit >= st.session_state.initial_bankroll * st.session_state.target_profit_percentage:
                 st.session_state.shoe_completed = True
                 st.success(f"Target profit reached: ${current_profit:.2f} ({st.session_state.target_profit_percentage*100:.0f}% of bankroll). Session ended. Reset or exit.")
+                return
+        elif st.session_state.target_profit_option == 'Units' and st.session_state.target_profit_units > 0:
+            if current_profit >= st.session_state.target_profit_units:
+                st.session_state.shoe_completed = True
+                st.success(f"Target profit reached: ${current_profit:.2f} (Target: ${st.session_state.target_profit_units:.2f}). Session ended. Reset or exit.")
                 return
 
         # Save previous state for undo
@@ -697,8 +702,13 @@ def render_setup_form():
                 base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10) or 10.00, step=0.10, format="%.2f")
                 money_management = st.selectbox("Strategy", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management) if st.session_state.money_management in MONEY_MANAGEMENT_STRATEGIES else MONEY_MANAGEMENT_STRATEGIES.index("T3"))
             with col2:
-                target_mode = st.selectbox("Target Mode", ["None", "Profit %"], index=["None", "Profit %"].index(st.session_state.target_profit_option) if st.session_state.target_profit_option in ["None", "Profit %"] else 1)
-                target_value = st.number_input("Target Value", min_value=0.0, value=st.session_state.target_profit_percentage * 100 if st.session_state.target_profit_percentage > 0 else 6.00, step=0.1, format="%.2f") if target_mode == "Profit %" else 0.0
+                target_mode = st.selectbox("Target Mode", ["Profit %", "Units"], index=["Profit %", "Units"].index(st.session_state.target_profit_option) if st.session_state.target_profit_option in ["Profit %", "Units"] else 0)
+                if target_mode == "Profit %":
+                    target_value_percentage = st.number_input("Target Profit (%)", min_value=0.0, value=st.session_state.target_profit_percentage * 100 if st.session_state.target_profit_percentage > 0 else 6.00, step=0.1, format="%.2f")
+                    target_value_units = 0.0  # Reset units if percentage is selected
+                else:  # Units
+                    target_value_units = st.number_input("Target Profit ($)", min_value=0.0, value=st.session_state.target_profit_units if st.session_state.target_profit_units > 0 else 50.00, step=1.0, format="%.2f")
+                    target_value_percentage = 0.0  # Reset percentage if units is selected
 
             st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
             st.markdown('<h3><span class="icon">🎯</span>Safety & Limits</h3>', unsafe_allow_html=True)
@@ -738,7 +748,8 @@ def render_setup_form():
                     elif money_management == 'FlatbetLevelUp' and bankroll < minimum_bankroll:
                         st.error(f"Flatbet LevelUp strategy requires a minimum bankroll of ${minimum_bankroll:.2f} for a base bet of ${base_bet:.2f}.")
                     else:
-                        target_profit_percentage = target_value / 100 if target_mode == "Profit %" else 0.0
+                        target_profit_percentage = target_value_percentage / 100 if target_mode == "Profit %" else 0.0
+                        target_profit_units = target_value_units if target_mode == "Units" else 0.0
                         st.session_state.update({
                             'bankroll': bankroll,
                             'base_bet': base_bet,
@@ -771,7 +782,7 @@ def render_setup_form():
                             'moon_peak_level': 1,
                             'target_profit_option': target_mode,
                             'target_profit_percentage': target_profit_percentage,
-                            'target_profit_units': 0.0,
+                            'target_profit_units': target_profit_units,
                             'four_tier_level': 1,
                             'four_tier_step': 1,
                             'four_tier_losses': 0,
@@ -976,6 +987,8 @@ def render_status():
                 target_profit_display = []
                 if st.session_state.target_profit_option == 'Profit %' and st.session_state.target_profit_percentage > 0:
                     target_profit_display.append(f"{st.session_state.target_profit_percentage*100:.0f}%")
+                elif st.session_state.target_profit_option == 'Units' and st.session_state.target_profit_units > 0:
+                    target_profit_display.append(f"${st.session_state.target_profit_units:.2f}")
                 st.markdown(f"**Target Profit**: {'None' if not target_profit_display else ', '.join(target_profit_display)}")
             with col2:
                 st.markdown(f"**Safety Net**: {'On' if st.session_state.safety_net_enabled else 'Off'}")
