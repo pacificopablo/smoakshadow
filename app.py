@@ -18,7 +18,7 @@ GRID_COLS = 16
 HISTORY_LIMIT = 1000
 SEQUENCE_LENGTH = 6
 STOP_LOSS_DEFAULT = 0.8  # Default stop loss at 80% of initial bankroll
-WIN_LIMIT = 1.5   # Stop at 150% of initial bankroll
+WIN_LIMIT = 1.5   # Default stop at 150% of initial bankroll (overridden by profit lock threshold)
 PARLAY_TABLE = {
     i: {'base': b, 'parlay': p} for i, (b, p) in enumerate([
         (1, 2), (1, 2), (1, 2), (2, 4), (3, 6), (4, 8), (6, 12), (8, 16),
@@ -322,6 +322,8 @@ def initialize_session_state():
         'four_tier_losses': 0,
         'flatbet_levelup_level': 1,
         'flatbet_levelup_net_loss': 0.0,
+        'safety_net_percentage': 0.02,  # Default 2%
+        'smart_skip_enabled': True,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -335,6 +337,8 @@ def reset_session():
             'money_management': st.session_state.money_management,
             'stop_loss_percentage': st.session_state.stop_loss_percentage,
             'safety_net_enabled': st.session_state.safety_net_enabled,
+            'safety_net_percentage': st.session_state.safety_net_percentage,
+            'smart_skip_enabled': st.session_state.smart_skip_enabled,
             'target_profit_option': st.session_state.target_profit_option,
             'target_profit_percentage': st.session_state.target_profit_percentage,
             'target_profit_units': st.session_state.target_profit_units
@@ -359,6 +363,8 @@ def reset_session():
             'win_limit': WIN_LIMIT,
             'shoe_completed': False,
             'safety_net_enabled': setup_values['safety_net_enabled'],
+            'safety_net_percentage': setup_values['safety_net_percentage'],
+            'smart_skip_enabled': setup_values['smart_skip_enabled'],
             'advice': f"Need {SEQUENCE_LENGTH} results",
             'parlay_step': 1,
             'parlay_wins': 0,
@@ -413,6 +419,12 @@ def place_result(result: str):
             st.warning(f"Bankroll below {st.session_state.stop_loss_percentage*100:.0f}% of initial bankroll. Session ended. Reset or exit.")
             return
 
+        # Check safety net trigger
+        safety_net_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.safety_net_percentage
+        if safety_net_triggered and st.session_state.safety_net_enabled:
+            st.session_state.shoe_completed = True
+            st.info(f"Safety net triggered at {st.session_state.safety_net_percentage*100:.0f}%. Betting at base bet.")
+
         # Check win limit
         if st.session_state.bankroll >= st.session_state.initial_bankroll * st.session_state.win_limit:
             st.session_state.shoe_completed = True
@@ -421,21 +433,11 @@ def place_result(result: str):
 
         # Check target profit
         current_profit = st.session_state.bankroll - st.session_state.initial_bankroll
-        if st.session_state.target_profit_option == 'By Percentage' and st.session_state.target_profit_percentage > 0:
+        if st.session_state.target_profit_option == 'Profit %' and st.session_state.target_profit_percentage > 0:
             if current_profit >= st.session_state.initial_bankroll * st.session_state.target_profit_percentage:
                 st.session_state.shoe_completed = True
                 st.success(f"Target profit reached: ${current_profit:.2f} ({st.session_state.target_profit_percentage*100:.0f}% of bankroll). Session ended. Reset or exit.")
                 return
-        if st.session_state.target_profit_option == 'By Units' and st.session_state.target_profit_units > 0:
-            if current_profit >= st.session_state.target_profit_units:
-                st.session_state.shoe_completed = True
-                st.success(f"Target profit reached: ${current_profit:.2f}. Session ended. Reset or exit.")
-                return
-
-        # Check safety net
-        if stop_loss_triggered and st.session_state.safety_net_enabled:
-            st.session_state.shoe_completed = True
-            st.info(f"Stop loss triggered at {st.session_state.stop_loss_percentage*100:.0f}%. Betting at base bet with safety net.")
 
         # Save previous state for undo
         previous_state = {
@@ -549,11 +551,10 @@ def place_result(result: str):
                             st.session_state.four_tier_step = 1
                             st.session_state.four_tier_losses = 0
                     elif st.session_state.money_management == 'FlatbetLevelUp':
-                        # Progress to next level if net loss reaches threshold for current level
                         current_level = st.session_state.flatbet_levelup_level
                         if current_level < 5 and st.session_state.flatbet_levelup_net_loss <= FLATBET_LEVELUP_THRESHOLDS[current_level]:
                             st.session_state.flatbet_levelup_level = min(st.session_state.flatbet_levelup_level + 1, 5)
-                            st.session_state.flatbet_levelup_net_loss = 0.0  # Reset net loss for new level
+                            st.session_state.flatbet_levelup_net_loss = 0.0
             if st.session_state.money_management == 'T3' and len(st.session_state.t3_results) == 3 and not (st.session_state.shoe_completed and st.session_state.safety_net_enabled):
                 wins = st.session_state.t3_results.count('W')
                 losses = st.session_state.t3_results.count('L')
@@ -639,7 +640,7 @@ def place_result(result: str):
             strategy_used = None
             bet_selection = None
             confidence = 0.0
-            if model_confidence > 50 and (lb6_selection or markov_selection):
+            if model_confidence > 50 and (lb6_selection or markov_selection) and not (st.session_state.smart_skip_enabled and confidence < 60):
                 bet_selection = predicted_outcome
                 confidence = model_confidence
                 if lb6_selection and markov_selection:
@@ -679,7 +680,7 @@ def place_result(result: str):
 
         if len(st.session_state.sequence) >= SHOE_SIZE:
             st.session_state.shoe_completed = True
-            if st.session_state.safety_net_enabled and stop_loss_triggered:
+            if st.session_state.safety_net_enabled and safety_net_triggered:
                 st.info(f"Shoe completed, but continuing with safety net at base bet.")
             else:
                 st.success(f"Shoe of {SHOE_SIZE} hands completed!")
@@ -692,41 +693,24 @@ def render_setup_form():
         with st.form("setup_form"):
             col1, col2 = st.columns(2)
             with col1:
-                bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll or 400.25, step=10.0)
-                stop_loss_percentage = st.number_input("Stop Loss (% of Bankroll)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100 or 80.0, step=5.0)
-                money_management = st.selectbox("Money Management", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management) if st.session_state.money_management in MONEY_MANAGEMENT_STRATEGIES else MONEY_MANAGEMENT_STRATEGIES.index("FlatbetLevelUp"))
+                bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll or 1233.00, step=10.0)
+                base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10) or 10.00, step=0.10, format="%.2f")
+                money_management = st.selectbox("Strategy", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management) if st.session_state.money_management in MONEY_MANAGEMENT_STRATEGIES else MONEY_MANAGEMENT_STRATEGIES.index("T3"))
             with col2:
-                base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10) or 5.00, step=0.10, format="%.2f")
-                safety_net_enabled = st.checkbox("Enable Safety Net (Bet Base Bet on Stop Loss)", value=st.session_state.safety_net_enabled)
+                target_mode = st.selectbox("Target Mode", ["None", "Profit %"], index=["None", "Profit %"].index(st.session_state.target_profit_option) if st.session_state.target_profit_option in ["None", "Profit %"] else 1)
+                target_value = st.number_input("Target Value", min_value=0.0, value=st.session_state.target_profit_percentage * 100 if st.session_state.target_profit_percentage > 0 else 6.00, step=0.1, format="%.2f") if target_mode == "Profit %" else 0.0
 
             st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
-            st.markdown('<h3><span class="icon">🎯</span>Target Profit Settings</h3>', unsafe_allow_html=True)
-            target_profit_option = st.selectbox(
-                "Set Target Profit",
-                options=['None', 'By Percentage', 'By Units'],
-                index=['None', 'By Percentage', 'By Units'].index(st.session_state.target_profit_option) if st.session_state.target_profit_option in ['None', 'By Percentage', 'By Units'] else 0,
-                key="target_profit_select"
-            )
+            st.markdown('<h3><span class="icon">🎯</span>Safety & Limits</h3>', unsafe_allow_html=True)
+            safety_net_enabled = st.checkbox("Enable Safety Net", value=st.session_state.safety_net_enabled)
+            safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled)
 
-            target_profit_percentage = 0.0
-            target_profit_units = 0.0
-            if target_profit_option == 'By Percentage':
-                target_profit_percentage = st.number_input(
-                    "Target Profit (% of Bankroll)",
-                    min_value=0.0,
-                    max_value=100.0,
-                    value=st.session_state.target_profit_percentage * 100 if st.session_state.target_profit_percentage > 0 else 10.0,
-                    step=1.0,
-                    format="%.1f"
-                ) / 100
-            elif target_profit_option == 'By Units':
-                target_profit_units = st.number_input(
-                    "Target Profit (Units $)",
-                    min_value=0.0,
-                    value=st.session_state.target_profit_units if st.session_state.target_profit_units > 0 else 50.0,
-                    step=10.0,
-                    format="%.2f"
-                )
+            stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=True)
+            stop_loss_percentage = st.number_input("Stop-Loss Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100 or 10.00, step=0.1, disabled=not stop_loss_enabled)
+
+            profit_lock_threshold = st.number_input("Profit Lock Threshold (% of Initial Bankroll)", min_value=100.0, max_value=1000.0, value=st.session_state.win_limit * 100 or 600.00, step=1.0)
+
+            smart_skip_enabled = st.checkbox("Enable Smart Skip", value=st.session_state.smart_skip_enabled)
 
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -744,16 +728,17 @@ def render_setup_form():
                     elif base_bet > bankroll * 0.05:
                         st.error("Base bet cannot exceed 5% of bankroll.")
                     elif stop_loss_percentage <= 0 or stop_loss_percentage >= 100:
-                        st.error("Stop loss percentage must be between 0% and 100%.")
-                    elif target_profit_option == 'By Percentage' and (target_profit_percentage < 0 or target_profit_percentage > 100):
-                        st.error("Target profit percentage must be between 0% and 100%.")
-                    elif target_profit_option == 'By Units' and target_profit_units < 0:
-                        st.error("Target profit units must be non-negative.")
+                        st.error("Stop-loss percentage must be between 0% and 100%.")
+                    elif safety_net_percentage < 0 or safety_net_percentage >= 100:
+                        st.error("Safety net percentage must be between 0% and 100%.")
+                    elif profit_lock_threshold <= 100:
+                        st.error("Profit lock threshold must be greater than 100% of initial bankroll.")
                     elif money_management == 'FourTier' and bankroll < minimum_bankroll:
                         st.error(f"Four Tier strategy requires a minimum bankroll of ${minimum_bankroll:.2f} for a base bet of ${base_bet:.2f}.")
                     elif money_management == 'FlatbetLevelUp' and bankroll < minimum_bankroll:
                         st.error(f"Flatbet LevelUp strategy requires a minimum bankroll of ${minimum_bankroll:.2f} for a base bet of ${base_bet:.2f}.")
                     else:
+                        target_profit_percentage = target_value / 100 if target_mode == "Profit %" else 0.0
                         st.session_state.update({
                             'bankroll': bankroll,
                             'base_bet': base_bet,
@@ -770,9 +755,11 @@ def render_setup_form():
                             'money_management': money_management,
                             'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
                             'stop_loss_percentage': stop_loss_percentage / 100,
-                            'win_limit': WIN_LIMIT,
+                            'win_limit': profit_lock_threshold / 100,
                             'shoe_completed': False,
                             'safety_net_enabled': safety_net_enabled,
+                            'safety_net_percentage': safety_net_percentage / 100,
+                            'smart_skip_enabled': smart_skip_enabled,
                             'advice': f"Need {SEQUENCE_LENGTH} results",
                             'parlay_step': 1,
                             'parlay_wins': 0,
@@ -782,9 +769,9 @@ def render_setup_form():
                             'moon_level': 1,
                             'moon_level_changes': 0,
                             'moon_peak_level': 1,
-                            'target_profit_option': target_profit_option,
+                            'target_profit_option': target_mode,
                             'target_profit_percentage': target_profit_percentage,
-                            'target_profit_units': target_profit_units,
+                            'target_profit_units': 0.0,
                             'four_tier_level': 1,
                             'four_tier_step': 1,
                             'four_tier_losses': 0,
@@ -885,7 +872,7 @@ def render_result_input():
                                     elif prob_b_to_b > prob_b_to_b and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
                                         markov_selection = 'B'
                                         markov_confidence = prob_b_to_b * 100
-                                if model_confidence > 50 and (lb6_selection or markov_selection):
+                                if model_confidence > 50 and (lb6_selection or markov_selection) and not (st.session_state.smart_skip_enabled and confidence < 60):
                                     bet_selection = predicted_outcome
                                     confidence = model_confidence
                                     if lb6_selection and markov_selection:
@@ -987,10 +974,8 @@ def render_status():
                 st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
                 st.markdown(f"**Stop Loss**: {st.session_state.stop_loss_percentage*100:.0f}%")
                 target_profit_display = []
-                if st.session_state.target_profit_option == 'By Percentage' and st.session_state.target_profit_percentage > 0:
+                if st.session_state.target_profit_option == 'Profit %' and st.session_state.target_profit_percentage > 0:
                     target_profit_display.append(f"{st.session_state.target_profit_percentage*100:.0f}%")
-                if st.session_state.target_profit_option == 'By Units' and st.session_state.target_profit_units > 0:
-                    target_profit_display.append(f"${st.session_state.target_profit_units:.2f}")
                 st.markdown(f"**Target Profit**: {'None' if not target_profit_display else ', '.join(target_profit_display)}")
             with col2:
                 st.markdown(f"**Safety Net**: {'On' if st.session_state.safety_net_enabled else 'Off'}")
