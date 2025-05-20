@@ -698,29 +698,29 @@ def render_setup_form():
         with st.form("setup_form"):
             col1, col2 = st.columns(2)
             with col1:
-                bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll or 1233.00, step=10.0)
-                base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10) or 10.00, step=0.10, format="%.2f")
-                money_management = st.selectbox("Strategy", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management) if st.session_state.money_management in MONEY_MANAGEMENT_STRATEGIES else MONEY_MANAGEMENT_STRATEGIES.index("T3"))
+                bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll or 1233.00, step=10.0, help="Your initial total funds. Must be positive and sufficient for the chosen strategy (e.g., FourTier requires at least $537 for a $1 base bet).")
+                base_bet = st.number_input("Base Bet ($)", min_value=0.10, value=max(st.session_state.base_bet, 0.10) or 10.00, step=0.10, format="%.2f", help="The smallest bet unit. Should not exceed 5% of your bankroll.")
+                money_management = st.selectbox("Strategy", MONEY_MANAGEMENT_STRATEGIES, index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management) if st.session_state.money_management in MONEY_MANAGEMENT_STRATEGIES else MONEY_MANAGEMENT_STRATEGIES.index("T3"), help="Choose a betting strategy: T3 adjusts bet levels, Flatbet keeps bets constant, Parlay16 escalates with wins, Moon increases with losses, FourTier uses tiered steps, FlatbetLevelUp adjusts based on net loss.")
             with col2:
-                target_mode = st.selectbox("Target Mode", ["Profit %", "Units"], index=["Profit %", "Units"].index(st.session_state.target_profit_option) if st.session_state.target_profit_option in ["Profit %", "Units"] else 0)
+                target_mode = st.selectbox("Target Mode", ["Profit %", "Units"], index=["Profit %", "Units"].index(st.session_state.target_profit_option) if st.session_state.target_profit_option in ["Profit %", "Units"] else 0, help="Select how to measure your profit goal: as a percentage of bankroll or in fixed units.")
                 if target_mode == "Profit %":
-                    target_value_percentage = st.number_input("Target Profit (%)", min_value=0.0, value=st.session_state.target_profit_percentage * 100 if st.session_state.target_profit_percentage > 0 else 6.00, step=0.1, format="%.2f")
+                    target_value_percentage = st.number_input("Target Profit (%)", min_value=0.0, value=st.session_state.target_profit_percentage * 100 if st.session_state.target_profit_percentage > 0 else 6.00, step=0.1, format="%.2f", help="Profit goal as a percentage of your initial bankroll (e.g., 6% of $1000 = $60). Set to 0 to disable.")
                     target_value_units = 0.0  # Reset units if percentage is selected
                 else:  # Units
-                    target_value_units = st.number_input("Target Profit ($)", min_value=0.0, value=st.session_state.target_profit_units if st.session_state.target_profit_units > 0 else 50.00, step=1.0, format="%.2f")
+                    target_value_units = st.number_input("Target Profit ($)", min_value=0.0, value=st.session_state.target_profit_units if st.session_state.target_profit_units > 0 else 50.00, step=1.0, format="%.2f", help="Profit goal in fixed dollars (e.g., $50). Set to 0 to disable.")
                     target_value_percentage = 0.0  # Reset percentage if units is selected
 
             st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
             st.markdown('<h3><span class="icon">🎯</span>Safety & Limits</h3>', unsafe_allow_html=True)
-            safety_net_enabled = st.checkbox("Enable Safety Net", value=st.session_state.safety_net_enabled)
-            safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled)
+            safety_net_enabled = st.checkbox("Enable Safety Net", value=st.session_state.safety_net_enabled, help="Activates a fallback mode at base bet when bankroll drops to the safety net percentage, allowing continued play.")
+            safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled, help="Bankroll threshold (e.g., 2%) to trigger safety net. Must be between 0% and 100%.")
 
-            stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=True)
-            stop_loss_percentage = st.number_input("Stop-Loss Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100 or 10.00, step=0.1, disabled=not stop_loss_enabled)
+            stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=True, help="Stops the session when bankroll falls below the stop-loss percentage.")
+            stop_loss_percentage = st.number_input("Stop-Loss Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100 or 10.00, step=0.1, disabled=not stop_loss_enabled, help="Bankroll percentage (e.g., 10%) to trigger stop-loss. Must be between 0% and 100%.")
 
-            profit_lock_threshold = st.number_input("Profit Lock Threshold (% of Initial Bankroll)", min_value=100.0, max_value=1000.0, value=st.session_state.win_limit * 100 or 600.00, step=1.0)
+            profit_lock_threshold = st.number_input("Profit Lock Threshold (% of Initial Bankroll)", min_value=100.0, max_value=1000.0, value=st.session_state.win_limit * 100 or 600.00, step=1.0, help="Stops the session when bankroll exceeds this percentage of the initial bankroll (e.g., 600% of $1000 = $6000).")
 
-            smart_skip_enabled = st.checkbox("Enable Smart Skip", value=st.session_state.smart_skip_enabled)
+            smart_skip_enabled = st.checkbox("Enable Smart Skip", value=st.session_state.smart_skip_enabled, help="Skips bets when confidence is low (below 60%) to reduce risk.")
 
             st.markdown('</div>', unsafe_allow_html=True)
 
