@@ -280,8 +280,8 @@ def reset_session():
 def predict_next() -> Tuple[Optional[str], str]:
     if st.session_state.break_countdown > 0:
         return "?", "In break. Prediction paused."
-    if not st.session_state.sequence:
-        return "?", "No history yet."
+    if len(st.session_state.sequence) < 2:  # Modified to require at least two results
+        return "?", "Insufficient history (need at least two results)."
     last = st.session_state.sequence[-1]
     counts = st.session_state.transitions[last]
     total = sum(counts.values())
@@ -362,8 +362,8 @@ def handle_masterline(win: bool):
 def calculate_bet_amount(pred: str, conf: str) -> Tuple[Optional[float], Optional[str]]:
     if st.session_state.break_countdown > 0:
         return None, f"No bet: In break ({st.session_state.break_countdown} left)"
-    if len(st.session_state.sequence) < 1:
-        return None, "No bet: Waiting for history"
+    if len(st.session_state.sequence) < 2:  # Modified to require at least two results
+        return None, "No bet: Waiting for at least two results"
     if st.session_state.is_paused:
         return None, "No bet: Paused due to stop-loss"
     if st.session_state.shoe_completed:
@@ -453,7 +453,7 @@ def place_result(result: str):
     selection = None
     win = False
 
-    if result in ["P", "B"] and len(st.session_state.sequence) >= 1:
+    if result in ["P", "B"] and len(st.session_state.sequence) >= 2:  # Modified to require at least two results
         prediction, explanation = predict_next()
         selection = prediction if prediction in ["P", "B"] else None
         if selection:
