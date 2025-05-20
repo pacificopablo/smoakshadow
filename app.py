@@ -332,8 +332,9 @@ def initialize_session_state():
 def reset_session():
     try:
         setup_values = {
+            'bankroll': st.session_state.bankroll,  # Retain current bankroll
+            'base_bet': st.session_state.base_bet,  # Retain base bet
             'initial_bankroll': st.session_state.initial_bankroll,
-            'base_bet': st.session_state.base_bet,
             'money_management': st.session_state.money_management,
             'stop_loss_percentage': st.session_state.stop_loss_percentage,
             'safety_net_enabled': st.session_state.safety_net_enabled,
@@ -341,11 +342,12 @@ def reset_session():
             'smart_skip_enabled': st.session_state.smart_skip_enabled,
             'target_profit_option': st.session_state.target_profit_option,
             'target_profit_percentage': st.session_state.target_profit_percentage,
-            'target_profit_units': st.session_state.target_profit_units
+            'target_profit_units': st.session_state.target_profit_units,
+            'win_limit': st.session_state.win_limit
         }
         initialize_session_state()
         st.session_state.update({
-            'bankroll': setup_values['initial_bankroll'],
+            'bankroll': setup_values['bankroll'],
             'base_bet': setup_values['base_bet'],
             'initial_bankroll': setup_values['initial_bankroll'],
             'sequence': [],
@@ -360,7 +362,7 @@ def reset_session():
             'money_management': setup_values['money_management'],
             'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
             'stop_loss_percentage': setup_values['stop_loss_percentage'],
-            'win_limit': WIN_LIMIT,
+            'win_limit': setup_values['win_limit'],
             'shoe_completed': False,
             'safety_net_enabled': setup_values['safety_net_enabled'],
             'safety_net_percentage': setup_values['safety_net_percentage'],
@@ -383,6 +385,9 @@ def reset_session():
             'flatbet_levelup_level': 1,
             'flatbet_levelup_net_loss': 0.0,
         })
+        st.session_state.model, st.session_state.le = train_model()
+        if st.session_state.model is None or st.session_state.le is None:
+            st.error("Failed to reinitialize prediction model.")
     except Exception as e:
         st.error(f"Error resetting session: {str(e)}")
 
@@ -415,33 +420,33 @@ def place_result(result: str):
         # Check stop loss
         stop_loss_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.stop_loss_percentage
         if stop_loss_triggered and not st.session_state.safety_net_enabled:
-            st.session_state.shoe_completed = True
-            st.warning(f"Bankroll below {st.session_state.stop_loss_percentage*100:.0f}% of initial bankroll. Session ended. Reset or exit.")
+            reset_session()
+            st.warning(f"Stop-loss triggered at {st.session_state.stop_loss_percentage*100:.0f}% of initial bankroll. Game reset, continue playing.")
             return
 
         # Check safety net trigger
         safety_net_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.safety_net_percentage
         if safety_net_triggered and st.session_state.safety_net_enabled:
-            st.session_state.shoe_completed = True
-            st.info(f"Safety net triggered at {st.session_state.safety_net_percentage*100:.0f}%. Betting at base bet.")
+            reset_session()
+            st.info(f"Safety net triggered at {st.session_state.safety_net_percentage*100:.0f}%. Game reset, continue playing at base bet.")
 
         # Check win limit
         if st.session_state.bankroll >= st.session_state.initial_bankroll * st.session_state.win_limit:
-            st.session_state.shoe_completed = True
-            st.success(f"Bankroll above {st.session_state.win_limit*100:.0f}% of initial bankroll. Session ended. Reset or exit.")
+            reset_session()
+            st.success(f"Win limit reached at {st.session_state.win_limit*100:.0f}% of initial bankroll. Game reset, continue playing.")
             return
 
         # Check target profit
         current_profit = st.session_state.bankroll - st.session_state.initial_bankroll
         if st.session_state.target_profit_option == 'Profit %' and st.session_state.target_profit_percentage > 0:
             if current_profit >= st.session_state.initial_bankroll * st.session_state.target_profit_percentage:
-                st.session_state.shoe_completed = True
-                st.success(f"Target profit reached: ${current_profit:.2f} ({st.session_state.target_profit_percentage*100:.0f}% of bankroll). Session ended. Reset or exit.")
+                reset_session()
+                st.success(f"Target profit reached: ${current_profit:.2f} ({st.session_state.target_profit_percentage*100:.0f}% of bankroll). Game reset, continue playing.")
                 return
         elif st.session_state.target_profit_option == 'Units' and st.session_state.target_profit_units > 0:
             if current_profit >= st.session_state.target_profit_units:
-                st.session_state.shoe_completed = True
-                st.success(f"Target profit reached: ${current_profit:.2f} (Target: ${st.session_state.target_profit_units:.2f}). Session ended. Reset or exit.")
+                reset_session()
+                st.success(f"Target profit reached: ${current_profit:.2f} (Target: ${st.session_state.target_profit_units:.2f}). Game reset, continue playing.")
                 return
 
         # Save previous state for undo
@@ -684,11 +689,8 @@ def place_result(result: str):
                 st.session_state.advice = f"Skip betting (low confidence or no matching strategy: Model {model_confidence:.1f}% ({predicted_outcome}), LB6 {lb6_confidence:.1f}% ({sixth_prior}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
 
         if len(st.session_state.sequence) >= SHOE_SIZE:
-            st.session_state.shoe_completed = True
-            if st.session_state.safety_net_enabled and safety_net_triggered:
-                st.info(f"Shoe completed, but continuing with safety net at base bet.")
-            else:
-                st.success(f"Shoe of {SHOE_SIZE} hands completed!")
+            reset_session()
+            st.success(f"Shoe of {SHOE_SIZE} hands completed. Game reset, continue playing.")
     except Exception as e:
         st.error(f"Error in place_result: {str(e)}")
 
