@@ -328,134 +328,43 @@ def render_status():
             st.error(f"Error rendering status: {e}")
 
 def render_bead_plate():
-    """Render a typical casino-style bead plate (Bead Road)."""
-    with st.expander("Bead Plate"):
+    """Render a fixed 6x16 grid bead plate from the first script."""
+    with st.expander("Bead Plate", expanded=True):
         try:
-            if not st.session_state.sequence:
-                st.info("No results yet. Enter results to see the bead plate.")
-                return
-
-            rows = 6
-            results = st.session_state.sequence
-            # Create grid for typical casino bead plate
-            grid = []
-            current_col = []
-            last_result = None
-
-            for result in results:
-                if result not in ['P', 'B', 'T']:
-                    continue  # Skip invalid results
-                # Start a new column if outcome changes or column is full
-                if (last_result and result != last_result) or len(current_col) >= rows:
-                    grid.append(current_col)
-                    current_col = []
-                current_col.append(result)
-                last_result = result
-            if current_col:  # Append the last column if not empty
-                grid.append(current_col)
-
-            # Pad columns with empty cells to ensure uniform height
-            for col in grid:
-                while len(col) < rows:
-                    col.append('')
-
-            # Calculate number of columns
-            cols = len(grid)
-
+            st.markdown("**Bead Plate**")
+            GRID_ROWS = 6
+            GRID_COLS = 16
+            sequence = st.session_state.sequence[-(GRID_ROWS * GRID_COLS):]
+            grid = [['' for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
+            for i, result in enumerate(sequence):
+                if result in ['P', 'B', 'T']:
+                    col = i // GRID_ROWS
+                    row = i % GRID_ROWS
+                    if col < GRID_COLS:
+                        if result == 'P':
+                            color = '#3182ce'  # Blue for Player
+                        elif result == 'B':
+                            color = '#e53e3e'  # Red for Banker
+                        else:
+                            color = '#38a169'  # Green for Tie
+                        grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
             html = """
             <style>
-                .bead-plate-container {
-                    background-color: #0C4B33; /* Dark green casino felt */
+                .bead-plate {
+                    background-color: #edf2f7;
                     padding: 10px;
                     border-radius: 8px;
-                    overflow-x: auto; /* Enable horizontal scrolling */
-                    max-width: 100%; /* Fit container to viewport */
-                    -webkit-overflow-scrolling: touch; /* Smooth scrolling on mobile */
-                }
-                .bead-plate-table {
-                    border-collapse: collapse;
-                    margin: 0;
-                    min-width: 100%; /* Ensure table can grow wide */
-                }
-                .bead-plate-table td {
-                    width: 30px;
-                    height: 30px;
-                    min-width: 30px; /* Prevent cells from shrinking too much */
-                    text-align: center;
-                    vertical-align: middle;
-                    font-weight: bold;
-                    font-size: 14px;
-                    border: 1px solid #1A3C34; /* Dark border for clarity */
-                }
-                .player {
-                    background-color: #0000FF; /* Standard blue for Player */
-                    color: white;
-                    border-radius: 50%;
-                }
-                .banker {
-                    background-color: #FF0000; /* Standard red for Banker */
-                    color: white;
-                    border-radius: 50%;
-                }
-                .tie {
-                    background-color: #008000; /* Standard green for Tie */
-                    color: white;
-                    border-radius: 50%;
-                    font-size: 12px; /* Slightly smaller for 'T' */
-                }
-                .empty {
-                    background-color: transparent; /* Blend into felt */
-                    border: none;
-                }
-                /* Responsive adjustments */
-                @media screen and (max-width: 600px) {
-                    .bead-plate-table td {
-                        width: 24px;
-                        height: 24px;
-                        min-width: 24px;
-                        font-size: 12px;
-                    }
-                    .tie {
-                        font-size: 10px;
-                    }
-                }
-                @media screen and (max-width: 400px) {
-                    .bead-plate-table td {
-                        width: 20px;
-                        height: 20px;
-                        min-width: 20px;
-                        font-size: 10px;
-                    }
-                    .tie {
-                        font-size: 8px;
-                    }
+                    overflow-x: auto;
                 }
             </style>
-            <div class='bead-plate-container'>
-                <table class='bead-plate-table'>
+            <div class='bead-plate'>
             """
-
-            for row in range(rows):
-                html += "<tr>"
-                for col in range(cols):
-                    result = grid[col][row] if col < len(grid) and row < len(grid[col]) else ''
-                    if result == 'P':
-                        html += "<td class='player'>P</td>"
-                    elif result == 'B':
-                        html += "<td class='banker'>B</td>"
-                    elif result == 'T':
-                        html += "<td class='tie'>T</td>"
-                    else:
-                        html += "<td class='empty'></td>"
-                html += "</tr>"
-            html += """
-                </table>
-            </div>
-            """
-
+            for row in grid:
+                html += '<div>' + ' '.join(row) + '</div>'
+            html += "</div>"
             st.markdown(html, unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"Error rendering bead plate: {e}")
+            st.error(f"Error rendering bead plate: {str(e)}")
 
 def main():
     """Main function to run the Streamlit app."""
