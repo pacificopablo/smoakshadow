@@ -125,6 +125,9 @@ def train_model():
 
 def calculate_bet_amount(selection):
     try:
+        if not selection or selection not in ['P', 'B']:
+            st.warning(f"Invalid bet selection: {selection}. Defaulting to base bet.")
+            return st.session_state.base_bet
         if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
             return st.session_state.base_bet
         if st.session_state.money_management == 'Flatbet':
@@ -139,6 +142,7 @@ def calculate_bet_amount(selection):
             return st.session_state.base_bet * FOUR_TIER_LEVELS[st.session_state.four_tier_level - 1]
         elif st.session_state.money_management == 'FlatbetLevelUp':
             return st.session_state.base_bet * FLATBET_LEVELUP_LEVELS[st.session_state.flatbet_levelup_level - 1]
+        st.warning(f"Unknown money management strategy: {st.session_state.money_management}. Defaulting to base bet.")
         return st.session_state.base_bet
     except Exception as e:
         st.error(f"Error calculating bet amount: {str(e)}")
@@ -147,8 +151,8 @@ def calculate_bet_amount(selection):
 def place_result(result):
     try:
         st.session_state.sequence.append(result)
-        if len(st.session_state.sequence) >= 1:
-            prev_result = st.session_state.sequence[-1]
+        if len(st.session_state.sequence) >= 2:
+            prev_result = st.session_state.sequence[-2]
             if result in ['P', 'B'] and prev_result in ['P', 'B']:
                 transition = f"{prev_result}{result}"
                 st.session_state.transition_counts[transition] += 1
@@ -157,7 +161,7 @@ def place_result(result):
         if len(valid_sequence) < SEQUENCE_LENGTH:
             st.session_state.pending_bet = None
             st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
-        elif len(valid_sequence) >= SEQUENCE_LENGTH and result in ['P', 'B']:
+        elif len(valid_sequence) >= SEQUENCE_LENGTH:
             prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
             encoded_input = st.session_state.le.transform(prediction_sequence)
             input_array = np.array([encoded_input])
@@ -244,7 +248,7 @@ def place_result(result):
                 st.session_state.pending_bet = None
                 st.session_state.advice = f"Skip betting (low confidence or no matching strategy: Model {model_confidence:.1f}% ({predicted_outcome}), LB6 {lb6_confidence:.1f}% ({sixth_prior}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
 
-        if st.session_state.pending_bet:
+        if st.session_state.pending_bet and result in ['P', 'B']:
             bet_amount, bet_selection = st.session_state.pending_bet
             st.session_state.bet_history.append({
                 "Hand": len(st.session_state.sequence),
@@ -256,10 +260,19 @@ def place_result(result):
             })
             st.session_state.bets_placed += 1
             st.session_state.bankroll -= bet_amount
+            st.session_state.bet_history[-1]["Bankroll"] = st.session_state.bankroll
+            # Debug logging for monetary alignment
+            st.session_state.bet_history[-1]["Debug"] = (
+                f"Bet: ${bet_amount:.2f}, Selection: {bet_selection}, "
+                f"Bankroll before: {st.session_state.bankroll + bet_amount:.2f}"
+            )
             if result == bet_selection:
-                st.session_state.bankroll += bet_amount * (1.95 if bet_selection == 'B' else 2.0)
-                st W.session_state.bets_won += 1
+                payout = bet_amount * (1.95 if bet_selection == 'B' else 2.0)
+                st.session_state.bankroll += payout
+                st.session_state.bets_won += 1
                 st.session_state.bet_history[-1]["Outcome"] = "Win"
+                st.session_state.bet_history[-1]["Bankroll"] = st.session_state.bankroll
+                st.session_state.bet_history[-1]["Debug"] += f", Payout: ${payout:.2f}, Bankroll after: {st.session_state.bankroll:.2f}"
                 if st.session_state.money_management == 'T3':
                     st.session_state.t3_results.append('W')
                     if len(st.session_state.t3_results) >= 2 and st.session_state.t3_results[-2:] == ['W', 'W'] and st.session_state.t3_level < len(T3_LEVELS):
@@ -288,13 +301,16 @@ def place_result(result):
                         st.session_state.flatbet_levelup_level = min(st.session_state.flatbet_levelup_level + 1, len(FLATBET_LEVELUP_LEVELS))
             else:
                 st.session_state.bet_history[-1]["Outcome"] = "Loss"
+                st.session_state.bet_history[-1]["Bankroll"] = st.session_state.bankroll
+                st.session_state.bet_history[-1]["Debug"] += f", Payout: $0.00, Bankroll after: {st.session_state.bankroll:.2f}"
                 if st.session_state.money_management == 'T3':
                     st.session_state.t3_results.append('L')
                     if len(st.session_state.t3_results) >= 2 and st.session_state.t3_results[-2:] == ['L', 'L']:
                         st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
                 elif st.session_state.money_management == 'Parlay16':
                     st.session_state.parlay_step = 1
-                    st.session_state.parlay_step_changes += 1
+                    if st.session_state.parlay_step != st.session_state.parlay_peak_step:
+                        st.session_state.parlay_step_changes += 1
                 elif st.session_state.money_management == 'Moon':
                     st.session_state.moon_level = max(1, st.session_state.moon_level - 1)
                     if st.session_state.moon_level < st.session_state.moon_peak_level:
@@ -309,6 +325,7 @@ def place_result(result):
                     st.session_state.flatbet_levelup_net_loss += bet_amount
                     if st.session_state.flatbet_levelup_net_loss > st.session_state.base_bet * FLATBET_LEVELUP_LEVELS[st.session_state.flatbet_levelup_level - 1] * 2:
                         st.session_state.flatbet_levelup_level = max(1, st.session_state.flatbet_levelup_level - 1)
+            st.session_state.pending_bet = None
 
         stop_loss = st.session_state.initial_bankroll * (1 - st.session_state.stop_loss_percentage)
         target_profit = None
@@ -430,8 +447,8 @@ def render_result_input():
                                 st.session_state.four_tier_losses = max(0, st.session_state.four_tier_losses - 1)
                             elif st.session_state.money_management == 'FlatbetLevelUp':
                                 st.session_state.flatbet_levelup_net_loss = max(0, st.session_state.flatbet_levelup_net_loss - last_bet["Bet"])
-                        if len(st.session_state.sequence) >= 1 and last_bet["Result"] in ['P', 'B'] and st.session_state.sequence[-1] in ['P', 'B']:
-                            transition = f"{st.session_state.sequence[-1]}{last_bet['Result']}"
+                        if len(st.session_state.sequence) >= 1 and last_result in ['P', 'B'] and st.session_state.sequence[-1] in ['P', 'B']:
+                            transition = f"{st.session_state.sequence[-1]}{last_result}"
                             st.session_state.transition_counts[transition] = max(0, st.session_state.transition_counts[transition] - 1)
                         st.session_state.shoe_completed = False
                         st.session_state.advice = "Last result undone. Enter next result."
@@ -456,7 +473,6 @@ def render_prediction():
                         unsafe_allow_html=True
                     )
                 else:
-                    # Compute prediction
                     prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
                     encoded_input = st.session_state.le.transform(prediction_sequence)
                     input_array = np.array([encoded_input])
@@ -518,7 +534,6 @@ def render_prediction():
                         elif markov_selection:
                             strategy_used = 'Model+Markov'
 
-                    # Display prediction details
                     prediction_color = '#3182ce' if predicted_outcome == 'P' else '#e53e3e' if predicted_outcome == 'B' else '#2d3748'
                     st.markdown(
                         f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px; margin-bottom: 10px;'>"
@@ -532,22 +547,19 @@ def render_prediction():
                         unsafe_allow_html=True
                     )
 
-                    # Display betting advice
-                    advice = st.session_state.advice
                     text_color = '#2d3748'
-                    if 'Bet' in advice and ' on P ' in advice:
+                    if 'Bet' in st.session_state.advice and ' on P ' in st.session_state.advice:
                         text_color = '#3182ce'
-                    elif 'Bet' in advice and ' on B ' in advice:
+                    elif 'Bet' in st.session_state.advice and ' on B ' in st.session_state.advice:
                         text_color = '#e53e3e'
                     st.markdown(
                         f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'>"
                         f"<p style='font-size:1.2rem; font-weight:bold; margin:0; color:{text_color};'>"
-                        f"Advice: {advice}</p></div>",
+                        f"Advice: {st.session_state.advice}</p></div>",
                         unsafe_allow_html=True
                     )
 
-                    # Debug output for skipped bets
-                    if 'Skip betting' in advice:
+                    if 'Skip betting' in st.session_state.advice:
                         st.markdown(
                             f"**Debug Info**: Model: {model_confidence:.1f}% ({predicted_outcome}), "
                             f"LB6: {lb6_confidence:.1f}% ({sixth_prior}), "
@@ -570,7 +582,7 @@ def render_status():
                 target_profit_display = []
                 if st.session_state.target_profit_option == 'Profit %' and st.session_state.target_profit_percentage > 0:
                     target_profit_display.append(f"{st.session_state.target_profit_percentage*100:.0f}%")
-                elif st.session_state.target_profit_option == 'Units' and st.session_state.target_profit_units > 0:
+                elif st sessione_state.target_profit_option == 'Units' and st.session_state.target_profit_units > 0:
                     target_profit_display.append(f"${st.session_state.target_profit_units:.2f}")
                 st.markdown(f"**Target Profit**: {'None' if not target_profit_display else ', '.join(target_profit_display)}")
             with col2:
@@ -681,8 +693,8 @@ def render_history():
         try:
             if st.session_state.bet_history:
                 df = pd.DataFrame(st.session_state.bet_history)
-                df = df[['Hand', 'Bet', 'Selection', 'Result', 'Outcome', 'Bankroll']]
-                df.columns = ['Hand', 'Bet ($)', 'Selection', 'Result', 'Outcome', 'Bankroll ($)']
+                df = df[['Hand', 'Bet', 'Selection', 'Result', 'Outcome', 'Bankroll', 'Debug']]
+                df.columns = ['Hand', 'Bet ($)', 'Selection', 'Result', 'Outcome', 'Bankroll ($)', 'Debug']
                 st.dataframe(df)
             else:
                 st.info("No bets placed yet.")
