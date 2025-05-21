@@ -1,43 +1,182 @@
 import streamlit as st
 import uuid
+from collections import defaultdict, Counter
 
 def initialize_session_state():
     """Initialize session state with default values."""
     if 'sequence' not in st.session_state:
         st.session_state.sequence = []
-        st.session_state.transition_counts = {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0}
+        st.session_state.transition_counts = {'PP': 0, 'PB': 0, 'PT': 0, 'BP': 0, 'BB': 0, 'BT': 0, 'TP': 0, 'TB': 0, 'TT': 0}
         st.session_state.session_id = str(uuid.uuid4())
+        st.session_state.bet = 1
+        st.session_state.profit = 0
+        st.session_state.last_prediction = None
+        st.session_state.strategy = "Flat Bet"
+        st.session_state.masterline_step = 0
+        st.session_state.in_force2 = False
+        st.session_state.force2_failed = False
+        st.session_state.break_countdown = 0
+        st.session_state.transitions = defaultdict(Counter)
 
 def reset_session():
     """Reset session state to initial values."""
     st.session_state.update({
         'sequence': [],
-        'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
-        'session_id': str(uuid.uuid4())
+        'transition_counts': {'PP': 0, 'PB': 0, 'PT': 0, 'BP': 0, 'BB': 0, 'BT': 0, 'TP': 0, 'TB': 0, 'TT': 0},
+        'session_id': str(uuid.uuid4()),
+        'bet': 1,
+        'profit': 0,
+        'last_prediction': None,
+        'strategy': "Flat Bet",
+        'masterline_step': 0,
+        'in_force2': False,
+        'force2_failed': False,
+        'break_countdown': 0,
+        'transitions': defaultdict(Counter)
     })
 
 def place_result(result):
-    """Append a game result and update transition counts."""
+    """Append a game result, update transition counts, and handle betting logic."""
     try:
+        # Update history and transitions
+        if st.session_state.sequence:
+            prev = st.session_state.sequence[-1]
+            st.session_state.transitions[prev][result] += 1
+            transition = f"{prev}{result}"
+            st.session_state.transition_counts[transition] += 1
         st.session_state.sequence.append(result)
-        if len(st.session_state.sequence) >= 2:
-            prev_result = st.session_state.sequence[-2]
-            if result in ['P', 'B'] and prev_result in ['P', 'B']:
-                transition = f"{prev_result}{result}"
-                st.session_state.transition_counts[transition] += 1
+
+        # Handle betting logic if not in break countdown
+        if st.session_state.break_countdown > 0:
+            st.session_state.break_countdown -= 1
+            return
+
+        # Determine if the last prediction was correct
+        win = st.session_state.last_prediction == result if result in ("P", "B") and st.session_state.last_prediction else False
+        strategy = st.session_state.strategy
+
+        # Update bet and profit based on strategy
+        if result in ("P", "B") and st.session_state.last_prediction in ("P", "B"):
+            if strategy == "Flat Bet":
+                st.session_state.bet = 1
+                st.session_state.profit += st.session_state.bet if win else -st.session_state.bet
+
+            elif strategy == "D'Alembert":
+                if win:
+                    st.session_state.profit += st.session_state.bet
+                    st.session_state.bet = max(1, st.session_state.bet - 2)
+                else:
+                    st.session_state.profit -= st.session_state.bet
+                    st.session_state.bet += 1
+
+            elif strategy == "-1 +2":
+                if win:
+                    st.session_state.profit += st.session_state.bet
+                    st.session_state.bet += 2
+                else:
+                    st.session_state.profit -= st.session_state.bet
+                    st.session_state.bet = max(1, st.session_state.bet - 1)
+
+            elif strategy == "Suchi Masterline":
+                handle_masterline(win)
+
+        # Update prediction
+        prediction, explanation = predict_next()
+        st.session_state.last_prediction = prediction if prediction in ("P", "B") else None
+        st.session_state.explanation = explanation
     except Exception as e:
         st.error(f"Error processing result: {e}")
 
+def handle_masterline(win):
+    """Handle Suchi Masterline betting strategy."""
+    if st.session_state.in_force2:
+        if win:
+            st.session_state.profit += 2
+            st.session_state.in_force2 = False
+            st.session_state.bet = 1
+            st.session_state.masterline_step = 0
+        else:
+            st.session_state.profit -= 2
+            st.session_state.force2_failed = True
+            st.session_state.in_force2 = False
+            st.session_state.break_countdown = 3
+    elif st.session_state.force2_failed:
+        st.session_state.force2_failed = False
+        st.session_state.bet = 1
+        st.session_state.masterline_step = 0
+    elif win:
+        ladder = [1, 3, 2, 5]
+        st.session_state.profit += ladder[st.session_state.masterline_step]
+        st.session_state.masterline_step += 1
+        if st.session_state.masterline_step > 3:
+            st.session_state.masterline_step = 0
+            st.session_state.bet = 1
+        else:
+            st.session_state.bet = ladder[st.session_state.masterline_step]
+    else:
+        if st.session_state.masterline_step == 0:
+            st.session_state.in_force2 = True
+            st.session_state.bet = 2
+        else:
+            st.session_state.profit -= st.session_state.bet
+            st.session_state.break_countdown = 3
+            st.session_state.masterline_step = 0
+            st.session_state.bet = 1
+
+def predict_next():
+    """Predict the next outcome based on transition probabilities."""
+    if st.session_state.break_countdown > 0:
+        return "?", "In break. Prediction paused."
+
+    if not st.session_state.sequence:
+        return "?", "No history yet."
+
+    last = st.session_state.sequence[-1]
+    counts = st.session_state.transitions[last]
+    total = sum(counts.values())
+
+    if not counts:
+        return "?", f"No data available after '{last}' to predict next."
+
+    probabilities = {k: v / total for k, v in counts.items()}
+    sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+    prediction = sorted_probs[0][0]
+
+    explanation = f"Last result: {last}\n"
+    explanation += "Transition probabilities:\n"
+    for outcome, prob in sorted_probs:
+        explanation += f"  {last} → {outcome}: {prob:.2f}\n"
+
+    return prediction, explanation
+
 def render_session_setup():
-    """Render UI for starting or resetting a session."""
+    """Render UI for starting, resetting a session, and selecting strategy."""
     with st.expander("Session Setup", expanded=len(st.session_state.sequence) == 0):
         try:
-            if st.button("Start Session"):
-                initialize_session_state()
-                st.success("Session started!")
-            if st.session_state.sequence and st.button("Reset Session"):
-                reset_session()
-                st.success("Session reset!")
+            strategy = st.selectbox(
+                "Select Betting Strategy",
+                ["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline"],
+                index=["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline"].index(st.session_state.strategy)
+            )
+            if strategy != st.session_state.strategy:
+                st.session_state.strategy = strategy
+                st.session_state.bet = 1
+                st.session_state.profit = 0
+                st.session_state.masterline_step = 0
+                st.session_state.in_force2 = False
+                st.session_state.force2_failed = False
+                st.session_state.break_countdown = 0
+                st.session_state.last_prediction = None
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Start Session"):
+                    initialize_session_state()
+                    st.success("Session started!")
+            with col2:
+                if st.session_state.sequence and st.button("Reset Session"):
+                    reset_session()
+                    st.success("Session reset!")
         except Exception as e:
             st.error(f"Error setting up session: {e}")
 
@@ -59,14 +198,23 @@ def render_result_input():
                 if st.button("Undo Last"):
                     if st.session_state.sequence:
                         last_result = st.session_state.sequence.pop()
-                        if len(st.session_state.sequence) >= 1 and last_result in ['P', 'B'] and st.session_state.sequence[-1] in ['P', 'B']:
+                        if len(st.session_state.sequence) >= 1 and last_result in ['P', 'B', 'T'] and st.session_state.sequence[-1] in ['P', 'B', 'T']:
                             transition = f"{st.session_state.sequence[-1]}{last_result}"
                             st.session_state.transition_counts[transition] = max(0, st.session_state.transition_counts[transition] - 1)
+                            st.session_state.transitions[st.session_state.sequence[-1]][last_result] -= 1
+                        # Reset betting state for simplicity after undo
+                        st.session_state.bet = 1
+                        st.session_state.profit = 0
+                        st.session_state.masterline_step = 0
+                        st.session_state.in_force2 = False
+                        st.session_state.force2_failed = False
+                        st.session_state.break_countdown = 0
+                        st.session_state.last_prediction = None
         except Exception as e:
             st.error(f"Error processing input: {e}")
 
 def render_status():
-    """Render session status with hands played, streak status, and transition counts."""
+    """Render session status with hands played, streak status, betting info, and prediction."""
     with st.expander("Session Status", expanded=True):
         try:
             st.markdown(f"**Hands Played**: {len(st.session_state.sequence)}")
@@ -78,8 +226,30 @@ def render_status():
             st.markdown(f"**Streak Status**: {streak_info}")
             st.markdown(f"**Transition Counts**: PP: {st.session_state.transition_counts['PP']}, "
                         f"PB: {st.session_state.transition_counts['PB']}, "
+                        f"PT: {st.session_state.transition_counts['PT']}, "
                         f"BP: {st.session_state.transition_counts['BP']}, "
-                        f"BB: {st.session_state.transition_counts['BB']}")
+                        f"BB: {st.session_state.transition_counts['BB']}, "
+                        f"BT: {st.session_state.transition_counts['BT']}, "
+                        f"TP: {st.session_state.transition_counts['TP']}, "
+                        f"TB: {st.session_state.transition_counts['TB']}, "
+                        f"TT: {st.session_state.transition_counts['TT']}")
+            st.markdown(f"**Current Bet**: {st.session_state.bet} unit(s)")
+            st.markdown(f"**Profit by Unit**: {st.session_state.profit}")
+            status = "Normal"
+            if st.session_state.break_countdown > 0:
+                status = f"Break ({st.session_state.break_countdown} left)"
+            elif st.session_state.strategy == "Suchi Masterline":
+                if st.session_state.in_force2:
+                    status = "Force 2"
+                elif st.session_state.masterline_step > 0:
+                    status = f"Ladder Step {st.session_state.masterline_step + 1}"
+                else:
+                    status = "Base"
+            st.markdown(f"**Status**: {status}")
+            prediction, _ = predict_next()
+            st.markdown(f"**Next Prediction**: {prediction}")
+            st.markdown("**Explanation**:")
+            st.text(st.session_state.get('explanation', "No explanation available."))
         except Exception as e:
             st.error(f"Error rendering status: {e}")
 
@@ -160,8 +330,8 @@ def render_bead_plate():
 
 def main():
     """Main function to run the Streamlit app."""
-    st.set_page_config(page_title="Baccarat Result Tracker", layout="wide")
-    st.title("Baccarat Result Tracker")
+    st.set_page_config(page_title="Baccarat Predictor and Tracker", layout="wide")
+    st.title("Baccarat Predictor and Tracker")
     initialize_session_state()
     render_session_setup()
     render_result_input()
