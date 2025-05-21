@@ -86,7 +86,7 @@ def reset_session():
 
 def generate_baccarat_data(num_games=10000):
     outcomes = ['P', 'B', 'T']
-    weights = [0.4462, 0.4586, 0.0952]  # Real Baccarat probabilities
+    weights = [0.4462, 0.4586, 0.0952]
     result = []
     i = 0
     while i < num_games:
@@ -258,7 +258,7 @@ def place_result(result):
             st.session_state.bankroll -= bet_amount
             if result == bet_selection:
                 st.session_state.bankroll += bet_amount * (1.95 if bet_selection == 'B' else 2.0)
-                st.session_state.bets_won += 1
+                st W.session_state.bets_won += 1
                 st.session_state.bet_history[-1]["Outcome"] = "Win"
                 if st.session_state.money_management == 'T3':
                     st.session_state.t3_results.append('W')
@@ -447,62 +447,111 @@ def render_prediction():
             elif st.session_state.shoe_completed and not st.session_state.safety_net_enabled:
                 st.info("Session ended. Reset to start a new session.")
             else:
-                advice = st.session_state.advice
-                text_color = '#2d3748'
-                if 'Bet' in advice and ' on P ' in advice:
-                    text_color = '#3182ce'
-                elif 'Bet' in advice and ' on B ' in advice:
-                    text_color = '#e53e3e'
-                st.markdown(
-                    f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'>"
-                    f"<p style='font-size:1.2rem; font-weight:bold; margin:0; color:{text_color};'>"
-                    f"Advice: {advice}</p></div>",
-                    unsafe_allow_html=True
-                )
-                if 'Skip betting' in advice:
-                    valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
-                    if len(valid_sequence) >= SEQUENCE_LENGTH:
-                        prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
-                        encoded_input = st.session_state.le.transform(prediction_sequence)
-                        input_array = np.array([encoded_input])
-                        prediction_probs = st.session_state.model.predict_proba(input_array)[0]
-                        predicted_class = np.argmax(prediction_probs)
-                        predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
-                        model_confidence = np.max(prediction_probs) * 100
-                        lb6_confidence = 0
-                        sixth_prior = 'N/A'
-                        if len(valid_sequence) >= 6:
-                            sixth_prior = valid_sequence[-6]
-                            outcome_index = st.session_state.le.transform([sixth_prior])[0]
-                            lb6_confidence = prediction_probs[outcome_index] * 100
-                        markov_confidence = 0
-                        markov_selection = 'N/A'
-                        last_outcome = valid_sequence[-1]
-                        total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
-                        total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
-                        if last_outcome == 'P' and total_from_p > 0:
-                            prob_p_to_p = st.session_state.transition_counts['PP'] / total_from_p
-                            prob_p_to_b = st.session_state.transition_counts['PB'] / total_from_p
-                            if prob_p_to_p > prob_p_to_b and prob_p_to_p > 0.5:
-                                markov_selection = 'P'
-                                markov_confidence = prob_p_to_p * 100
-                            elif prob_p_to_b > prob_p_to_p and prob_p_to_b > 0.5:
-                                markov_selection = 'B'
-                                markov_confidence = prob_p_to_b * 100
-                        elif last_outcome == 'B' and total_from_b > 0:
-                            prob_b_to_p = st.session_state.transition_counts['BP'] / total_from_b
-                            prob_b_to_b = st.session_state.transition_counts['BB'] / total_from_b
-                            if prob_b_to_p > prob_b_to_b and prob_b_to_p > 0.5:
-                                markov_selection = 'P'
-                                markov_confidence = prob_b_to_p * 100
-                            elif prob_b_to_b > prob_b_to_b and prob_b_to_b > 0.5:
-                                markov_selection = 'B'
-                                markov_confidence = prob_b_to_b * 100
-                        is_streak = len(valid_sequence) >= 4 and len(set(valid_sequence[-4:])) == 1
+                valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
+                if len(valid_sequence) < SEQUENCE_LENGTH:
+                    st.markdown(
+                        f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'>"
+                        f"<p style='font-size:1.2rem; font-weight:bold; margin:0; color:#2d3748;'>"
+                        f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results</p></div>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    # Compute prediction
+                    prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
+                    encoded_input = st.session_state.le.transform(prediction_sequence)
+                    input_array = np.array([encoded_input])
+                    prediction_probs = st.session_state.model.predict_proba(input_array)[0]
+                    predicted_class = np.argmax(prediction_probs)
+                    predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
+                    model_confidence = np.max(prediction_probs) * 100
+
+                    lb6_selection = None
+                    lb6_confidence = 0
+                    sixth_prior = 'N/A'
+                    if len(valid_sequence) >= 6:
+                        sixth_prior = valid_sequence[-6]
+                        outcome_index = st.session_state.le.transform([sixth_prior])[0]
+                        lb6_confidence = prediction_probs[outcome_index] * 100
+                        if lb6_confidence > 40 and sixth_prior == predicted_outcome:
+                            lb6_selection = sixth_prior
+
+                    markov_selection = None
+                    markov_confidence = 0
+                    last_outcome = valid_sequence[-1]
+                    total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
+                    total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
+                    if last_outcome == 'P' and total_from_p > 0:
+                        prob_p_to_p = st.session_state.transition_counts['PP'] / total_from_p
+                        prob_p_to_b = st.session_state.transition_counts['PB'] / total_from_p
+                        if prob_p_to_p > prob_p_to_b and prob_p_to_p > 0.5 and 'P' == predicted_outcome:
+                            markov_selection = 'P'
+                            markov_confidence = prob_p_to_p * 100
+                        elif prob_p_to_b > prob_p_to_p and prob_p_to_b > 0.5 and 'B' == predicted_outcome:
+                            markov_selection = 'B'
+                            markov_confidence = prob_p_to_b * 100
+                    elif last_outcome == 'B' and total_from_b > 0:
+                        prob_b_to_p = st.session_state.transition_counts['BP'] / total_from_b
+                        prob_b_to_b = st.session_state.transition_counts['BB'] / total_from_b
+                        if prob_b_to_p > prob_b_to_b and prob_b_to_p > 0.5 and 'P' == predicted_outcome:
+                            markov_selection = 'P'
+                            markov_confidence = prob_b_to_p * 100
+                        elif prob_b_to_b > prob_b_to_b and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
+                            markov_selection = 'B'
+                            markov_confidence = prob_b_to_b * 100
+
+                    is_streak = len(valid_sequence) >= 4 and len(set(valid_sequence[-4:])) == 1
+                    confidence_threshold = 45 if is_streak else 50
+                    smart_skip_threshold = 55 if is_streak else 60
+
+                    strategy_used = None
+                    bet_selection = None
+                    confidence = 0.0
+                    if (model_confidence > confidence_threshold or (is_streak and markov_confidence > 60)) and (lb6_selection or markov_selection):
+                        bet_selection = predicted_outcome
+                        confidence = max(model_confidence, lb6_confidence, markov_confidence)
+                        if is_streak and markov_selection:
+                            strategy_used = 'Model+Markov(Streak)'
+                        elif lb6_selection and markov_selection:
+                            strategy_used = 'Model+LB6+Markov'
+                        elif lb6_selection:
+                            strategy_used = 'Model+LB6'
+                        elif markov_selection:
+                            strategy_used = 'Model+Markov'
+
+                    # Display prediction details
+                    prediction_color = '#3182ce' if predicted_outcome == 'P' else '#e53e3e' if predicted_outcome == 'B' else '#2d3748'
+                    st.markdown(
+                        f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px; margin-bottom: 10px;'>"
+                        f"<p style='font-size:1.2rem; font-weight:bold; margin:0; color:{prediction_color};'>"
+                        f"Predicted Outcome: {predicted_outcome}</p>"
+                        f"<p style='font-size:1rem; margin:5px 0;'>"
+                        f"Model Confidence: {model_confidence:.1f}% ({predicted_outcome})<br>"
+                        f"LB6 Confidence: {lb6_confidence:.1f}% ({sixth_prior})<br>"
+                        f"Markov Confidence: {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})<br>"
+                        f"Streak Detected: {'Yes' if is_streak else 'No'}</p></div>",
+                        unsafe_allow_html=True
+                    )
+
+                    # Display betting advice
+                    advice = st.session_state.advice
+                    text_color = '#2d3748'
+                    if 'Bet' in advice and ' on P ' in advice:
+                        text_color = '#3182ce'
+                    elif 'Bet' in advice and ' on B ' in advice:
+                        text_color = '#e53e3e'
+                    st.markdown(
+                        f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px;'>"
+                        f"<p style='font-size:1.2rem; font-weight:bold; margin:0; color:{text_color};'>"
+                        f"Advice: {advice}</p></div>",
+                        unsafe_allow_html=True
+                    )
+
+                    # Debug output for skipped bets
+                    if 'Skip betting' in advice:
                         st.markdown(
                             f"**Debug Info**: Model: {model_confidence:.1f}% ({predicted_outcome}), "
                             f"LB6: {lb6_confidence:.1f}% ({sixth_prior}), "
-                            f"Markov: {markov_confidence:.1f}% ({markov_selection}), "
+                            f"Markov: {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'}), "
                             f"Transitions: {st.session_state.transition_counts}, "
                             f"Streak: {'Yes' if is_streak else 'No'}"
                         )
@@ -560,20 +609,17 @@ def render_bead_plate():
                 st.info("No results yet. Enter results to see the bead plate.")
                 return
 
-            # Define bead plate grid (6 rows, dynamic columns)
             rows = 6
             results = st.session_state.sequence
             num_results = len(results)
-            cols = (num_results + rows - 1) // rows  # Ceiling division
+            cols = (num_results + rows - 1) // rows
 
-            # Initialize grid
             grid = [['' for _ in range(cols)] for _ in range(rows)]
             for i, result in enumerate(results):
                 row = i % rows
                 col = i // rows
                 grid[row][col] = result
 
-            # Generate HTML for bead plate
             html = """
             <style>
                 .bead-plate-table {
@@ -644,7 +690,7 @@ def render_history():
             st.error(f"Error rendering history: {str(e)}")
 
 def track_user_session():
-    return 1  # Placeholder for user tracking
+    return 1
 
 def main():
     st.set_page_config(page_title="Baccarat Betting Assistant", layout="wide")
