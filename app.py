@@ -328,7 +328,7 @@ def render_status():
             st.error(f"Error rendering status: {e}")
 
 def render_bead_plate():
-    """Render the bead plate visualization of game results with responsive scrolling."""
+    """Render a casino-style bead plate with column-wise filling and responsive scrolling."""
     with st.expander("Bead Plate"):
         try:
             if not st.session_state.sequence:
@@ -337,24 +337,41 @@ def render_bead_plate():
 
             rows = 6
             results = st.session_state.sequence
-            num_results = len(results)
-            cols = (num_results + rows - 1) // rows
+            # Create grid for casino-style bead plate
+            grid = []
+            current_col = []
+            last_result = None
 
-            grid = [['' for _ in range(cols)] for _ in range(rows)]
-            for i, result in enumerate(results):
-                row = i % rows
-                col = i // rows
-                grid[row][col] = result
+            for result in results:
+                if result not in ['P', 'B', 'T']:
+                    continue  # Skip invalid results
+                # Start a new column if outcome changes or column is full
+                if (last_result and result != last_result) or len(current_col) >= rows:
+                    grid.append(current_col)
+                    current_col = []
+                current_col.append(result)
+                last_result = result
+            if current_col:  # Append the last column if not empty
+                grid.append(current_col)
+
+            # Pad columns with empty cells to ensure uniform height
+            for col in grid:
+                while len(col) < rows:
+                    col.append('')
+
+            # Calculate number of columns
+            cols = len(grid)
 
             html = """
             <style>
                 .bead-plate-container {
-                    background-color: #007BFF; /* Blue background */
-                    padding: 10px;
-                    border-radius: 8px;
+                    background-color: #0C4B33; /* Dark green casino felt */
+                    padding: 15px;
+                    border-radius: 10px;
                     overflow-x: auto; /* Enable horizontal scrolling */
                     max-width: 100%; /* Fit container to viewport */
                     -webkit-overflow-scrolling: touch; /* Smooth scrolling on mobile */
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
                 }
                 .bead-plate-table {
                     border-collapse: collapse;
@@ -362,47 +379,55 @@ def render_bead_plate():
                     min-width: 100%; /* Ensure table can grow wide */
                 }
                 .bead-plate-table td {
-                    width: 30px;
-                    height: 30px;
-                    min-width: 30px; /* Prevent cells from shrinking too much */
+                    width: 32px;
+                    height: 32px;
+                    min-width: 32px; /* Prevent cells from shrinking too much */
                     text-align: center;
                     vertical-align: middle;
-                    border: 1px solid #ccc;
                     font-weight: bold;
-                    font-size: 14px;
+                    font-size: 16px;
+                    border: 2px solid #1A3C34; /* Darker border for casino look */
                 }
                 .player {
-                    background-color: #3182ce;
+                    background-color: #007BFF; /* Casino blue for Player */
                     color: white;
                     border-radius: 50%;
                 }
                 .banker {
-                    background-color: #e53e3e;
+                    background-color: #DC3545; /* Casino red for Banker */
                     color: white;
                     border-radius: 50%;
                 }
                 .tie {
-                    background-color: #38a169;
+                    background-color: #28A745; /* Casino green for Tie */
                     color: white;
                     border-radius: 50%;
+                    font-size: 14px; /* Slightly smaller for 'T' */
                 }
                 .empty {
-                    background-color: #f7fafc;
+                    background-color: transparent; /* No background for empty cells */
+                    border: none;
                 }
                 /* Responsive adjustments */
                 @media screen and (max-width: 600px) {
                     .bead-plate-table td {
-                        width: 24px;
-                        height: 24px;
-                        min-width: 24px;
+                        width: 26px;
+                        height: 26px;
+                        min-width: 26px;
+                        font-size: 14px;
+                    }
+                    .tie {
                         font-size: 12px;
                     }
                 }
                 @media screen and (max-width: 400px) {
                     .bead-plate-table td {
-                        width: 20px;
-                        height: 20px;
-                        min-width: 20px;
+                        width: 22px;
+                        height: 22px;
+                        min-width: 22px;
+                        font-size: 12px;
+                    }
+                    .tie {
                         font-size: 10px;
                     }
                 }
@@ -414,7 +439,7 @@ def render_bead_plate():
             for row in range(rows):
                 html += "<tr>"
                 for col in range(cols):
-                    result = grid[row][col]
+                    result = grid[col][row] if col < len(grid) and row < len(grid[col]) else ''
                     if result == 'P':
                         html += "<td class='player'>P</td>"
                     elif result == 'B':
