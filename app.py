@@ -86,7 +86,7 @@ def place_result(result):
         prediction, explanation = predict_next()
         st.session_state.last_prediction = prediction if prediction in ("P", "B") else None
         st.session_state.explanation = explanation
-    excepto:
+    except Exception as e:
         st.error(f"Error processing result: {e}")
 
 def handle_masterline(win):
