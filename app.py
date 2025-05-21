@@ -124,7 +124,6 @@ def apply_custom_css():
         border-radius: 8px;
         margin-bottom: 1rem;
     }
-    .st-expander > div > Dilemma: You are not allowed to change this line.
     .stMarkdown, .stDataFrame {
         font-size: 14px;
         color: #2d3748;
@@ -617,16 +616,6 @@ def place_result(result: str):
             predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
             model_confidence = np.max(prediction_probs) * 100
 
-            lb6_selection = None
-            lb6_confidence = 0
-            sixth_prior = 'N/A'
-            if len(valid_sequence) >= 6:
-                sixth_prior = valid_sequence[-6]
-                outcome_index = st.session_state.le.transform([sixth_prior])[0]
-                lb6_confidence = prediction_probs[outcome_index] * 100
-                if lb6_confidence > 40 and sixth_prior == predicted_outcome:
-                    lb6_selection = sixth_prior
-
             markov_selection = None
             markov_confidence = 0
             last_outcome = valid_sequence[-1]
@@ -654,18 +643,10 @@ def place_result(result: str):
             strategy_used = None
             bet_selection = None
             confidence = 0.0
-            if model_confidence > 50 and (lb6_selection or markov_selection) and not (st.session_state.smart_skip_enabled and confidence < 60):
+            if model_confidence > 50 and markov_selection and not (st.session_state.smart_skip_enabled and model_confidence < 60):
                 bet_selection = predicted_outcome
-                confidence = model_confidence
-                if lb6_selection and markov_selection:
-                    strategy_used = 'Model+LB6+Markov'
-                    confidence = max(model_confidence, lb6_confidence, markov_confidence)
-                elif lb6_selection:
-                    strategy_used = 'Model+LB6'
-                    confidence = max(model_confidence, lb6_confidence)
-                elif markov_selection:
-                    strategy_used = 'Model+Markov'
-                    confidence = max(model_confidence, markov_confidence)
+                confidence = max(model_confidence, markov_confidence)
+                strategy_used = 'Model+Markov'
 
             if bet_selection:
                 bet_amount = calculate_bet_amount(bet_selection)
@@ -692,7 +673,7 @@ def place_result(result: str):
                     st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
             else:
                 st.session_state.pending_bet = None
-                st.session_state.advice = f"Skip betting (low confidence: Model {model_confidence:.1f}% ({predicted_outcome}), LB6 {lb6_confidence:.1f}% ({sixth_prior}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
+                st.session_state.advice = f"Skip betting (low confidence: Model {model_confidence:.1f}% ({predicted_outcome}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
 
         if len(st.session_state.sequence) >= SHOE_SIZE:
             reset_session()
@@ -860,15 +841,6 @@ def render_result_input():
                         predicted_class = np.argmax(prediction_probs)
                         predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
                         model_confidence = np.max(prediction_probs) * 100
-                        lb6_selection = None
-                        lb6_confidence = 0
-                        sixth_prior = 'N/A'
-                        if len(valid_sequence) >= 6:
-                            sixth_prior = valid_sequence[-6]
-                            outcome_index = st.session_state.le.transform([sixth_prior])[0]
-                            lb6_confidence = prediction_probs[outcome_index] * 100
-                            if lb6_confidence > 40 and sixth_prior == predicted_outcome:
-                                lb6_selection = sixth_prior
                         markov_selection = None
                         markov_confidence = 0
                         last_outcome = valid_sequence[-1]
@@ -880,7 +852,7 @@ def render_result_input():
                             if prob_p_to_p > prob_p_to_b and prob_p_to_p > 0.5 and 'P' == predicted_outcome:
                                 markov_selection = 'P'
                                 markov_confidence = prob_p_to_p * 100
-                            elif prob_p_to_b > prob_p_to_p and prob_p_to_b > 0.5 and 'B' == predicted_outcome:
+                            elif prob_p_to_b > prob_p_to_b and prob_p_to_b > 0.5 and 'B' == predicted_outcome:
                                 markov_selection = 'B'
                                 markov_confidence = prob_p_to_b * 100
                         elif last_outcome == 'B' and total_from_b > 0:
@@ -892,18 +864,10 @@ def render_result_input():
                             elif prob_b_to_b > prob_b_to_b and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
                                 markov_selection = 'B'
                                 markov_confidence = prob_b_to_b * 100
-                        if model_confidence > 50 and (lb6_selection or markov_selection) and not (st.session_state.smart_skip_enabled and confidence < 60):
+                        if model_confidence > 50 and markov_selection and not (st.session_state.smart_skip_enabled and model_confidence < 60):
                             bet_selection = predicted_outcome
-                            confidence = model_confidence
-                            if lb6_selection and markov_selection:
-                                strategy_used = 'Model+LB6+Markov'
-                                confidence = max(model_confidence, lb6_confidence, markov_confidence)
-                            elif lb6_selection:
-                                strategy_used = 'Model+LB6'
-                                confidence = max(model_confidence, lb6_confidence)
-                            elif markov_selection:
-                                strategy_used = 'Model+Markov'
-                                confidence = max(model_confidence, markov_confidence)
+                            confidence = max(model_confidence, markov_confidence)
+                            strategy_used = 'Model+Markov'
                             bet_amount = calculate_bet_amount(bet_selection)
                             if bet_amount <= st.session_state.bankroll:
                                 st.session_state.pending_bet = (bet_amount, bet_selection)
@@ -928,7 +892,7 @@ def render_result_input():
                                 st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
                         else:
                             st.session_state.pending_bet = None
-                            st.session_state.advice = f"Skip betting (low confidence: Model {model_confidence:.1f}% ({predicted_outcome}), LB6 {lb6_confidence:.1f}% ({sixth_prior}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
+                            st.session_state.advice = f"Skip betting (low confidence: Model {model_confidence:.1f}% ({predicted_outcome}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
                     st.success("Undone last action.")
                     st.rerun()
         if st.session_state.shoe_completed and st.button("Reset and Start New Shoe", key="new_shoe_btn"):
