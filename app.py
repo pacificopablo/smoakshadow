@@ -8,8 +8,9 @@ def initialize_session_state():
         st.session_state.sequence = []
         st.session_state.transition_counts = {'PP': 0, 'PB': 0, 'PT': 0, 'BP': 0, 'BB': 0, 'BT': 0, 'TP': 0, 'TB': 0, 'TT': 0}
         st.session_state.session_id = str(uuid.uuid4())
-        st.session_state.bet = 1
-        st.session_state.profit = 0
+        st.session_state.bet = 1  # Bet multiplier, to be scaled by base_bet
+        st.session_state.bankroll = None  # To be set by user
+        st.session_state.base_bet = None  # To be set by user
         st.session_state.last_prediction = None
         st.session_state.strategy = "Flat Bet"
         st.session_state.masterline_step = 0
@@ -18,6 +19,7 @@ def initialize_session_state():
         st.session_state.break_countdown = 0
         st.session_state.transitions = defaultdict(Counter)
         st.session_state.explanation = "No explanation available."
+        st.session_state.session_started = False
 
 def reset_session():
     """Reset session state to initial values."""
@@ -26,7 +28,8 @@ def reset_session():
         'transition_counts': {'PP': 0, 'PB': 0, 'PT': 0, 'BP': 0, 'BB': 0, 'BT': 0, 'TP': 0, 'TB': 0, 'TT': 0},
         'session_id': str(uuid.uuid4()),
         'bet': 1,
-        'profit': 0,
+        'bankroll': None,
+        'base_bet': None,
         'last_prediction': None,
         'strategy': "Flat Bet",
         'masterline_step': 0,
@@ -34,7 +37,8 @@ def reset_session():
         'force2_failed': False,
         'break_countdown': 0,
         'transitions': defaultdict(Counter),
-        'explanation': "No explanation available."
+        'explanation': "No explanation available.",
+        'session_started': False
     })
 
 def place_result(result):
@@ -56,31 +60,37 @@ def place_result(result):
         # Determine if the last prediction was correct
         win = st.session_state.last_prediction == result if result in ("P", "B") and st.session_state.last_prediction else False
         strategy = st.session_state.strategy
+        actual_bet = st.session_state.bet * st.session_state.base_bet
 
-        # Update bet and profit based on strategy
+        # Update bankroll based on strategy
         if result in ("P", "B") and st.session_state.last_prediction in ("P", "B"):
             if strategy == "Flat Bet":
                 st.session_state.bet = 1
-                st.session_state.profit += st.session_state.bet if win else -st.session_state.bet
+                st.session_state.bankroll += actual_bet if win else -actual_bet
 
             elif strategy == "D'Alembert":
                 if win:
-                    st.session_state.profit += st.session_state.bet
+                    st.session_state.bankroll += actual_bet
                     st.session_state.bet = max(1, st.session_state.bet - 2)
                 else:
-                    st.session_state.profit -= st.session_state.bet
+                    st.session_state.bankroll -= actual_bet
                     st.session_state.bet += 1
 
             elif strategy == "-1 +2":
                 if win:
-                    st.session_state.profit += st.session_state.bet
+                    st.session_state.bankroll += actual_bet
                     st.session_state.bet += 2
                 else:
-                    st.session_state.profit -= st.session_state.bet
+                    st.session_state.bankroll -= actual_bet
                     st.session_state.bet = max(1, st.session_state.bet - 1)
 
             elif strategy == "Suchi Masterline":
                 handle_masterline(win)
+
+        # Check for insufficient bankroll
+        if st.session_state.bankroll < actual_bet and result in ("P", "B"):
+            st.warning("Insufficient bankroll for the next bet! Please reset or adjust settings.")
+            st.session_state.bet = 1  # Reset bet to avoid further issues
 
         # Update prediction
         prediction, explanation = predict_next()
@@ -91,14 +101,15 @@ def place_result(result):
 
 def handle_masterline(win):
     """Handle Suchi Masterline betting strategy."""
+    actual_bet = st.session_state.bet * st.session_state.base_bet
     if st.session_state.in_force2:
         if win:
-            st.session_state.profit += 2
+            st.session_state.bankroll += 2 * st.session_state.base_bet
             st.session_state.in_force2 = False
             st.session_state.bet = 1
             st.session_state.masterline_step = 0
         else:
-            st.session_state.profit -= 2
+            st.session_state.bankroll -= 2 * st.session_state.base_bet
             st.session_state.force2_failed = True
             st.session_state.in_force2 = False
             st.session_state.break_countdown = 3
@@ -108,7 +119,7 @@ def handle_masterline(win):
         st.session_state.masterline_step = 0
     elif win:
         ladder = [1, 3, 2, 5]
-        st.session_state.profit += ladder[st.session_state.masterline_step]
+        st.session_state.bankroll += ladder[st.session_state.masterline_step] * st.session_state.base_bet
         st.session_state.masterline_step += 1
         if st.session_state.masterline_step > 3:
             st.session_state.masterline_step = 0
@@ -120,7 +131,7 @@ def handle_masterline(win):
             st.session_state.in_force2 = True
             st.session_state.bet = 2
         else:
-            st.session_state.profit -= st.session_state.bet
+            st.session_state.bankroll -= actual_bet
             st.session_state.break_countdown = 3
             st.session_state.masterline_step = 0
             st.session_state.bet = 1
@@ -153,31 +164,28 @@ def predict_next():
 
 def render_session_setup():
     """Render UI for starting, resetting a session, and selecting strategy."""
-    with st.expander("Session Setup", expanded=len(st.session_state.sequence) == 0):
+    with st.expander("Session Setup", expanded=not st.session_state.session_started):
         try:
+            st.markdown("**Configure Session**")
+            bankroll = st.number_input("Initial Bankroll (in units)", min_value=1.0, value=100.0, step=1.0)
+            base_bet = st.number_input("Base Bet (in units)", min_value=1.0, value=1.0, step=1.0)
             strategy = st.selectbox(
                 "Select Betting Strategy",
                 ["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline"],
                 index=["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline"].index(st.session_state.strategy)
             )
-            if strategy != st.session_state.strategy:
-                st.session_state.strategy = strategy
-                st.session_state.bet = 1
-                st.session_state.profit = 0
-                st.session_state.masterline_step = 0
-                st.session_state.in_force2 = False
-                st.session_state.force2_failed = False
-                st.session_state.break_countdown = 0
-                st.session_state.last_prediction = None
-                st.session_state.explanation = "No explanation available."
 
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Start Session"):
-                    initialize_session_state()
+                if st.button("Start Session", disabled=bankroll < base_bet):
+                    st.session_state.bankroll = bankroll
+                    st.session_state.base_bet = base_bet
+                    st.session_state.strategy = strategy
+                    st.session_state.bet = 1
+                    st.session_state.session_started = True
                     st.success("Session started!")
             with col2:
-                if st.session_state.sequence and st.button("Reset Session"):
+                if st.session_state.session_started and st.button("Reset Session"):
                     reset_session()
                     st.success("Session reset!")
         except Exception as e:
@@ -187,6 +195,9 @@ def render_result_input():
     """Render UI for inputting game results."""
     with st.expander("Result Input", expanded=True):
         try:
+            if not st.session_state.session_started:
+                st.warning("Please start a session with a valid bankroll and base bet.")
+                return
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 if st.button("Player (P)"):
@@ -207,7 +218,6 @@ def render_result_input():
                             st.session_state.transitions[st.session_state.sequence[-1]][last_result] -= 1
                         # Reset betting state for simplicity after undo
                         st.session_state.bet = 1
-                        st.session_state.profit = 0
                         st.session_state.masterline_step = 0
                         st.session_state.in_force2 = False
                         st.session_state.force2_failed = False
@@ -248,8 +258,8 @@ def render_status():
                         f"TP: {st.session_state.transition_counts['TP']}, "
                         f"TB: {st.session_state.transition_counts['TB']}, "
                         f"TT: {st.session_state.transition_counts['TT']}")
-            st.markdown(f"**Current Bet**: {st.session_state.bet} unit(s)")
-            st.markdown(f"**Profit by Unit**: {st.session_state.profit}")
+            st.markdown(f"**Current Bet**: {st.session_state.bet * st.session_state.base_bet} unit(s) (Multiplier: {st.session_state.bet}x)")
+            st.markdown(f"**Bankroll**: {st.session_state.bankroll:.2f} unit(s)")
             status = "Normal"
             if st.session_state.break_countdown > 0:
                 status = f"Break ({st.session_state.break_countdown} left)"
