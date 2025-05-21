@@ -17,6 +17,8 @@ def initialize_session_state():
         st.session_state.in_force2 = False
         st.session_state.force2_failed = False
         st.session_state.break_countdown = 0
+        st.session_state.t3_level = 1  # T3 bet multiplier
+        st.session_state.t3_results = []  # Tracks W/L for T3
         st.session_state.transitions = defaultdict(Counter)
         st.session_state.explanation = "No explanation available."
         st.session_state.session_started = False
@@ -36,6 +38,8 @@ def reset_session():
         'in_force2': False,
         'force2_failed': False,
         'break_countdown': 0,
+        't3_level': 1,
+        't3_results': [],
         'transitions': defaultdict(Counter),
         'explanation': "No explanation available.",
         'session_started': False
@@ -96,6 +100,9 @@ def place_result(result):
             elif strategy == "Suchi Masterline":
                 handle_masterline(win, result)
 
+            elif strategy == "T3":
+                handle_t3(win, result)
+
         # Update prediction
         prediction, explanation = predict_next()
         st.session_state.last_prediction = prediction if prediction in ("P", "B") else None
@@ -144,6 +151,35 @@ def handle_masterline(win, result):
             st.session_state.masterline_step = 0
             st.session_state.bet = 1
 
+def handle_t3(win, result):
+    """Handle T3 betting strategy with commission on Banker wins."""
+    actual_bet = st.session_state.bet * st.session_state.base_bet
+    commission = 0.95 if result == "B" else 1.0  # 5% commission on Banker wins
+    if st.session_state.bankroll < actual_bet:
+        st.error("Insufficient bankroll for T3 bet! Please reset the session or adjust settings.")
+        return
+    if win:
+        st.session_state.bankroll += actual_bet * commission
+        if len(st.session_state.t3_results) == 0:
+            st.session_state.t3_level = max(1, st.session_state.t3_level - 1)  # Decrease level on first-step win
+        st.session_state.t3_results.append('W')
+    else:
+        st.session_state.bankroll -= actual_bet
+        st.session_state.t3_results.append('L')
+
+    # Update T3 level after 3 results
+    if len(st.session_state.t3_results) == 3:
+        wins = st.session_state.t3_results.count('W')
+        losses = st.session_state.t3_results.count('L')
+        if wins > losses:
+            st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
+        elif losses > wins:
+            st.session_state.t3_level += 1
+        st.session_state.t3_results = []
+
+    # Set next bet multiplier
+    st.session_state.bet = st.session_state.t3_level
+
 def predict_next():
     """Predict the next outcome based on transition probabilities."""
     if st.session_state.break_countdown > 0:
@@ -179,8 +215,8 @@ def render_session_setup():
             base_bet = st.number_input("Base Bet ($)", min_value=0.1, value=1.0, step=0.1, format="%.2f")
             strategy = st.selectbox(
                 "Select Betting Strategy",
-                ["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline"],
-                index=["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline"].index(st.session_state.strategy)
+                ["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline", "T3"],
+                index=["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline", "T3"].index(st.session_state.strategy)
             )
 
             col1, col2 = st.columns(2)
@@ -193,6 +229,8 @@ def render_session_setup():
                     st.session_state.base_bet = base_bet
                     st.session_state.strategy = strategy
                     st.session_state.bet = 1
+                    st.session_state.t3_level = 1
+                    st.session_state.t3_results = []
                     st.session_state.session_started = True
                     st.success("Session started!")
             with col2:
@@ -233,6 +271,8 @@ def render_result_input():
                         st.session_state.in_force2 = False
                         st.session_state.force2_failed = False
                         st.session_state.break_countdown = 0
+                        st.session_state.t3_level = 1
+                        st.session_state.t3_results = []
                         st.session_state.last_prediction = None
                         st.session_state.explanation = "No explanation available."
         except Exception as e:
@@ -281,6 +321,8 @@ def render_status():
                     status = f"Ladder Step {st.session_state.masterline_step + 1}"
                 else:
                     status = "Base"
+            elif st.session_state.strategy == "T3":
+                status = f"T3 Level {st.session_state.t3_level}, Results: {st.session_state.t3_results}"
             st.markdown(f"**Status**: {status}")
         except Exception as e:
             st.error(f"Error rendering status: {e}")
