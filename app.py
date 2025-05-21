@@ -328,7 +328,7 @@ def render_status():
             st.error(f"Error rendering status: {e}")
 
 def render_bead_plate():
-    """Render the bead plate visualization of game results."""
+    """Render the bead plate visualization of game results with responsive scrolling."""
     with st.expander("Bead Plate"):
         try:
             if not st.session_state.sequence:
@@ -348,13 +348,23 @@ def render_bead_plate():
 
             html = """
             <style>
+                .bead-plate-container {
+                    background-color: #007BFF; /* Blue background */
+                    padding: 10px;
+                    border-radius: 8px;
+                    overflow-x: auto; /* Enable horizontal scrolling */
+                    max-width: 100%; /* Fit container to viewport */
+                    -webkit-overflow-scrolling: touch; /* Smooth scrolling on mobile */
+                }
                 .bead-plate-table {
                     border-collapse: collapse;
-                    margin: 10px 0;
+                    margin: 0;
+                    min-width: 100%; /* Ensure table can grow wide */
                 }
                 .bead-plate-table td {
                     width: 30px;
                     height: 30px;
+                    min-width: 30px; /* Prevent cells from shrinking too much */
                     text-align: center;
                     vertical-align: middle;
                     border: 1px solid #ccc;
@@ -379,8 +389,26 @@ def render_bead_plate():
                 .empty {
                     background-color: #f7fafc;
                 }
+                /* Responsive adjustments */
+                @media screen and (max-width: 600px) {
+                    .bead-plate-table td {
+                        width: 24px;
+                        height: 24px;
+                        min-width: 24px;
+                        font-size: 12px;
+                    }
+                }
+                @media screen and (max-width: 400px) {
+                    .bead-plate-table td {
+                        width: 20px;
+                        height: 20px;
+                        min-width: 20px;
+                        font-size: 10px;
+                    }
+                }
             </style>
-            <table class='bead-plate-table'>
+            <div class='bead-plate-container'>
+                <table class='bead-plate-table'>
             """
 
             for row in range(rows):
@@ -396,7 +424,10 @@ def render_bead_plate():
                     else:
                         html += "<td class='empty'></td>"
                 html += "</tr>"
-            html += "</table>"
+            html += """
+                </table>
+            </div>
+            """
 
             st.markdown(html, unsafe_allow_html=True)
         except Exception as e:
