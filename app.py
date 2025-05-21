@@ -9,8 +9,8 @@ def initialize_session_state():
         st.session_state.transition_counts = {'PP': 0, 'PB': 0, 'PT': 0, 'BP': 0, 'BB': 0, 'BT': 0, 'TP': 0, 'TB': 0, 'TT': 0}
         st.session_state.session_id = str(uuid.uuid4())
         st.session_state.bet = 1  # Bet multiplier, to be scaled by base_bet
-        st.session_state.bankroll = None  # To be set by user
-        st.session_state.base_bet = None  # To be set by user
+        st.session_state.bankroll = None  # To be set by user in dollars
+        st.session_state.base_bet = None  # To be set by user in dollars
         st.session_state.last_prediction = None
         st.session_state.strategy = "Flat Bet"
         st.session_state.masterline_step = 0
@@ -62,6 +62,11 @@ def place_result(result):
         strategy = st.session_state.strategy
         actual_bet = st.session_state.bet * st.session_state.base_bet
 
+        # Check for insufficient bankroll before betting
+        if st.session_state.bankroll < actual_bet and result in ("P", "B"):
+            st.error("Insufficient bankroll to place the bet! Please reset the session or adjust settings.")
+            return
+
         # Update bankroll based on strategy
         if result in ("P", "B") and st.session_state.last_prediction in ("P", "B"):
             if strategy == "Flat Bet":
@@ -87,11 +92,6 @@ def place_result(result):
             elif strategy == "Suchi Masterline":
                 handle_masterline(win)
 
-        # Check for insufficient bankroll
-        if st.session_state.bankroll < actual_bet and result in ("P", "B"):
-            st.warning("Insufficient bankroll for the next bet! Please reset or adjust settings.")
-            st.session_state.bet = 1  # Reset bet to avoid further issues
-
         # Update prediction
         prediction, explanation = predict_next()
         st.session_state.last_prediction = prediction if prediction in ("P", "B") else None
@@ -102,6 +102,9 @@ def place_result(result):
 def handle_masterline(win):
     """Handle Suchi Masterline betting strategy."""
     actual_bet = st.session_state.bet * st.session_state.base_bet
+    if st.session_state.bankroll < actual_bet:
+        st.error("Insufficient bankroll for Masterline bet! Please reset the session or adjust settings.")
+        return
     if st.session_state.in_force2:
         if win:
             st.session_state.bankroll += 2 * st.session_state.base_bet
@@ -167,8 +170,8 @@ def render_session_setup():
     with st.expander("Session Setup", expanded=not st.session_state.session_started):
         try:
             st.markdown("**Configure Session**")
-            bankroll = st.number_input("Initial Bankroll (in units)", min_value=1.0, value=100.0, step=1.0)
-            base_bet = st.number_input("Base Bet (in units)", min_value=1.0, value=1.0, step=1.0)
+            bankroll = st.number_input("Initial Bankroll ($)", min_value=1.0, value=100.0, step=1.0, format="%.2f")
+            base_bet = st.number_input("Base Bet ($)", min_value=0.1, value=1.0, step=0.1, format="%.2f")
             strategy = st.selectbox(
                 "Select Betting Strategy",
                 ["Flat Bet", "D'Alembert", "-1 +2", "Suchi Masterline"],
@@ -178,6 +181,9 @@ def render_session_setup():
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("Start Session", disabled=bankroll < base_bet):
+                    if bankroll < base_bet:
+                        st.error("Initial bankroll must be at least equal to the base bet.")
+                        return
                     st.session_state.bankroll = bankroll
                     st.session_state.base_bet = base_bet
                     st.session_state.strategy = strategy
@@ -258,8 +264,8 @@ def render_status():
                         f"TP: {st.session_state.transition_counts['TP']}, "
                         f"TB: {st.session_state.transition_counts['TB']}, "
                         f"TT: {st.session_state.transition_counts['TT']}")
-            st.markdown(f"**Current Bet**: {st.session_state.bet * st.session_state.base_bet} unit(s) (Multiplier: {st.session_state.bet}x)")
-            st.markdown(f"**Bankroll**: {st.session_state.bankroll:.2f} unit(s)")
+            st.markdown(f"**Current Bet**: ${st.session_state.bet * st.session_state.base_bet:.2f} (Multiplier: {st.session_state.bet}x)")
+            st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
             status = "Normal"
             if st.session_state.break_countdown > 0:
                 status = f"Break ({st.session_state.break_countdown} left)"
