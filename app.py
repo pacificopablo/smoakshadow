@@ -328,7 +328,7 @@ def render_status():
             st.error(f"Error rendering status: {e}")
 
 def render_bead_plate():
-    """Render a premium casino-style bead plate with enhanced UI."""
+    """Render a typical casino-style bead plate (Bead Road)."""
     with st.expander("Bead Plate"):
         try:
             if not st.session_state.sequence:
@@ -337,7 +337,7 @@ def render_bead_plate():
 
             rows = 6
             results = st.session_state.sequence
-            # Create grid for casino-style bead plate
+            # Create grid for typical casino bead plate
             grid = []
             current_col = []
             last_result = None
@@ -365,14 +365,12 @@ def render_bead_plate():
             html = """
             <style>
                 .bead-plate-container {
-                    background: linear-gradient(180deg, #0C4B33 0%, #1C2526 100%); /* Gradient casino felt */
-                    padding: 15px;
-                    border-radius: 12px;
+                    background-color: #0C4B33; /* Dark green casino felt */
+                    padding: 10px;
+                    border-radius: 8px;
                     overflow-x: auto; /* Enable horizontal scrolling */
                     max-width: 100%; /* Fit container to viewport */
                     -webkit-overflow-scrolling: touch; /* Smooth scrolling on mobile */
-                    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5); /* Deeper shadow for luxury */
-                    border: 2px solid #D4AF37; /* Gold border */
                 }
                 .bead-plate-table {
                     border-collapse: collapse;
@@ -380,65 +378,56 @@ def render_bead_plate():
                     min-width: 100%; /* Ensure table can grow wide */
                 }
                 .bead-plate-table td {
-                    width: 32px;
-                    height: 32px;
-                    min-width: 32px; /* Prevent cells from shrinking too much */
+                    width: 30px;
+                    height: 30px;
+                    min-width: 30px; /* Prevent cells from shrinking too much */
                     text-align: center;
                     vertical-align: middle;
-                    font-family: Georgia, serif; /* Elegant font */
                     font-weight: bold;
-                    font-size: 16px;
-                    border: 2px solid #D4AF37; /* Gold border for cells */
-                    transition: transform 0.2s ease, box-shadow 0.2s ease; /* Smooth hover/glow */
-                }
-                .bead-plate-table td:hover {
-                    transform: scale(1.1); /* Slight zoom on hover */
-                    z-index: 1; /* Ensure hover cell is above others */
+                    font-size: 14px;
+                    border: 1px solid #1A3C34; /* Dark border for clarity */
                 }
                 .player {
-                    background-color: #1E90FF; /* Brighter blue */
+                    background-color: #0000FF; /* Standard blue for Player */
                     color: white;
                     border-radius: 50%;
-                    box-shadow: 0 0 8px rgba(30, 144, 255, 0.7); /* Blue glow */
                 }
                 .banker {
-                    background-color: #FF4500; /* Vibrant red-orange */
+                    background-color: #FF0000; /* Standard red for Banker */
                     color: white;
                     border-radius: 50%;
-                    box-shadow: 0 0 8px rgba(255, 69, 0, 0.7); /* Red glow */
                 }
                 .tie {
-                    background-color: #32CD32; /* Lime green */
+                    background-color: #008000; /* Standard green for Tie */
                     color: white;
                     border-radius: 50%;
-                    font-size: 14px; /* Smaller for 'T' */
-                    box-shadow: 0 0 8px rgba(50, 205, 50, 0.7); /* Green glow */
+                    font-size: 12px; /* Slightly smaller for 'T' */
                 }
                 .empty {
-                    background-color: transparent; /* Blend into gradient */
-                    border: 1px solid rgba(212, 175, 55, 0.3); /* Subtle gold border */
+                    background-color: transparent; /* Blend into felt */
+                    border: none;
                 }
                 /* Responsive adjustments */
                 @media screen and (max-width: 600px) {
                     .bead-plate-table td {
-                        width: 26px;
-                        height: 26px;
-                        min-width: 26px;
-                        font-size: 14px;
-                    }
-                    .tie {
-                        font-size: 12px;
-                    }
-                }
-                @media screen and (max-width: 400px) {
-                    .bead-plate-table td {
-                        width: 22px;
-                        height: 22px;
-                        min-width: 22px;
+                        width: 24px;
+                        height: 24px;
+                        min-width: 24px;
                         font-size: 12px;
                     }
                     .tie {
                         font-size: 10px;
+                    }
+                }
+                @media screen and (max-width: 400px) {
+                    .bead-plate-table td {
+                        width: 20px;
+                        height: 20px;
+                        min-width: 20px;
+                        font-size: 10px;
+                    }
+                    .tie {
+                        font-size: 8px;
                     }
                 }
             </style>
