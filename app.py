@@ -328,7 +328,7 @@ def render_status():
             st.error(f"Error rendering status: {e}")
 
 def render_bead_plate():
-    """Render a casino-style bead plate with column-wise filling and responsive scrolling."""
+    """Render a premium casino-style bead plate with enhanced UI."""
     with st.expander("Bead Plate"):
         try:
             if not st.session_state.sequence:
@@ -365,13 +365,14 @@ def render_bead_plate():
             html = """
             <style>
                 .bead-plate-container {
-                    background-color: #0C4B33; /* Dark green casino felt */
+                    background: linear-gradient(180deg, #0C4B33 0%, #1C2526 100%); /* Gradient casino felt */
                     padding: 15px;
-                    border-radius: 10px;
+                    border-radius: 12px;
                     overflow-x: auto; /* Enable horizontal scrolling */
                     max-width: 100%; /* Fit container to viewport */
                     -webkit-overflow-scrolling: touch; /* Smooth scrolling on mobile */
-                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
+                    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5); /* Deeper shadow for luxury */
+                    border: 2px solid #D4AF37; /* Gold border */
                 }
                 .bead-plate-table {
                     border-collapse: collapse;
@@ -384,29 +385,38 @@ def render_bead_plate():
                     min-width: 32px; /* Prevent cells from shrinking too much */
                     text-align: center;
                     vertical-align: middle;
+                    font-family: Georgia, serif; /* Elegant font */
                     font-weight: bold;
                     font-size: 16px;
-                    border: 2px solid #1A3C34; /* Darker border for casino look */
+                    border: 2px solid #D4AF37; /* Gold border for cells */
+                    transition: transform 0.2s ease, box-shadow 0.2s ease; /* Smooth hover/glow */
+                }
+                .bead-plate-table td:hover {
+                    transform: scale(1.1); /* Slight zoom on hover */
+                    z-index: 1; /* Ensure hover cell is above others */
                 }
                 .player {
-                    background-color: #007BFF; /* Casino blue for Player */
+                    background-color: #1E90FF; /* Brighter blue */
                     color: white;
                     border-radius: 50%;
+                    box-shadow: 0 0 8px rgba(30, 144, 255, 0.7); /* Blue glow */
                 }
                 .banker {
-                    background-color: #DC3545; /* Casino red for Banker */
+                    background-color: #FF4500; /* Vibrant red-orange */
                     color: white;
                     border-radius: 50%;
+                    box-shadow: 0 0 8px rgba(255, 69, 0, 0.7); /* Red glow */
                 }
                 .tie {
-                    background-color: #28A745; /* Casino green for Tie */
+                    background-color: #32CD32; /* Lime green */
                     color: white;
                     border-radius: 50%;
-                    font-size: 14px; /* Slightly smaller for 'T' */
+                    font-size: 14px; /* Smaller for 'T' */
+                    box-shadow: 0 0 8px rgba(50, 205, 50, 0.7); /* Green glow */
                 }
                 .empty {
-                    background-color: transparent; /* No background for empty cells */
-                    border: none;
+                    background-color: transparent; /* Blend into gradient */
+                    border: 1px solid rgba(212, 175, 55, 0.3); /* Subtle gold border */
                 }
                 /* Responsive adjustments */
                 @media screen and (max-width: 600px) {
