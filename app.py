@@ -292,7 +292,6 @@ def initialize_session_state():
         't3_level': 1,
         't3_results': [],
         'money_management': 'T3',
-        'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
         'stop_loss_percentage': STOP_LOSS_DEFAULT,
         'win_limit': WIN_LIMIT,
         'shoe_completed': False,
@@ -352,7 +351,6 @@ def reset_session():
         't3_level': 1,
         't3_results': [],
         'money_management': setup_values['money_management'],
-        'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
         'stop_loss_percentage': setup_values['stop_loss_percentage'],
         'win_limit': setup_values['win_limit'],
         'shoe_completed': False,
@@ -456,18 +454,10 @@ def place_result(result: str):
             'flatbet_levelup_net_loss': st.session_state.flatbet_levelup_net_loss,
             'bets_placed': st.session_state.bets_placed,
             'bets_won': st.session_state.bets_won,
-            'transition_counts': st.session_state.transition_counts.copy(),
             'pending_bet': st.session_state.pending_bet,
             'shoe_completed': st.session_state.shoe_completed,
             'grid_pos': st.session_state.grid_pos.copy()
         }
-
-        # Update Markov transitions
-        if len(st.session_state.sequence) >= 1 and result in ['P', 'B']:
-            prev_result = st.session_state.sequence[-1]
-            if prev_result in ['P', 'B']:
-                transition = f"{prev_result}{result}"
-                st.session_state.transition_counts[transition] += 1
 
         # Resolve pending bet
         bet_amount = 0
@@ -616,39 +606,13 @@ def place_result(result: str):
             predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
             model_confidence = np.max(prediction_probs) * 100
 
-            markov_selection = None
-            markov_confidence = 0
-            last_outcome = valid_sequence[-1]
-            total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
-            total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
-            if last_outcome == 'P' and total_from_p > 0:
-                prob_p_to_p = st.session_state.transition_counts['PP'] / total_from_p
-                prob_p_to_b = st.session_state.transition_counts['PB'] / total_from_p
-                if prob_p_to_p > prob_p_to_b and prob_p_to_p > 0.5 and 'P' == predicted_outcome:
-                    markov_selection = 'P'
-                    markov_confidence = prob_p_to_p * 100
-                elif prob_p_to_b > prob_p_to_p and prob_p_to_b > 0.5 and 'B' == predicted_outcome:
-                    markov_selection = 'B'
-                    markov_confidence = prob_p_to_b * 100
-            elif last_outcome == 'B' and total_from_b > 0:
-                prob_b_to_p = st.session_state.transition_counts['BP'] / total_from_b
-                prob_b_to_b = st.session_state.transition_counts['BB'] / total_from_b
-                if prob_b_to_p > prob_b_to_b and prob_b_to_p > 0.5 and 'P' == predicted_outcome:
-                    markov_selection = 'P'
-                    markov_confidence = prob_b_to_p * 100
-                elif prob_b_to_b > prob_b_to_b and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
-                    markov_selection = 'B'
-                    markov_confidence = prob_b_to_b * 100
-
-            strategy_used = None
             bet_selection = None
             confidence = 0.0
-            if model_confidence > 50 and markov_selection and not (st.session_state.smart_skip_enabled and model_confidence < 60):
+            if model_confidence > 50 and not (st.session_state.smart_skip_enabled and model_confidence < 60):
                 bet_selection = predicted_outcome
-                confidence = max(model_confidence, markov_confidence)
-                strategy_used = 'Model+Markov'
+                confidence = model_confidence
+                strategy_used = 'Model'
 
-            if bet_selection:
                 bet_amount = calculate_bet_amount(bet_selection)
                 if bet_amount <= st.session_state.bankroll:
                     st.session_state.pending_bet = (bet_amount, bet_selection)
@@ -673,7 +637,7 @@ def place_result(result: str):
                     st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
             else:
                 st.session_state.pending_bet = None
-                st.session_state.advice = f"Skip betting (low confidence: Model {model_confidence:.1f}% ({predicted_outcome}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
+                st.session_state.advice = f"Skip betting (low confidence: Model {model_confidence:.1f}% ({predicted_outcome}))"
 
         if len(st.session_state.sequence) >= SHOE_SIZE:
             reset_session()
@@ -757,7 +721,6 @@ def render_setup_form():
                         't3_level': 1,
                         't3_results': [],
                         'money_management': money_management,
-                        'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
                         'stop_loss_percentage': stop_loss_percentage / 100,
                         'win_limit': profit_lock_threshold / 100,
                         'shoe_completed': False,
@@ -767,7 +730,7 @@ def render_setup_form():
                         'advice': f"Need {SEQUENCE_LENGTH} results",
                         'parlay_step': 1,
                         'parlay_wins': 0,
-                        'parlay_using_base': True,
+                        'parを選ぶlay_using_base': True,
                         'parlay_step_changes': 0,
                         'parlay_peak_step': 1,
                         'moon_level': 1,
@@ -826,9 +789,6 @@ def render_result_input():
                             else:
                                 st.session_state.bankroll -= last_bet["Bet_Amount"]
                             st.session_state.bets_won -= 1
-                    if len(st.session_state.sequence) >= 1 and last_bet["Result"] in ['P', 'B'] and st.session_state.sequence[-1] in ['P', 'B']:
-                        transition = f"{st.session_state.sequence[-1]}{last_bet['Result']}"
-                        st.session_state.transition_counts[transition] = max(0, st.session_state.transition_counts[transition] - 1)
                     valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
                     if len(valid_sequence) < SEQUENCE_LENGTH:
                         st.session_state.pending_bet = None
@@ -841,33 +801,10 @@ def render_result_input():
                         predicted_class = np.argmax(prediction_probs)
                         predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
                         model_confidence = np.max(prediction_probs) * 100
-                        markov_selection = None
-                        markov_confidence = 0
-                        last_outcome = valid_sequence[-1]
-                        total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
-                        total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
-                        if last_outcome == 'P' and total_from_p > 0:
-                            prob_p_to_p = st.session_state.transition_counts['PP'] / total_from_p
-                            prob_p_to_b = st.session_state.transition_counts['PB'] / total_from_p
-                            if prob_p_to_p > prob_p_to_b and prob_p_to_p > 0.5 and 'P' == predicted_outcome:
-                                markov_selection = 'P'
-                                markov_confidence = prob_p_to_p * 100
-                            elif prob_p_to_b > prob_p_to_b and prob_p_to_b > 0.5 and 'B' == predicted_outcome:
-                                markov_selection = 'B'
-                                markov_confidence = prob_p_to_b * 100
-                        elif last_outcome == 'B' and total_from_b > 0:
-                            prob_b_to_p = st.session_state.transition_counts['BP'] / total_from_b
-                            prob_b_to_b = st.session_state.transition_counts['BB'] / total_from_b
-                            if prob_b_to_p > prob_b_to_b and prob_b_to_p > 0.5 and 'P' == predicted_outcome:
-                                markov_selection = 'P'
-                                markov_confidence = prob_b_to_p * 100
-                            elif prob_b_to_b > prob_b_to_b and prob_b_to_b > 0.5 and 'B' == predicted_outcome:
-                                markov_selection = 'B'
-                                markov_confidence = prob_b_to_b * 100
-                        if model_confidence > 50 and markov_selection and not (st.session_state.smart_skip_enabled and model_confidence < 60):
+                        if model_confidence > 50 and not (st.session_state.smart_skip_enabled and model_confidence < 60):
                             bet_selection = predicted_outcome
-                            confidence = max(model_confidence, markov_confidence)
-                            strategy_used = 'Model+Markov'
+                            confidence = model_confidence
+                            strategy_used = 'Model'
                             bet_amount = calculate_bet_amount(bet_selection)
                             if bet_amount <= st.session_state.bankroll:
                                 st.session_state.pending_bet = (bet_amount, bet_selection)
@@ -892,7 +829,7 @@ def render_result_input():
                                 st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
                         else:
                             st.session_state.pending_bet = None
-                            st.session_state.advice = f"Skip betting (low confidence: Model {model_confidence:.1f}% ({predicted_outcome}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
+                            st.session_state.advice = f"Skip betting (low confidence: Model {model_confidence:.1f}% ({predicted_outcome}))"
                     st.success("Undone last action.")
                     st.rerun()
         if st.session_state.shoe_completed and st.button("Reset and Start New Shoe", key="new_shoe_btn"):
