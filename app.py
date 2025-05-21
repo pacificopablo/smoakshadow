@@ -17,6 +17,7 @@ def initialize_session_state():
         st.session_state.force2_failed = False
         st.session_state.break_countdown = 0
         st.session_state.transitions = defaultdict(Counter)
+        st.session_state.explanation = "No explanation available."
 
 def reset_session():
     """Reset session state to initial values."""
@@ -32,7 +33,8 @@ def reset_session():
         'in_force2': False,
         'force2_failed': False,
         'break_countdown': 0,
-        'transitions': defaultdict(Counter)
+        'transitions': defaultdict(Counter),
+        'explanation': "No explanation available."
     })
 
 def place_result(result):
@@ -84,7 +86,7 @@ def place_result(result):
         prediction, explanation = predict_next()
         st.session_state.last_prediction = prediction if prediction in ("P", "B") else None
         st.session_state.explanation = explanation
-    except Exception as e:
+    excepto:
         st.error(f"Error processing result: {e}")
 
 def handle_masterline(win):
@@ -167,6 +169,7 @@ def render_session_setup():
                 st.session_state.force2_failed = False
                 st.session_state.break_countdown = 0
                 st.session_state.last_prediction = None
+                st.session_state.explanation = "No explanation available."
 
             col1, col2 = st.columns(2)
             with col1:
@@ -210,11 +213,23 @@ def render_result_input():
                         st.session_state.force2_failed = False
                         st.session_state.break_countdown = 0
                         st.session_state.last_prediction = None
+                        st.session_state.explanation = "No explanation available."
         except Exception as e:
             st.error(f"Error processing input: {e}")
 
+def render_prediction():
+    """Render the prediction section with next prediction and explanation."""
+    with st.expander("Prediction", expanded=True):
+        try:
+            prediction, _ = predict_next()
+            st.markdown(f"**Next Prediction**: {prediction}")
+            st.markdown("**Explanation**:")
+            st.text(st.session_state.get('explanation', "No explanation available."))
+        except Exception as e:
+            st.error(f"Error rendering prediction: {e}")
+
 def render_status():
-    """Render session status with hands played, streak status, betting info, and prediction."""
+    """Render session status with hands played, streak status, and betting info."""
     with st.expander("Session Status", expanded=True):
         try:
             st.markdown(f"**Hands Played**: {len(st.session_state.sequence)}")
@@ -246,10 +261,6 @@ def render_status():
                 else:
                     status = "Base"
             st.markdown(f"**Status**: {status}")
-            prediction, _ = predict_next()
-            st.markdown(f"**Next Prediction**: {prediction}")
-            st.markdown("**Explanation**:")
-            st.text(st.session_state.get('explanation', "No explanation available."))
         except Exception as e:
             st.error(f"Error rendering status: {e}")
 
@@ -335,6 +346,7 @@ def main():
     initialize_session_state()
     render_session_setup()
     render_result_input()
+    render_prediction()
     render_status()
     render_bead_plate()
 
