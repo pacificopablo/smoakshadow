@@ -69,13 +69,17 @@ def place_result(result):
 
         # Update bankroll based on strategy
         if result in ("P", "B") and st.session_state.last_prediction in ("P", "B"):
+            commission = 0.95 if result == "B" else 1.0  # 5% commission on Banker wins
             if strategy == "Flat Bet":
                 st.session_state.bet = 1
-                st.session_state.bankroll += actual_bet if win else -actual_bet
+                if win:
+                    st.session_state.bankroll += actual_bet * commission
+                else:
+                    st.session_state.bankroll -= actual_bet
 
             elif strategy == "D'Alembert":
                 if win:
-                    st.session_state.bankroll += actual_bet
+                    st.session_state.bankroll += actual_bet * commission
                     st.session_state.bet = max(1, st.session_state.bet - 2)
                 else:
                     st.session_state.bankroll -= actual_bet
@@ -83,14 +87,14 @@ def place_result(result):
 
             elif strategy == "-1 +2":
                 if win:
-                    st.session_state.bankroll += actual_bet
+                    st.session_state.bankroll += actual_bet * commission
                     st.session_state.bet += 2
                 else:
                     st.session_state.bankroll -= actual_bet
                     st.session_state.bet = max(1, st.session_state.bet - 1)
 
             elif strategy == "Suchi Masterline":
-                handle_masterline(win)
+                handle_masterline(win, result)
 
         # Update prediction
         prediction, explanation = predict_next()
@@ -99,15 +103,16 @@ def place_result(result):
     except Exception as e:
         st.error(f"Error processing result: {e}")
 
-def handle_masterline(win):
-    """Handle Suchi Masterline betting strategy."""
+def handle_masterline(win, result):
+    """Handle Suchi Masterline betting strategy with commission on Banker wins."""
     actual_bet = st.session_state.bet * st.session_state.base_bet
+    commission = 0.95 if result == "B" else 1.0  # 5% commission on Banker wins
     if st.session_state.bankroll < actual_bet:
         st.error("Insufficient bankroll for Masterline bet! Please reset the session or adjust settings.")
         return
     if st.session_state.in_force2:
         if win:
-            st.session_state.bankroll += 2 * st.session_state.base_bet
+            st.session_state.bankroll += (2 * st.session_state.base_bet) * commission
             st.session_state.in_force2 = False
             st.session_state.bet = 1
             st.session_state.masterline_step = 0
@@ -122,7 +127,7 @@ def handle_masterline(win):
         st.session_state.masterline_step = 0
     elif win:
         ladder = [1, 3, 2, 5]
-        st.session_state.bankroll += ladder[st.session_state.masterline_step] * st.session_state.base_bet
+        st.session_state.bankroll += (ladder[st.session_state.masterline_step] * st.session_state.base_bet) * commission
         st.session_state.masterline_step += 1
         if st.session_state.masterline_step > 3:
             st.session_state.masterline_step = 0
