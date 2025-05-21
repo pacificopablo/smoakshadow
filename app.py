@@ -91,7 +91,7 @@ def generate_baccarat_data(num_games=10000):
     i = 0
     while i < num_games:
         outcome = random.choices(outcomes, weights=weights, k=1)[0]
-        streak_length = random.choices([1, 2, 3, 4, 5, 6], weights=[0.4, 0.3, 0.15, 0.1, 0.03, 0.02])[0]  # Simulate streaks
+        streak_length = random.choices([1, 2, 3, 4, 5, 6], weights=[0.4, 0.3, 0.15, 0.1, 0.03, 0.02])[0]
         result.extend([outcome] * streak_length)
         i += streak_length
     return result[:num_games]
@@ -553,6 +553,83 @@ def render_status():
         except Exception as e:
             st.error(f"Error rendering status: {str(e)}")
 
+def render_bead_plate():
+    with st.expander("Bead Plate"):
+        try:
+            if not st.session_state.sequence:
+                st.info("No results yet. Enter results to see the bead plate.")
+                return
+
+            # Define bead plate grid (6 rows, dynamic columns)
+            rows = 6
+            results = st.session_state.sequence
+            num_results = len(results)
+            cols = (num_results + rows - 1) // rows  # Ceiling division
+
+            # Initialize grid
+            grid = [['' for _ in range(cols)] for _ in range(rows)]
+            for i, result in enumerate(results):
+                row = i % rows
+                col = i // rows
+                grid[row][col] = result
+
+            # Generate HTML for bead plate
+            html = """
+            <style>
+                .bead-plate-table {
+                    border-collapse: collapse;
+                    margin: 10px 0;
+                }
+                .bead-plate-table td {
+                    width: 30px;
+                    height: 30px;
+                    text-align: center;
+                    vertical-align: middle;
+                    border: 1px solid #ccc;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                .player {
+                    background-color: #3182ce;
+                    color: white;
+                    border-radius: 50%;
+                }
+                .banker {
+                    background-color: #e53e3e;
+                    color: white;
+                    border-radius: 50%;
+                }
+                .tie {
+                    background-color: #38a169;
+                    color: white;
+                    border-radius: 50%;
+                }
+                .empty {
+                    background-color: #f7fafc;
+                }
+            </style>
+            <table class='bead-plate-table'>
+            """
+
+            for row in range(rows):
+                html += "<tr>"
+                for col in range(cols):
+                    result = grid[row][col]
+                    if result == 'P':
+                        html += "<td class='player'>P</td>"
+                    elif result == 'B':
+                        html += "<td class='banker'>B</td>"
+                    elif result == 'T':
+                        html += "<td class='tie'>T</td>"
+                    else:
+                        html += "<td class='empty'></td>"
+                html += "</tr>"
+            html += "</table>"
+
+            st.markdown(html, unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Error rendering bead plate: {str(e)}")
+
 def render_history():
     with st.expander("Bet History"):
         try:
@@ -577,6 +654,7 @@ def main():
     render_result_input()
     render_prediction()
     render_status()
+    render_bead_plate()
     render_history()
 
 if __name__ == "__main__":
