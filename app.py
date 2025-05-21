@@ -346,9 +346,9 @@ def main():
     initialize_session_state()
     render_session_setup()
     render_result_input()
+    render_bead_plate()
     render_prediction()
     render_status()
-    render_bead_plate()
 
 if __name__ == "__main__":
     main()
