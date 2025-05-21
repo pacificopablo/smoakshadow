@@ -17,6 +17,7 @@ FOUR_TIER_STEPS = [1, 2, 3, 4]
 FLATBET_LEVELUP_LEVELS = [1, 2, 3, 4, 5]
 
 def initialize_session_state():
+    """Initialize session state with default values."""
     if 'bankroll' not in st.session_state:
         st.session_state.bankroll = 0
         st.session_state.initial_bankroll = 0
@@ -56,6 +57,7 @@ def initialize_session_state():
         st.session_state.model, st.session_state.le = train_model()
 
 def reset_session():
+    """Reset session state to initial values."""
     st.session_state.update({
         'bankroll': st.session_state.initial_bankroll,
         'sequence': [],
@@ -85,6 +87,7 @@ def reset_session():
     st.session_state.model, st.session_state.le = train_model()
 
 def generate_baccarat_data(num_games=10000):
+    """Generate synthetic Baccarat data with realistic probabilities and streaks."""
     outcomes = ['P', 'B', 'T']
     weights = [0.4462, 0.4586, 0.0952]
     result = []
@@ -97,6 +100,7 @@ def generate_baccarat_data(num_games=10000):
     return result[:num_games]
 
 def prepare_data(outcomes, sequence_length=6):
+    """Prepare training data for the Random Forest model."""
     try:
         le = LabelEncoder()
         encoded_outcomes = le.fit_transform(outcomes)
@@ -110,6 +114,7 @@ def prepare_data(outcomes, sequence_length=6):
         return np.array([]), np.array([]), None
 
 def train_model():
+    """Train the Random Forest model on synthetic Baccarat data."""
     try:
         outcomes = generate_baccarat_data()
         X, y, le = prepare_data(outcomes, SEQUENCE_LENGTH)
@@ -124,6 +129,7 @@ def train_model():
         return None, None
 
 def calculate_bet_amount(selection):
+    """Calculate bet amount based on money management strategy and selection."""
     try:
         if not selection or selection not in ['P', 'B']:
             st.warning(f"Invalid bet selection: {selection}. Defaulting to base bet.")
@@ -149,7 +155,9 @@ def calculate_bet_amount(selection):
         return st.session_state.base_bet
 
 def place_result(result):
+    """Process a game result, make predictions, place bets, and update state."""
     try:
+        # Append result and update transition counts
         st.session_state.sequence.append(result)
         if len(st.session_state.sequence) >= 2:
             prev_result = st.session_state.sequence[-2]
@@ -162,6 +170,7 @@ def place_result(result):
             st.session_state.pending_bet = None
             st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
         elif len(valid_sequence) >= SEQUENCE_LENGTH:
+            # Random Forest prediction
             prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
             encoded_input = st.session_state.le.transform(prediction_sequence)
             input_array = np.array([encoded_input])
@@ -170,6 +179,7 @@ def place_result(result):
             predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
             model_confidence = np.max(prediction_probs) * 100
 
+            # Look-Back 6 (LB6) strategy
             lb6_selection = None
             lb6_confidence = 0
             sixth_prior = 'N/A'
@@ -180,6 +190,7 @@ def place_result(result):
                 if lb6_confidence > 40 and sixth_prior == predicted_outcome:
                     lb6_selection = sixth_prior
 
+            # Markov model
             markov_selection = None
             markov_confidence = 0
             last_outcome = valid_sequence[-1]
@@ -204,10 +215,12 @@ def place_result(result):
                     markov_selection = 'B'
                     markov_confidence = prob_b_to_b * 100
 
+            # Streak detection
             is_streak = len(valid_sequence) >= 4 and len(set(valid_sequence[-4:])) == 1
             confidence_threshold = 45 if is_streak else 50
             smart_skip_threshold = 55 if is_streak else 60
 
+            # Combine strategies
             strategy_used = None
             bet_selection = None
             confidence = 0.0
@@ -223,6 +236,7 @@ def place_result(result):
                 elif markov_selection:
                     strategy_used = 'Model+Markov'
 
+            # Place bet if conditions are met
             if bet_selection and not (st.session_state.smart_skip_enabled and confidence < smart_skip_threshold):
                 bet_amount = calculate_bet_amount(bet_selection)
                 if bet_amount <= st.session_state.bankroll:
@@ -248,6 +262,7 @@ def place_result(result):
                 st.session_state.pending_bet = None
                 st.session_state.advice = f"Skip betting (low confidence or no matching strategy: Model {model_confidence:.1f}% ({predicted_outcome}), LB6 {lb6_confidence:.1f}% ({sixth_prior}), Markov {markov_confidence:.1f}% ({markov_selection if markov_selection else 'N/A'})"
 
+        # Resolve pending bet
         if st.session_state.pending_bet and result in ['P', 'B']:
             bet_amount, bet_selection = st.session_state.pending_bet
             st.session_state.bet_history.append({
@@ -327,6 +342,7 @@ def place_result(result):
                         st.session_state.flatbet_levelup_level = max(1, st.session_state.flatbet_levelup_level - 1)
             st.session_state.pending_bet = None
 
+        # Check stop loss and target profit
         stop_loss = st.session_state.initial_bankroll * (1 - st.session_state.stop_loss_percentage)
         target_profit = None
         if st.session_state.target_profit_option == 'Profit %' and st.session_state.target_profit_percentage > 0:
@@ -353,6 +369,7 @@ def place_result(result):
         st.error(f"Error processing result: {str(e)}")
 
 def render_session_setup():
+    """Render UI for setting up a new session."""
     with st.expander("Session Setup", expanded=st.session_state.bankroll == 0):
         try:
             bankroll = st.number_input("Bankroll ($)", min_value=0.0, step=10.0, value=1000.0)
@@ -412,6 +429,7 @@ def render_session_setup():
             st.error(f"Error setting up session: {str(e)}")
 
 def render_result_input():
+    """Render UI for inputting game results."""
     with st.expander("Result Input", expanded=True):
         try:
             col1, col2, col3, col4 = st.columns(4)
@@ -457,6 +475,7 @@ def render_result_input():
             st.error(f"Error processing input: {str(e)}")
 
 def render_prediction():
+    """Render prediction details and betting advice."""
     with st.expander("Prediction", expanded=True):
         try:
             if st.session_state.bankroll == 0:
@@ -473,6 +492,7 @@ def render_prediction():
                         unsafe_allow_html=True
                     )
                 else:
+                    # Random Forest prediction
                     prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
                     encoded_input = st.session_state.le.transform(prediction_sequence)
                     input_array = np.array([encoded_input])
@@ -481,6 +501,7 @@ def render_prediction():
                     predicted_outcome = st.session_state.le.inverse_transform([predicted_class])[0]
                     model_confidence = np.max(prediction_probs) * 100
 
+                    # Look-Back 6 (LB6) strategy
                     lb6_selection = None
                     lb6_confidence = 0
                     sixth_prior = 'N/A'
@@ -491,6 +512,7 @@ def render_prediction():
                         if lb6_confidence > 40 and sixth_prior == predicted_outcome:
                             lb6_selection = sixth_prior
 
+                    # Markov model
                     markov_selection = None
                     markov_confidence = 0
                     last_outcome = valid_sequence[-1]
@@ -515,10 +537,12 @@ def render_prediction():
                             markov_selection = 'B'
                             markov_confidence = prob_b_to_b * 100
 
+                    # Streak detection
                     is_streak = len(valid_sequence) >= 4 and len(set(valid_sequence[-4:])) == 1
                     confidence_threshold = 45 if is_streak else 50
                     smart_skip_threshold = 55 if is_streak else 60
 
+                    # Combine strategies
                     strategy_used = None
                     bet_selection = None
                     confidence = 0.0
@@ -534,6 +558,7 @@ def render_prediction():
                         elif markov_selection:
                             strategy_used = 'Model+Markov'
 
+                    # Display prediction
                     prediction_color = '#3182ce' if predicted_outcome == 'P' else '#e53e3e' if predicted_outcome == 'B' else '#2d3748'
                     st.markdown(
                         f"<div style='background-color: #edf2f7; padding: 15px; border-radius: 8px; margin-bottom: 10px;'>"
@@ -547,6 +572,7 @@ def render_prediction():
                         unsafe_allow_html=True
                     )
 
+                    # Display advice
                     text_color = '#2d3748'
                     if 'Bet' in st.session_state.advice and ' on P ' in st.session_state.advice:
                         text_color = '#3182ce'
@@ -559,6 +585,7 @@ def render_prediction():
                         unsafe_allow_html=True
                     )
 
+                    # Debug info for skipped bets
                     if 'Skip betting' in st.session_state.advice:
                         st.markdown(
                             f"**Debug Info**: Model: {model_confidence:.1f}% ({predicted_outcome}), "
@@ -571,6 +598,7 @@ def render_prediction():
             st.error(f"Error rendering prediction: {str(e)}")
 
 def render_status():
+    """Render session status, including bankroll and strategy details."""
     with st.expander("Session Status", expanded=True):
         try:
             col1, col2 = st.columns(2)
@@ -582,7 +610,7 @@ def render_status():
                 target_profit_display = []
                 if st.session_state.target_profit_option == 'Profit %' and st.session_state.target_profit_percentage > 0:
                     target_profit_display.append(f"{st.session_state.target_profit_percentage*100:.0f}%")
-                elif st sessione_state.target_profit_option == 'Units' and st.session_state.target_profit_units > 0:
+                elif st.session_state.target_profit_option == 'Units' and st.session_state.target_profit_units > 0:
                     target_profit_display.append(f"${st.session_state.target_profit_units:.2f}")
                 st.markdown(f"**Target Profit**: {'None' if not target_profit_display else ', '.join(target_profit_display)}")
             with col2:
@@ -615,6 +643,7 @@ def render_status():
             st.error(f"Error rendering status: {str(e)}")
 
 def render_bead_plate():
+    """Render the bead plate visualization of game results."""
     with st.expander("Bead Plate"):
         try:
             if not st.session_state.sequence:
@@ -689,6 +718,7 @@ def render_bead_plate():
             st.error(f"Error rendering bead plate: {str(e)}")
 
 def render_history():
+    """Render the bet history table with debug info."""
     with st.expander("Bet History"):
         try:
             if st.session_state.bet_history:
@@ -702,9 +732,11 @@ def render_history():
             st.error(f"Error rendering history: {str(e)}")
 
 def track_user_session():
+    """Placeholder for user session tracking."""
     return 1
 
 def main():
+    """Main function to run the Streamlit app."""
     st.set_page_config(page_title="Baccarat Betting Assistant", layout="wide")
     st.title("Baccarat Betting Assistant")
     initialize_session_state()
