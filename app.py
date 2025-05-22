@@ -55,7 +55,7 @@ GRID = [
     [0, 0, 1, 2, 4, 8, 15, 15, 30]
 ]
 GRID_MINIMUM_BANKROLL_MULTIPLIER = max(max(row) for row in GRID) * 5
-MONEY_MANAGEMENT_STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon", "FourTier", "FlatbetLevelUp", "Grid"]
+MONEY_MANAGEMENT_STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon", "FourTier", "FlatbetLevelUp", "Grid", "OscarGrind"]
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -284,7 +284,9 @@ def initialize_session_state():
         'flatbet_levelup_net_loss': 0.0,
         'safety_net_percentage': 0.02,
         'smart_skip_enabled': False,
-        'grid_pos': [0, 0]
+        'grid_pos': [0, 0],
+        'oscar_cycle_profit': 0.0,
+        'oscar_current_bet_level': 1
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -344,7 +346,9 @@ def reset_session():
         'four_tier_losses': 0,
         'flatbet_levelup_level': 1,
         'flatbet_levelup_net_loss': 0.0,
-        'grid_pos': [0, 0]
+        'grid_pos': [0, 0],
+        'oscar_cycle_profit': 0.0,
+        'oscar_current_bet_level': 1
     })
 
 # --- Betting and Prediction Logic ---
@@ -368,6 +372,8 @@ def calculate_bet_amount(bet_selection: str) -> float:
             return st.session_state.base_bet * FLATBET_LEVELUP_TABLE[st.session_state.flatbet_levelup_level]
         elif st.session_state.money_management == 'Grid':
             return st.session_state.base_bet * GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]]
+        elif st.session_state.money_management == 'OscarGrind':
+            return st.session_state.base_bet * st.session_state.oscar_current_bet_level
         return 0.0
     except:
         return 0.0
@@ -427,7 +433,9 @@ def place_result(result: str):
             'transition_counts': st.session_state.transition_counts.copy(),
             'pending_bet': st.session_state.pending_bet,
             'shoe_completed': st.session_state.shoe_completed,
-            'grid_pos': st.session_state.grid_pos.copy()
+            'grid_pos': st.session_state.grid_pos.copy(),
+            'oscar_cycle_profit': st.session_state.oscar_cycle_profit,
+            'oscar_current_bet_level': st.session_state.oscar_current_bet_level
         }
 
         # Update transition counts
@@ -446,13 +454,19 @@ def place_result(result: str):
             st.session_state.bets_placed += 1
             if result == bet_selection:
                 if bet_selection == 'B':
-                    st.session_state.bankroll += bet_amount * 0.95
+                    winnings = bet_amount * 0.95
+                    st.session_state.bankroll += winnings
                     if st.session_state.money_management == 'FlatbetLevelUp':
-                        st.session_state.flatbet_levelup_net_loss += (bet_amount * 0.95) / st.session_state.base_bet
+                        st.session_state.flatbet_levelup_net_loss += winnings / st.session_state.base_bet
+                    elif st.session_state.money_management == 'OscarGrind':
+                        st.session_state.oscar_cycle_profit += winnings
                 else:
-                    st.session_state.bankroll += bet_amount
+                    winnings = bet_amount
+                    st.session_state.bankroll += winnings
                     if st.session_state.money_management == 'FlatbetLevelUp':
-                        st.session_state.flatbet_levelup_net_loss += bet_amount / st.session_state.base_bet
+                        st.session_state.flatbet_levelup_net_loss += winnings / st.session_state.base_bet
+                    elif st.session_state.money_management == 'OscarGrind':
+                        st.session_state.oscar_cycle_profit += winnings
                 st.session_state.bets_won += 1
                 bet_outcome = 'win'
                 if not (st.session_state.shoe_completed and st.session_state.safety_net_enabled):
@@ -494,10 +508,22 @@ def place_result(result: str):
                                 st.session_state.grid_pos[0] += 1
                         if GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]] == 0:
                             st.session_state.grid_pos = [0, 0]
+                    elif st.session_state.money_management == 'OscarGrind':
+                        if st.session_state.oscar_cycle_profit >= st.session_state.base_bet:
+                            st.session_state.oscar_current_bet_level = 1
+                            st.session_state.oscar_cycle_profit = 0.0
+                        else:
+                            next_bet_level = st.session_state.oscar_current_bet_level + 1
+                            potential_winnings = st.session_state.base_bet * next_bet_level * (0.95 if bet_selection == 'B' else 1.0)
+                            if st.session_state.oscar_cycle_profit + potential_winnings > st.session_state.base_bet:
+                                next_bet_level = max(1, int((st.session_state.base_bet - st.session_state.oscar_cycle_profit) / (st.session_state.base_bet * (0.95 if bet_selection == 'B' else 1.0)) + 0.99))
+                            st.session_state.oscar_current_bet_level = next_bet_level
             else:
                 st.session_state.bankroll -= bet_amount
                 if st.session_state.money_management == 'FlatbetLevelUp':
                     st.session_state.flatbet_levelup_net_loss -= bet_amount / st.session_state.base_bet
+                elif st.session_state.money_management == 'OscarGrind':
+                    st.session_state.oscar_cycle_profit -= bet_amount
                 bet_outcome = 'loss'
                 if not (st.session_state.shoe_completed and st.session_state.safety_net_enabled):
                     if st.session_state.money_management == 'T3':
@@ -535,6 +561,8 @@ def place_result(result: str):
                             st.session_state.grid_pos = [0, 0]
                         if GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]] == 0:
                             st.session_state.grid_pos = [0, 0]
+                    elif st.session_state.money_management == 'OscarGrind':
+                        pass  # Bet level stays the same after a loss
             if st.session_state.money_management == 'T3' and len(st.session_state.t3_results) == 3:
                 wins = st.session_state.t3_results.count('W')
                 losses = st.session_state.t3_results.count('L')
@@ -563,6 +591,8 @@ def place_result(result: str):
             "FlatbetLevelUp_Level": st.session_state.flatbet_levelup_level if st.session_state.money_management == 'FlatbetLevelUp' else "-",
             "FlatbetLevelUp_Net_Loss": round(st.session_state.flatbet_levelup_net_loss, 2) if st.session_state.money_management == 'FlatbetLevelUp' else "-",
             "Grid_Pos": f"({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})" if st.session_state.money_management == 'Grid' else "-",
+            "Oscar_Bet_Level": st.session_state.oscar_current_bet_level if st.session_state.money_management == 'OscarGrind' else "-",
+            "Oscar_Cycle_Profit": round(st.session_state.oscar_cycle_profit, 2) if st.session_state.money_management == 'OscarGrind' else "-",
             "Money_Management": st.session_state.money_management,
             "Safety_Net": "On" if st.session_state.safety_net_enabled else "Off",
             "Previous_State": previous_state
@@ -616,6 +646,8 @@ def place_result(result: str):
                     strategy_info += f" Level {st.session_state.flatbet_levelup_level} Net Loss {st.session_state.flatbet_levelup_net_loss:.2f}"
                 elif st.session_state.money_management == 'Grid':
                     strategy_info += f" Grid ({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
+                elif st.session_state.money_management == 'OscarGrind':
+                    strategy_info += f" Bet Level {st.session_state.oscar_current_bet_level} Cycle Profit ${st.session_state.oscar_cycle_profit:.2f}"
                 st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {strategy_used}: {confidence:.1f}%)"
             else:
                 st.session_state.pending_bet = None
@@ -639,7 +671,7 @@ def render_setup_form():
                     "Strategy",
                     MONEY_MANAGEMENT_STRATEGIES,
                     index=MONEY_MANAGEMENT_STRATEGIES.index(st.session_state.money_management) if st.session_state.money_management in MONEY_MANAGEMENT_STRATEGIES else 0,
-                    help="T3 adjusts bet levels, Flatbet is constant, Parlay16 escalates on wins, Moon increases on losses, FourTier uses tiered steps, FlatbetLevelUp adjusts on net loss, Grid uses a matrix (right on win, down on loss)."
+                    help="T3 adjusts bet levels, Flatbet is constant, Parlay16 escalates on wins, Moon increases on losses, FourTier uses tiered steps, FlatbetLevelUp adjusts on net loss, Grid uses a matrix (right on win, down on loss), OscarGrind increases bet after wins to achieve 1-unit profit per cycle."
                 )
             with col2:
                 target_mode = st.selectbox("Target Mode", ["Profit %", "Units"], index=["Profit %", "Units"].index(st.session_state.target_profit_option) if st.session_state.target_profit_option in ["Profit %", "Units"] else 0)
@@ -668,6 +700,8 @@ def render_setup_form():
                     minimum_bankroll = base_bet * FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER
                 elif money_management == 'Grid':
                     minimum_bankroll = base_bet * GRID_MINIMUM_BANKROLL_MULTIPLIER
+                elif money_management == 'OscarGrind':
+                    minimum_bankroll = base_bet * 10  # Conservative estimate for potential losing streaks
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
                 elif base_bet < 0.10:
@@ -686,6 +720,8 @@ def render_setup_form():
                     st.error(f"Flatbet LevelUp requires a minimum bankroll of ${minimum_bankroll:.2f}.")
                 elif money_management == 'Grid' and bankroll < minimum_bankroll:
                     st.error(f"Grid requires a minimum bankroll of ${minimum_bankroll:.2f}.")
+                elif money_management == 'OscarGrind' and bankroll < minimum_bankroll:
+                    st.error(f"OscarGrind requires a minimum bankroll of ${minimum_bankroll:.2f}.")
                 else:
                     target_profit_percentage = target_value_percentage / 100 if target_mode == "Profit %" else 0.0
                     target_profit_units = target_value_units if target_mode == "Units" else 0.0
@@ -726,7 +762,9 @@ def render_setup_form():
                         'four_tier_losses': 0,
                         'flatbet_levelup_level': 1,
                         'flatbet_levelup_net_loss': 0.0,
-                        'grid_pos': [0, 0]
+                        'grid_pos': [0, 0],
+                        'oscar_cycle_profit': 0.0,
+                        'oscar_current_bet_level': 1
                     })
                     st.success(f"Session started with {money_management} strategy!")
 
@@ -815,6 +853,8 @@ def render_result_input():
                                 strategy_info += f" Level {st.session_state.flatbet_levelup_level} Net Loss {st.session_state.flatbet_levelup_net_loss:.2f}"
                             elif st.session_state.money_management == 'Grid':
                                 strategy_info += f" Grid ({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
+                            elif st.session_state.money_management == 'OscarGrind':
+                                strategy_info += f" Bet Level {st.session_state.oscar_current_bet_level} Cycle Profit ${st.session_state.oscar_cycle_profit:.2f}"
                             st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {strategy_used}: {confidence:.1f}%)"
                         else:
                             st.session_state.pending_bet = None
@@ -893,6 +933,8 @@ def render_status():
                 strategy_status += f"<br>**FlatbetLevelUp Level**: {st.session_state.flatbet_levelup_level}<br>**Net Loss**: {st.session_state.flatbet_levelup_net_loss:.2f}"
             elif st.session_state.money_management == 'Grid':
                 strategy_status += f"<br>**Grid Position**: ({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
+            elif st.session_state.money_management == 'OscarGrind':
+                strategy_status += f"<br>**OscarGrind Bet Level**: {st.session_state.oscar_current_bet_level}<br>**Cycle Profit**: ${st.session_state.oscar_cycle_profit:.2f}"
             st.markdown(strategy_status, unsafe_allow_html=True)
             st.markdown(f"**Bets Placed**: {st.session_state.bets_placed}")
             st.markdown(f"**Bets Won**: {st.session_state.bets_won}")
@@ -931,6 +973,8 @@ def render_history():
                     "FlatbetLevelUp_Level": h["FlatbetLevelUp_Level"],
                     "FlatbetLevelUp_Net_Loss": h["FlatbetLevelUp_Net_Loss"],
                     "Grid_Pos": h["Grid_Pos"],
+                    "Oscar_Bet_Level": h["Oscar_Bet_Level"],
+                    "Oscar_Cycle_Profit": h["Oscar_Cycle_Profit"],
                     "Safety_Net": h["Safety_Net"]
                 }
                 for h in st.session_state.bet_history[-n:]
