@@ -292,6 +292,7 @@ def initialize_session_state():
         't3_level': 1,
         't3_results': [],
         'money_management': 'T3',
+        'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
         'stop_loss_percentage': STOP_LOSS_DEFAULT,
         'win_limit': WIN_LIMIT,
         'shoe_completed': False,
@@ -351,6 +352,7 @@ def reset_session():
         't3_level': 1,
         't3_results': [],
         'money_management': setup_values['money_management'],
+        'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
         'stop_loss_percentage': setup_values['stop_loss_percentage'],
         'win_limit': setup_values['win_limit'],
         'shoe_completed': False,
@@ -454,10 +456,18 @@ def place_result(result: str):
             'flatbet_levelup_net_loss': st.session_state.flatbet_levelup_net_loss,
             'bets_placed': st.session_state.bets_placed,
             'bets_won': st.session_state.bets_won,
+            'transition_counts': st.session_state.transition_counts.copy(),
             'pending_bet': st.session_state.pending_bet,
             'shoe_completed': st.session_state.shoe_completed,
             'grid_pos': st.session_state.grid_pos.copy()
         }
+
+        # Update transition counts
+        if len(st.session_state.sequence) >= 1 and result in ['P', 'B']:
+            prev_result = st.session_state.sequence[-1]
+            if prev_result in ['P', 'B']:
+                transition = f"{prev_result}{result}"
+                st.session_state.transition_counts[transition] += 1
 
         # Resolve pending bet
         bet_amount = 0
@@ -721,6 +731,7 @@ def render_setup_form():
                         't3_level': 1,
                         't3_results': [],
                         'money_management': money_management,
+                        'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
                         'stop_loss_percentage': stop_loss_percentage / 100,
                         'win_limit': profit_lock_threshold / 100,
                         'shoe_completed': False,
@@ -730,7 +741,7 @@ def render_setup_form():
                         'advice': f"Need {SEQUENCE_LENGTH} results",
                         'parlay_step': 1,
                         'parlay_wins': 0,
-                        'parを選ぶlay_using_base': True,
+                        'parlay_using_base': True,
                         'parlay_step_changes': 0,
                         'parlay_peak_step': 1,
                         'moon_level': 1,
@@ -789,6 +800,9 @@ def render_result_input():
                             else:
                                 st.session_state.bankroll -= last_bet["Bet_Amount"]
                             st.session_state.bets_won -= 1
+                    if len(st.session_state.sequence) >= 1 and last_bet["Result"] in ['P', 'B'] and st.session_state.sequence[-1] in ['P', 'B']:
+                        transition = f"{st.session_state.sequence[-1]}{last_bet['Result']}"
+                        st.session_state.transition_counts[transition] = max(0, st.session_state.transition_counts[transition] - 1)
                     valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
                     if len(valid_sequence) < SEQUENCE_LENGTH:
                         st.session_state.pending_bet = None
@@ -908,6 +922,19 @@ def render_status():
             st.markdown(f"**Bets Placed**: {st.session_state.bets_placed}")
             st.markdown(f"**Bets Won**: {st.session_state.bets_won}")
             st.markdown(f"**Online Users**: {track_user_session()}")
+            # Transition probabilities
+            total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
+            total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
+            prob_p_to_p = (st.session_state.transition_counts['PP'] / total_from_p * 100) if total_from_p > 0 else 0.0
+            prob_p_to_b = (st.session_state.transition_counts['PB'] / total_from_p * 100) if total_from_p > 0 else 0.0
+            prob_b_to_p = (st.session_state.transition_counts['BP'] / total_from_b * 100) if total_from_b > 0 else 0.0
+            prob_b_to_b = (st.session_state.transition_counts['BB'] / total_from_b * 100) if total_from_b > 0 else 0.0
+            st.markdown(
+                f"**Transition Probabilities**:<br>"
+                f"P→P: {prob_p_to_p:.1f}%, P→B: {prob_p_to_b:.1f}%<br>"
+                f"B→P: {prob_b_to_p:.1f}%, B→B: {prob_b_to_b:.1f}%",
+                unsafe_allow_html=True
+            )
 
 def render_history():
     with st.expander("Bet History", expanded=True):
