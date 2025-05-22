@@ -16,7 +16,7 @@ SHOE_SIZE = 100
 GRID_ROWS = 6
 GRID_COLS = 16
 HISTORY_LIMIT = 1000
-SEQUENCE_LENGTH = 6
+SEQUENCE_LENGTH = 3  # Changed from 6 to 3
 STOP_LOSS_DEFAULT = 0.8
 WIN_LIMIT = 1.5
 PARLAY_TABLE = {
@@ -252,7 +252,7 @@ def generate_baccarat_data(num_games=10000):
     outcomes = ['P', 'B']
     return [random.choice(outcomes) for _ in range(num_games)]
 
-def prepare_data(outcomes, sequence_length=6):
+def prepare_data(outcomes, sequence_length=3):  # Updated to sequence_length=3
     try:
         le = LabelEncoder()
         encoded_outcomes = le.fit_transform(outcomes)
@@ -297,7 +297,7 @@ def initialize_session_state():
         'win_limit': WIN_LIMIT,
         'shoe_completed': False,
         'safety_net_enabled': True,
-        'advice': f"Need {SEQUENCE_LENGTH} results",
+        'advice': f"Need 5 more Player or Banker results",  # Updated advice
         'parlay_step': 1,
         'parlay_wins': 0,
         'parlay_using_base': True,
@@ -359,7 +359,7 @@ def reset_session():
         'safety_net_enabled': setup_values['safety_net_enabled'],
         'safety_net_percentage': setup_values['safety_net_percentage'],
         'smart_skip_enabled': setup_values['smart_skip_enabled'],
-        'advice': f"Need {SEQUENCE_LENGTH} results",
+        'advice': f"Need 5 more Player or Banker results",  # Updated advice
         'parlay_step': 1,
         'parlay_wins': 0,
         'parlay_using_base': True,
@@ -604,12 +604,12 @@ def place_result(result: str):
 
         # Prediction logic
         valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
-        if len(valid_sequence) < SEQUENCE_LENGTH:
+        if len(valid_sequence) < 3:  # Updated to 3
             st.session_state.pending_bet = None
-            st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
-        elif len(valid_sequence) >= SEQUENCE_LENGTH and result in ['P', 'B']:
+            st.session_state.advice = f"Need 5 more Player or Banker results"  # Updated advice
+        elif len(valid_sequence) >= 3 and result in ['P', 'B']:  # Updated to 3
             # Model prediction
-            prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
+            prediction_sequence = valid_sequence[-3:]  # Updated to last 3
             encoded_input = st.session_state.le.transform(prediction_sequence)
             input_array = np.array([encoded_input])
             prediction_probs = st.session_state.model.predict_proba(input_array)[0]
@@ -763,7 +763,7 @@ def render_setup_form():
                         'safety_net_enabled': safety_net_enabled,
                         'safety_net_percentage': safety_net_percentage / 100,
                         'smart_skip_enabled': smart_skip_enabled,
-                        'advice': f"Need {SEQUENCE_LENGTH} results",
+                        'advice': f"Need 5 more Player or Banker results",  # Updated advice
                         'parlay_step': 1,
                         'parlay_wins': 0,
                         'parlay_using_base': True,
@@ -829,12 +829,12 @@ def render_result_input():
                         transition = f"{st.session_state.sequence[-1]}{last_bet['Result']}"
                         st.session_state.transition_counts[transition] = max(0, st.session_state.transition_counts[transition] - 1)
                     valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
-                    if len(valid_sequence) < SEQUENCE_LENGTH:
+                    if len(valid_sequence) < 3:  # Updated to 3
                         st.session_state.pending_bet = None
-                        st.session_state.advice = f"Need {SEQUENCE_LENGTH - len(valid_sequence)} more Player or Banker results"
+                        st.session_state.advice = f"Need 5 more Player or Banker results"  # Updated advice
                     else:
                         # Model prediction
-                        prediction_sequence = valid_sequence[-SEQUENCE_LENGTH:]
+                        prediction_sequence = valid_sequence[-3:]  # Updated to last 3
                         encoded_input = st.session_state.le.transform(prediction_sequence)
                         input_array = np.array([encoded_input])
                         prediction_probs = st.session_state.model.predict_proba(input_array)[0]
