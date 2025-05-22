@@ -17,7 +17,7 @@ GRID_ROWS = 6
 GRID_COLS = 16
 HISTORY_LIMIT = 1000
 SEQUENCE_LENGTH = 3
-STOP_LOSS_DEFAULT = 0.8
+STOP_LOSS_DEFAULT = 1.0  # Updated to 100%
 WIN_LIMIT = 1.5
 PARLAY_TABLE = {
     i: {'base': b, 'parlay': p} for i, (b, p) in enumerate([
@@ -293,11 +293,12 @@ def initialize_session_state():
         't3_results': [],
         'money_management': 'T3',
         'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
-        'stop_loss_percentage': STOP_LOSS_DEFAULT,
+        'stop_loss_percentage': STOP_LOSS_DEFAULT,  # 1.0 (100%)
+        'stop_loss_enabled': True,  # Added
         'win_limit': WIN_LIMIT,
         'shoe_completed': False,
         'safety_net_enabled': True,
-        'advice': "Need 3 more Player or Banker results",  # Updated advice
+        'advice': "Need 3 more Player or Banker results",
         'parlay_step': 1,
         'parlay_wins': 0,
         'parlay_using_base': True,
@@ -329,6 +330,7 @@ def reset_session():
         'initial_bankroll': st.session_state.initial_bankroll,
         'money_management': st.session_state.money_management,
         'stop_loss_percentage': st.session_state.stop_loss_percentage,
+        'stop_loss_enabled': st.session_state.stop_loss_enabled,  # Added
         'safety_net_enabled': st.session_state.safety_net_enabled,
         'safety_net_percentage': st.session_state.safety_net_percentage,
         'smart_skip_enabled': st.session_state.smart_skip_enabled,
@@ -354,12 +356,13 @@ def reset_session():
         'money_management': setup_values['money_management'],
         'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
         'stop_loss_percentage': setup_values['stop_loss_percentage'],
+        'stop_loss_enabled': setup_values['stop_loss_enabled'],  # Added
         'win_limit': setup_values['win_limit'],
         'shoe_completed': False,
         'safety_net_enabled': setup_values['safety_net_enabled'],
         'safety_net_percentage': setup_values['safety_net_percentage'],
         'smart_skip_enabled': setup_values['smart_skip_enabled'],
-        'advice': "Need 3 more Player or Banker results",  # Updated advice
+        'advice': "Need 3 more Player or Banker results",
         'parlay_step': 1,
         'parlay_wins': 0,
         'parlay_using_base': True,
@@ -408,11 +411,12 @@ def calculate_bet_amount(bet_selection: str) -> float:
 def place_result(result: str):
     try:
         # Check limits
-        stop_loss_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.stop_loss_percentage
-        if stop_loss_triggered and not st.session_state.safety_net_enabled:
-            reset_session()
-            st.warning(f"Stop-loss triggered at {st.session_state.stop_loss_percentage*100:.0f}% of initial bankroll. Game reset.")
-            return
+        if st.session_state.stop_loss_enabled:  # Added condition
+            stop_loss_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.stop_loss_percentage
+            if stop_loss_triggered and not st.session_state.safety_net_enabled:
+                reset_session()
+                st.warning(f"Stop-loss triggered at {st.session_state.stop_loss_percentage*100:.0f}% of initial bankroll. Game reset.")
+                return
 
         safety_net_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.safety_net_percentage
         if safety_net_triggered and st.session_state.safety_net_enabled:
@@ -606,7 +610,7 @@ def place_result(result: str):
         valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
         if len(valid_sequence) < 3:
             st.session_state.pending_bet = None
-            st.session_state.advice = "Need 3 more Player or Banker results"  # Updated advice
+            st.session_state.advice = "Need 3 more Player or Banker results"
         elif len(valid_sequence) >= 3 and result in ['P', 'B']:
             # Model prediction
             prediction_sequence = valid_sequence[-3:]
@@ -708,7 +712,7 @@ def render_setup_form():
             safety_net_enabled = st.checkbox("Enable Safety Net", value=True)
             safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled)
             stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=True)
-            stop_loss_percentage = st.number_input("Stop-Loss Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100 or 10.00, step=0.1, disabled=not stop_loss_enabled)
+            stop_loss_percentage = st.number_input("Stop-Loss Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100 or 100.00, step=0.1, disabled=not stop_loss_enabled)
             profit_lock_threshold = st.number_input("Profit Lock Threshold (% of Initial Bankroll)", min_value=100.0, max_value=1000.0, value=st.session_state.win_limit * 100 or 600.00, step=1.0)
             smart_skip_enabled = st.checkbox("Enable Smart Skip", value=False)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -727,7 +731,7 @@ def render_setup_form():
                     st.error("Base bet must be at least $0.10.")
                 elif base_bet > bankroll * 0.05:
                     st.error("Base bet cannot exceed 5% of bankroll.")
-                elif stop_loss_percentage <= 0 or stop_loss_percentage >= 100:
+                elif stop_loss_enabled and (stop_loss_percentage < 0 or stop_loss_percentage > 100):  # Updated validation
                     st.error("Stop-loss percentage must be between 0% and 100%.")
                 elif safety_net_percentage < 0 or safety_net_percentage >= 100:
                     st.error("Safety net percentage must be between 0% and 100%.")
@@ -758,12 +762,13 @@ def render_setup_form():
                         'money_management': money_management,
                         'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
                         'stop_loss_percentage': stop_loss_percentage / 100,
+                        'stop_loss_enabled': stop_loss_enabled,  # Added
                         'win_limit': profit_lock_threshold / 100,
                         'shoe_completed': False,
                         'safety_net_enabled': safety_net_enabled,
                         'safety_net_percentage': safety_net_percentage / 100,
                         'smart_skip_enabled': smart_skip_enabled,
-                        'advice': "Need 3 more Player or Banker results",  # Updated advice
+                        'advice': "Need 3 more Player or Banker results",
                         'parlay_step': 1,
                         'parlay_wins': 0,
                         'parlay_using_base': True,
@@ -831,7 +836,7 @@ def render_result_input():
                     valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
                     if len(valid_sequence) < 3:
                         st.session_state.pending_bet = None
-                        st.session_state.advice = "Need 3 more Player or Banker results"  # Updated advice
+                        st.session_state.advice = "Need 3 more Player or Banker results"
                     else:
                         # Model prediction
                         prediction_sequence = valid_sequence[-3:]
@@ -944,7 +949,7 @@ def render_status():
             st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
             st.markdown(f"**Current Profit**: ${st.session_state.bankroll - st.session_state.initial_bankroll:.2f}")
             st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
-            st.markdown(f"**Stop Loss**: {st.session_state.stop_loss_percentage*100:.0f}%")
+            st.markdown(f"**Stop Loss**: {'Enabled' if st.session_state.stop_loss_enabled else 'Disabled'}, {st.session_state.stop_loss_percentage*100:.0f}%")  # Updated display
             target_profit_display = []
             if st.session_state.target_profit_option == 'Profit %' and st.session_state.target_profit_percentage > 0:
                 target_profit_display.append(f"{st.session_state.target_profit_percentage*100:.0f}%")
