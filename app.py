@@ -51,8 +51,20 @@ h1 {
     background-color: #e2e8f0;
     color: #a0aec0;
 }
-.stButton>button[key="result_btn"] {
+.stButton>button[key="win_btn"] {
     background-color: #3182ce;
+}
+.stButton>button[key="loss_btn"] {
+    background-color: #e53e3e;
+}
+.stButton>button[key="loss_btn"]:hover {
+    background-color: #c53030;
+}
+.stButton>button[key="tie_btn"] {
+    background-color: #38a169;
+}
+.stButton>button[key="tie_btn"]:hover {
+    background-color: #2f855a;
 }
 .stButton>button[key="undo_btn"] {
     background-color: #a0aec0;
@@ -337,7 +349,7 @@ def place_result(result: str, is_win: bool):
             bet_amount = st.session_state.pending_bet
             st.session_state.bets_placed += 1
             if is_win:
-                winnings = bet_amount * 0.975  # Average payout (0.95 for Banker, 1.0 for Player)
+                winnings = bet_amount * 0.975  # Average payout
                 st.session_state.bankroll += winnings
                 if st.session_state.money_management == 'FlatbetLevelUp':
                     st.session_state.flatbet_levelup_net_loss += winnings / st.session_state.base_bet
@@ -659,10 +671,6 @@ def render_result_input():
                     st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
                 st.success("Undone last action.")
                 st.rerun()
-        if st.session_state.shoe_completed and st.button("Reset and Start New Shoe", key="new_shoe_btn"):
-            reset_session()
-            st.session_state.shoe_completed = False
-            st.rerun()
 
 def render_prediction():
     with st.expander("Prediction", expanded=True):
@@ -767,7 +775,6 @@ def render_bead_plate():
             st.markdown(html, unsafe_allow_html=True)
 
 def main():
-    st.set_page_config(layout="wide", page_title="Baccarat Simulation")
     st.title("Baccarat Simulation")
     initialize_session_state()
     render_setup_form()
@@ -778,4 +785,5 @@ def main():
     render_bead_plate()
 
 if __name__ == "__main__":
+    st.set_page_config(layout="wide", page_title="Baccarat Simulation")
     main()
