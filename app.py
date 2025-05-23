@@ -552,7 +552,7 @@ def render_setup_form():
         with st.form("setup_form"):
             bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll or 1233.00, step=10.0)
             st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
-            st.markdown('<h3><span class="icon">🎯</span>Safety & Limits</h3>', unsafe_allow_html=True)
+            st.markdown('<h3><span class="icon">ð��¯</span>Safety & Limits</h3>', unsafe_allow_html=True)
             safety_net_enabled = st.checkbox("Enable Safety Net", value=True)
             safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled)
             stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=True)
