@@ -9,28 +9,28 @@ import random
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
-SHOE_SIZE = 80  # Updated to match aibet
+SHOE_SIZE = 80
 GRID_ROWS = 6
 GRID_COLS = 16
-HISTORY_LIMIT = 50  # Updated to match aibet
+HISTORY_LIMIT = 50
 SEQUENCE_LENGTH = 6
-STOP_LOSS_DEFAULT = 0.0  # Updated to match aibet
-WIN_LIMIT = 6.0  # Updated to match aibet
-PARLAY_SEQUENCE = [1, 1, 1, 2, 3, 4, 6, 8, 12, 16, 22, 30, 40, 52, 70, 95]  # From aibet
-FOUR_TIER_BETTING = {1: [1, 1], 2: [2, 2], 3: [5, 5], 4: [10, 10]}  # From aibet
-FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER = 50  # From aibet
-FLATBET_LEVELUP_BETTING = {1: 1, 2: 2, 3: 3, 4: 5, 5: 10}  # From aibet
-FLATBET_LEVELUP_THRESHOLDS = {1: -10, 2: -20, 3: -30, 4: -50, 5: -100}  # From aibet
-FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER = 50  # From aibet
-GRID_MINIMUM_BANKROLL_MULTIPLIER = 50  # From aibet
+STOP_LOSS_DEFAULT = 0.0
+WIN_LIMIT = 6.0
+PARLAY_SEQUENCE = [1, 1, 1, 2, 3, 4, 6, 8, 12, 16, 22, 30, 40, 52, 70, 95]
+FOUR_TIER_BETTING = {1: [1, 1], 2: [2, 2], 3: [5, 5], 4: [10, 10]}
+FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER = 50
+FLATBET_LEVELUP_BETTING = {1: 1, 2: 2, 3: 3, 4: 5, 5: 10}
+FLATBET_LEVELUP_THRESHOLDS = {1: -10, 2: -20, 3: -30, 4: -50, 5: -100}
+FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER = 50
+GRID_MINIMUM_BANKROLL_MULTIPLIER = 50
 GRID = [
     [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 0],
     [2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0],
     [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 0],
     [4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 0],
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-]  # From aibet
-MONEY_MANAGEMENT_STRATEGIES = ['T3', 'Flatbet', 'Parlay16', 'Moon', 'FourTier', 'FlatbetLevelUp', 'Grid', 'OscarGrind']  # Updated to include all from aibet
+]
+MONEY_MANAGEMENT_STRATEGIES = ['T3', 'Flatbet', 'Parlay16', 'Moon', 'FourTier', 'FlatbetLevelUp', 'Grid', 'OscarGrind']
 
 # --- CSS for Professional Styling ---
 def apply_custom_css():
@@ -224,8 +224,7 @@ def initialize_session_state():
         'four_tier_step': 1,
         'four_tier_losses': 0,
         'flatbet_levelup_level': 1,
-        'flatbet_levelup_net elaborar
-net_loss': 0.0,
+        'flatbet_levelup_net_loss': 0.0,
         'grid_pos': [0, 0],
         'oscar_cycle_profit': 0.0,
         'oscar_current_bet_level': 1
@@ -233,7 +232,6 @@ net_loss': 0.0,
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
-    # Initialize model and label encoder (for compatibility, though not used)
     if 'model' not in st.session_state or 'le' not in st.session_state:
         st.session_state.model, st.session_state.le = None, None
 
@@ -569,7 +567,7 @@ def place_result(result: str):
         if len(st.session_state.bet_history) > HISTORY_LIMIT:
             st.session_state.bet_history = st.session_state.bet_history[-HISTORY_LIMIT:]
 
-        # AI-driven bet selection from aibet
+        # AI-driven bet selection
         if result in ['P', 'B']:
             valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']][-6:]
             p_count = valid_sequence.count('P')
@@ -641,7 +639,7 @@ def render_setup_form():
                     target_value_percentage = 0.0
 
             st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
-            st.markdown('<h3><span class="icon">ðŸ›¡</span>Safety & Limits</h3>', unsafe_allow_html=True)
+            st.markdown('<h3><span class="icon">🛡</span>Safety & Limits</h3>', unsafe_allow_html=True)
             safety_net_enabled = st.checkbox("Enable Safety Net", value=True)
             safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled)
             stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=True)
@@ -655,7 +653,7 @@ def render_setup_form():
                     FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER,
                     FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER,
                     GRID_MINIMUM_BANKROLL_MULTIPLIER,
-                    10  # OscarGrind
+                    10
                 ]) * base_bet
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
