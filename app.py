@@ -14,11 +14,13 @@ PARLAY_SEQUENCE = [1, 1, 1, 2, 3, 4, 6, 8, 12, 16, 22, 30, 40, 52, 70, 95]
 FOUR_TIER_BETTING = {1: [1, 1], 2: [2, 2], 3: [5, 5], 4: [10, 10]}
 FLATBET_LEVELUP_BETTING = {1: 1, 2: 2, 3: 3, 4: 5, 5: 10}
 FLATBET_LEVELUP_THRESHOLDS = {1: -10, 2: -20, 3: -30, 4: -50, 5: -100}
-GRID = [[1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 0],
-        [2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0],
-        [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 0],
-        [4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
+GRID = [
+    [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 0],
+    [2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0],
+    [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 0],
+    [4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
 
 # CSS Styling
 st.markdown("""
@@ -552,7 +554,7 @@ def render_setup_form():
         with st.form("setup_form"):
             bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll or 1233.00, step=10.0)
             st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
-            st.markdown('<h3><span class="icon">ð��¯</span>Safety & Limits</h3>', unsafe_allow_html=True)
+            st.markdown('<h3><span class="icon">ðŸ›¡</span>Safety & Limits</h3>', unsafe_allow_html=True)
             safety_net_enabled = st.checkbox("Enable Safety Net", value=True)
             safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled)
             stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=True)
@@ -655,71 +657,75 @@ def render_result_input():
                                 st.session_state.bankroll -= last_bet["Bet_Amount"]
                             st.session_state.bets_won -= 1
                     valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']][-6:]
-                    p_count = valid_sequence.count('P')
-                    total = len(valid_sequence)
-                    p_prob = p_count / total if total > 0 else 0.5
-                    b_prob = 1 - p_prob
-                    if len(valid_sequence) >= 3 and len(set(valid_sequence[-3:])) == 1:
-                        if valid_sequence[-1] == 'P':
-                            p_prob += 0.2
-                            b_prob -= 0.2
-                        else:
-                            b_prob += 0.2
-                            p_prob -= 0.2
-                    p_prob = max(0, min(1, p_prob + random.uniform(-0.1, 0.1)))
-                    b_prob = 1 - p_prob
-                    bet_selection = 'P' if random.random() < p_prob else 'B'
-                    rationale = f"AI Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
-                    if len(valid_sequence) >= 3 and len(set(valid_sequence[-3:])) == 1:
-                        rationale += f", Streak of {valid_sequence[-1]}"
-                    st.session_state.base_bet = max(0.10, min(st.session_state.bankroll * 0.05, st.session_state.bankroll * 0.01))
-                    min_bankroll_requirements = {
-                        'FourTier': FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER,
-                        'FlatbetLevelUp': FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER,
-                        'Grid': GRID_MINIMUM_BANKROLL_MULTIPLIER,
-                        'OscarGrind': 10,
-                        'T3': 5,
-                        'Parlay16': 95,
-                        'Moon': 10,
-                        'Flatbet': 1
-                    }
-                    for strategy, multiplier in min_bankroll_requirements.items():
-                        if st.session_state.bankroll < st.session_state.base_bet * multiplier:
-                            if st.session_state.money_management == strategy:
-                                st.session_state.money_management = 'Flatbet'
-                    profit_ratio = (st.session_state.bankroll - st.session_state.initial_bankroll) / st.session_state.initial_bankroll if st.session_state.initial_bankroll > 0 else 0
-                    shoe_progress = len(st.session_state.sequence) / SHOE_SIZE
-                    if shoe_progress > 0.75 and st.session_state.safety_net_enabled:
-                        st.session_state.money_management = 'Flatbet'
-                    elif abs(profit_ratio) < 0.1:
-                        st.session_state.money_management = 'Flatbet' if random.random() < 0.5 else 'OscarGrind'
-                    else:
-                        aggressive_strategies = ['T3', 'Parlay16', 'Moon']
-                        st.session_state.money_management = random.choice(aggressive_strategies)
-                    bet_amount = calculate_bet_amount(bet_selection)
-                    if bet_amount <= st.session_state.bankroll:
-                        st.session_state.pending_bet = (bet_amount, bet_selection)
-                        strategy_info = f"{st.session_state.money_management}"
-                        if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
-                            strategy_info = "Safety Net (Flatbet)"
-                        elif st.session_state.money_management == 'T3':
-                            strategy_info += f" Level {st.session_state.t3_level}"
-                        elif st.session_state.money_management == 'Parlay16':
-                            strategy_info += f" Step {st.session_state.parlay_step}/16"
-                        elif st.session_state.money_management == 'Moon':
-                            strategy_info += f" Level {st.session_state.moon_level}"
-                        elif st.session_state.money_management == 'FourTier':
-                            strategy_info += f" Level {st.session_state.four_tier_level} Step {st.session_state.four_tier_step}"
-                        elif st.session_state.money_management == 'FlatbetLevelUp':
-                            strategy_info += f" Level {st.session_state.flatbet_levelup_level} Net Loss {st.session_state.flatbet_levelup_net_loss:.2f}"
-                        elif st.session_state.money_management == 'Grid':
-                            strategy_info += f" Grid ({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
-                        elif st.session_state.money_management == 'OscarGrind':
-                            strategy_info += f" Bet Level {st.session_state.oscar_current_bet_level} Cycle Profit ${st.session_state.oscar_cycle_profit:.2f}"
-                        st.session_state.advice = f"AI Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {rationale})"
-                    else:
+                    if not valid_sequence:
                         st.session_state.pending_bet = None
-                        st.session_state.advice = f"AI Skipped betting (bet ${bet_amount:.2f} exceeds bankroll)"
+                        st.session_state.advice = "Enter a result to start AI betting"
+                    else:
+                        p_count = valid_sequence.count('P')
+                        total = len(valid_sequence)
+                        p_prob = p_count / total if total > 0 else 0.5
+                        b_prob = 1 - p_prob
+                        if len(valid_sequence) >= 3 and len(set(valid_sequence[-3:])) == 1:
+                            if valid_sequence[-1] == 'P':
+                                p_prob += 0.2
+                                b_prob -= 0.2
+                            else:
+                                b_prob += 0.2
+                                p_prob -= 0.2
+                        p_prob = max(0, min(1, p_prob + random.uniform(-0.1, 0.1)))
+                        b_prob = 1 - p_prob
+                        bet_selection = 'P' if random.random() < p_prob else 'B'
+                        rationale = f"AI Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
+                        if len(valid_sequence) >= 3 and len(set(valid_sequence[-3:])) == 1:
+                            rationale += f", Streak of {valid_sequence[-1]}"
+                        st.session_state.base_bet = max(0.10, min(st.session_state.bankroll * 0.05, st.session_state.bankroll * 0.01))
+                        min_bankroll_requirements = {
+                            'FourTier': FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER,
+                            'FlatbetLevelUp': FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER,
+                            'Grid': GRID_MINIMUM_BANKROLL_MULTIPLIER,
+                            'OscarGrind': 10,
+                            'T3': 5,
+                            'Parlay16': 95,
+                            'Moon': 10,
+                            'Flatbet': 1
+                        }
+                        for strategy, multiplier in min_bankroll_requirements.items():
+                            if st.session_state.bankroll < st.session_state.base_bet * multiplier:
+                                if st.session_state.money_management == strategy:
+                                    st.session_state.money_management = 'Flatbet'
+                        profit_ratio = (st.session_state.bankroll - st.session_state.initial_bankroll) / st.session_state.initial_bankroll if st.session_state.initial_bankroll > 0 else 0
+                        shoe_progress = len(st.session_state.sequence) / SHOE_SIZE
+                        if shoe_progress > 0.75 and st.session_state.safety_net_enabled:
+                            st.session_state.money_management = 'Flatbet'
+                        elif abs(profit_ratio) < 0.1:
+                            st.session_state.money_management = 'Flatbet' if random.random() < 0.5 else 'OscarGrind'
+                        else:
+                            aggressive_strategies = ['T3', 'Parlay16', 'Moon']
+                            st.session_state.money_management = random.choice(aggressive_strategies)
+                        bet_amount = calculate_bet_amount(bet_selection)
+                        if bet_amount <= st.session_state.bankroll:
+                            st.session_state.pending_bet = (bet_amount, bet_selection)
+                            strategy_info = f"{st.session_state.money_management}"
+                            if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
+                                strategy_info = "Safety Net (Flatbet)"
+                            elif st.session_state.money_management == 'T3':
+                                strategy_info += f" Level {st.session_state.t3_level}"
+                            elif st.session_state.money_management == 'Parlay16':
+                                strategy_info += f" Step {st.session_state.parlay_step}/16"
+                            elif st.session_state.money_management == 'Moon':
+                                strategy_info += f" Level {st.session_state.moon_level}"
+                            elif st.session_state.money_management == 'FourTier':
+                                strategy_info += f" Level {st.session_state.four_tier_level} Step {st.session_state.four_tier_step}"
+                            elif st.session_state.money_management == 'FlatbetLevelUp':
+                                strategy_info += f" Level {st.session_state.flatbet_levelup_level} Net Loss {st.session_state.flatbet_levelup_net_loss:.2f}"
+                            elif st.session_state.money_management == 'Grid':
+                                strategy_info += f" Grid ({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
+                            elif st.session_state.money_management == 'OscarGrind':
+                                strategy_info += f" Bet Level {st.session_state.oscar_current_bet_level} Cycle Profit ${st.session_state.oscar_cycle_profit:.2f}"
+                            st.session_state.advice = f"AI Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {rationale})"
+                        else:
+                            st.session_state.pending_bet = None
+                            st.session_state.advice = f"AI Skipped betting (bet ${bet_amount:.2f} exceeds bankroll)"
                     st.success("Undone last action.")
                     st.rerun()
         if st.session_state.shoe_completed and st.button("Reset and Start New Shoe", key="new_shoe_btn"):
