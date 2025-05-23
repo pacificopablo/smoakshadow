@@ -278,23 +278,6 @@ def place_result(result: str):
                 st.success(f"Target profit reached: ${current_profit:.2f} (Target: ${st.session_state.target_profit_units:.2f}). Game reset.")
                 return
 
-        # AI-driven base bet adjustment
-        min_bankroll_requirements = {
-            'FourTier': FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER,
-            'FlatbetLevelUp': FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER,
-            'Grid': GRID_MINIMUM_BANKROLL_MULTIPLIER,
-            'OscarGrind': 10,
-            'T3': 5,
-            'Parlay16': 95,
-            'Moon': 10,
-            'Flatbet': 1
-        }
-        st.session_state.base_bet = max(0.10, min(st.session_state.bankroll * 0.05, st.session_state.bankroll * 0.01))
-        for strategy, multiplier in min_bankroll_requirements.items():
-            if st.session_state.bankroll < st.session_state.base_bet * multiplier:
-                if st.session_state.money_management == strategy:
-                    st.session_state.money_management = 'Flatbet'
-
         # AI-driven strategy selection
         profit_ratio = current_profit / st.session_state.initial_bankroll if st.session_state.initial_bankroll > 0 else 0
         shoe_progress = len(st.session_state.sequence) / SHOE_SIZE
@@ -547,6 +530,7 @@ def render_sidebar():
         st.header("Session Setup")
         with st.form("setup_form"):
             bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll or 1233.00, step=10.0)
+            base_bet = st.number_input("Base Bet ($)", min_value=0.0, value=st.session_state.base_bet or 10.00, step=0.10)
             st.subheader("Safety & Limits 🛡️")
             safety_net_enabled = st.checkbox("Enable Safety Net", value=True)
             safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled)
@@ -555,12 +539,12 @@ def render_sidebar():
             profit_lock_threshold = st.number_input("Profit Lock Threshold (% of Initial Bankroll)", min_value=100.0, max_value=1000.0, value=st.session_state.win_limit * 100 or 600.00, step=1.0)
             smart_skip_enabled = st.checkbox("Enable Smart Skip", value=False)
             if st.form_submit_button("Start Session"):
-                base_bet = max(0.10, min(bankroll * 0.05, bankroll * 0.01))
-                min_bankroll = base_bet * max([FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER, FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER, GRID_MINIMUM_BANKROLL_MULTIPLIER, 10])
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
-                elif bankroll < min_bankroll:
-                    st.error(f"Bankroll must be at least ${min_bankroll:.2f} for AI strategies.")
+                elif base_bet <= 0:
+                    st.error("Base bet must be positive.")
+                elif base_bet > bankroll:
+                    st.error("Base bet cannot exceed bankroll.")
                 elif stop_loss_percentage < 0 or stop_loss_percentage > 100:
                     st.error("Stop-loss percentage must be between 0% and 100%.")
                 elif safety_net_percentage < 0 or safety_net_percentage >= 100:
@@ -673,30 +657,6 @@ def render_result_input():
                     rationale = f"AI Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
                     if len(valid_sequence) >= 3 and len(set(valid_sequence[-3:])) == 1:
                         rationale += f", Streak of {valid_sequence[-1]}"
-                    st.session_state.base_bet = max(0.10, min(st.session_state.bankroll * 0.05, st.session_state.bankroll * 0.01))
-                    min_bankroll_requirements = {
-                        'FourTier': FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER,
-                        'FlatbetLevelUp': FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER,
-                        'Grid': GRID_MINIMUM_BANKROLL_MULTIPLIER,
-                        'OscarGrind': 10,
-                        'T3': 5,
-                        'Parlay16': 95,
-                        'Moon': 10,
-                        'Flatbet': 1
-                    }
-                    for strategy, multiplier in min_bankroll_requirements.items():
-                        if st.session_state.bankroll < st.session_state.base_bet * multiplier:
-                            if st.session_state.money_management == strategy:
-                                st.session_state.money_management = 'Flatbet'
-                    profit_ratio = (st.session_state.bankroll - st.session_state.initial_bankroll) / st.session_state.initial_bankroll if st.session_state.initial_bankroll > 0 else 0
-                    shoe_progress = len(st.session_state.sequence) / SHOE_SIZE
-                    if shoe_progress > 0.75 and st.session_state.safety_net_enabled:
-                        st.session_state.money_management = 'Flatbet'
-                    elif abs(profit_ratio) < 0.1:
-                        st.session_state.money_management = 'Flatbet' if random.random() < 0.5 else 'OscarGrind'
-                    else:
-                        aggressive_strategies = ['T3', 'Parlay16', 'Moon']
-                        st.session_state.money_management = random.choice(aggressive_strategies)
                     bet_amount = calculate_bet_amount(bet_selection)
                     if bet_amount <= st.session_state.bankroll:
                         st.session_state.pending_bet = (bet_amount, bet_selection)
