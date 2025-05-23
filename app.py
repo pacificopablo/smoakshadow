@@ -371,17 +371,6 @@ def place_result(result: str):
                 if st.session_state.money_management == strategy:
                     st.session_state.money_management = 'Flatbet'
 
-        # AI-driven strategy selection
-        profit_ratio = current_profit / st.session_state.initial_bankroll if st.session_state.initial_bankroll > 0 else 0
-        shoe_progress = len(st.session_state.sequence) / SHOE_SIZE
-        if shoe_progress > 0.75 and st.session_state.safety_net_enabled:
-            st.session_state.money_management = 'Flatbet'
-        elif abs(profit_ratio) < 0.1:
-            st.session_state.money_management = 'Flatbet' if random.random() < 0.5 else 'OscarGrind'
-        else:
-            aggressive_strategies = ['T3', 'Parlay16', 'Moon']
-            st.session_state.money_management = random.choice(aggressive_strategies)
-
         # Save previous state for undo
         previous_state = {
             'bankroll': st.session_state.bankroll,
@@ -782,15 +771,6 @@ def render_result_input():
                         if st.session_state.bankroll < st.session_state.base_bet * multiplier:
                             if st.session_state.money_management == strategy:
                                 st.session_state.money_management = 'Flatbet'
-                    profit_ratio = (st.session_state.bankroll - st.session_state.initial_bankroll) / st.session_state.initial_bankroll if st.session_state.initial_bankroll > 0 else 0
-                    shoe_progress = len(st.session_state.sequence) / SHOE_SIZE
-                    if shoe_progress > 0.75 and st.session_state.safety_net_enabled:
-                        st.session_state.money_management = 'Flatbet'
-                    elif abs(profit_ratio) < 0.1:
-                        st.session_state.money_management = 'Flatbet' if random.random() < 0.5 else 'OscarGrind'
-                    else:
-                        aggressive_strategies = ['T3', 'Parlay16', 'Moon']
-                        st.session_state.money_management = random.choice(aggressive_strategies)
                     bet_amount = calculate_bet_amount(bet_selection)
                     if bet_amount <= st.session_state.bankroll:
                         st.session_state.pending_bet = (bet_amount, bet_selection)
@@ -823,23 +803,11 @@ def render_bead_plate():
         if not st.session_state.sequence:
             st.write("No results yet.")
         else:
-            bead_plate = []
-            row = []
-            for i, result in enumerate(st.session_state.sequence):
-                if i % 6 == 0 and i != 0:
-                    bead_plate.append(row)
-                    row = []
+            html = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">'
+            for result in st.session_state.sequence:
                 color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
-                row.append(f'<div style="width:30px; height:30px; background-color:{color}; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">{result}</div>')
-            if row:
-                bead_plate.append(row + [''] * (6 - len(row)))
-            html = '<table style="border-collapse:collapse;">'
-            for row in bead_plate:
-                html += '<tr>'
-                for cell in row:
-                    html += f'<td style="padding:5px;">{cell}</td>'
-                html += '</tr>'
-            html += '</table>'
+                html += f'<span style="color:{color}; font-weight:bold; font-size:1.2rem;">{result}</span>'
+            html += '</div>'
             st.markdown(html, unsafe_allow_html=True)
 
 def render_prediction():
