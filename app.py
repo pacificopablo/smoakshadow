@@ -125,7 +125,8 @@ h1 {
 def initialize_session_state():
     defaults = {
         'bankroll': 0.0,
-        'base_bet': 0.0,
+        'user_base_bet': 0.0,  # Store user-specified base bet
+        'base_bet': 0.0,      # Dynamically adjusted base bet
         'initial_bankroll': 0.0,
         'sequence': [],
         'bet_history': [],
@@ -170,7 +171,8 @@ def initialize_session_state():
 def reset_session():
     setup_values = {
         'bankroll': st.session_state.bankroll,
-        'base_bet': st.session_state.base_bet,
+        'user_base_bet': st.session_state.user_base_bet,
+        'base_bet': st.session_state.user_base_bet,  # Reset to user-specified base bet
         'initial_bankroll': st.session_state.initial_bankroll,
         'stop_loss_percentage': st.session_state.stop_loss_percentage,
         'stop_loss_enabled': st.session_state.stop_loss_enabled,
@@ -185,6 +187,7 @@ def reset_session():
     initialize_session_state()
     st.session_state.update({
         'bankroll': setup_values['bankroll'],
+        'user_base_bet': setup_values['user_base_bet'],
         'base_bet': setup_values['base_bet'],
         'initial_bankroll': setup_values['initial_bankroll'],
         'sequence': [],
@@ -260,6 +263,7 @@ def place_result(result: str):
         if safety_net_triggered and st.session_state.safety_net_enabled:
             reset_session()
             st.info(f"Safety net triggered at {st.session_state.safety_net_percentage*100:.0f}%. Game reset to base bet.")
+            return
         
         if st.session_state.bankroll >= st.session_state.initial_bankroll * st.session_state.win_limit:
             reset_session()
@@ -278,6 +282,31 @@ def place_result(result: str):
                 st.success(f"Target profit reached: ${current_profit:.2f} (Target: ${st.session_state.target_profit_units:.2f}). Game reset.")
                 return
 
+        # Dynamic base bet adjustment based on user-specified base bet
+        min_bankroll_requirements = {
+            'FourTier': FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER,
+            'FlatbetLevelUp': FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER,
+            'Grid': GRID_MINIMUM_BANKROLL_MULTIPLIER,
+            'OscarGrind': 10,
+            'T3': 5,
+            'Parlay16': 95,
+            'Moon': 10,
+            'Flatbet': 1
+        }
+        multiplier = 1.0  # Default multiplier
+        for strategy, min_multiplier in min_bankroll_requirements.items():
+            required_bankroll = st.session_state.user_base_bet * min_multiplier
+            if st.session_state.bankroll < required_bankroll:
+                if st.session_state.money_management == strategy:
+                    st.session_state.money_management = 'Flatbet'
+                    multiplier = min(multiplier, st.session_state.bankroll / (st.session_state.user_base_bet * min_bankroll_requirements['Flatbet']))
+            else:
+                # Scale multiplier based on bankroll availability
+                multiplier = min(multiplier, st.session_state.bankroll / required_bankroll)
+        # Ensure multiplier is at least 0.1 to avoid zero bets, and cap at 2.0 to prevent excessive scaling
+        multiplier = max(0.1, min(2.0, multiplier))
+        st.session_state.base_bet = st.session_state.user_base_bet * multiplier
+
         # AI-driven strategy selection
         profit_ratio = current_profit / st.session_state.initial_bankroll if st.session_state.initial_bankroll > 0 else 0
         shoe_progress = len(st.session_state.sequence) / SHOE_SIZE
@@ -293,6 +322,7 @@ def place_result(result: str):
         previous_state = {
             'bankroll': st.session_state.bankroll,
             'base_bet': st.session_state.base_bet,
+            'user_base_bet': st.session_state.user_base_bet,
             't3_level': st.session_state.t3_level,
             't3_results': st.session_state.t3_results.copy(),
             'parlay_step': st.session_state.parlay_step,
@@ -313,6 +343,7 @@ def place_result(result: str):
             'pending_bet': st.session_state.pending_bet,
             'shoe_completed': st.session_state.shoe_completed,
             'grid_pos': st.session_state.grid_pos.copy(),
+            cast
             'oscar_cycle_profit': st.session_state.oscar_cycle_profit,
             'oscar_current_bet_level': st.session_state.oscar_current_bet_level,
             'money_management': st.session_state.money_management
@@ -530,7 +561,7 @@ def render_sidebar():
         st.header("Session Setup")
         with st.form("setup_form"):
             bankroll = st.number_input("Bankroll ($)", min_value=0.0, value=st.session_state.bankroll or 1233.00, step=10.0)
-            base_bet = st.number_input("Base Bet ($)", min_value=0.0, value=st.session_state.base_bet or 10.00, step=0.10)
+            user_base_bet = st.number_input("Base Bet ($)", min_value=0.0, value=st.session_state.user_base_bet or 10.00, step=0.10)
             st.subheader("Safety & Limits 🛡️")
             safety_net_enabled = st.checkbox("Enable Safety Net", value=True)
             safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled)
@@ -541,9 +572,9 @@ def render_sidebar():
             if st.form_submit_button("Start Session"):
                 if bankroll <= 0:
                     st.error("Bankroll must be positive.")
-                elif base_bet <= 0:
+                elif user_base_bet <= 0:
                     st.error("Base bet must be positive.")
-                elif base_bet > bankroll:
+                elif user_base_bet > bankroll:
                     st.error("Base bet cannot exceed bankroll.")
                 elif stop_loss_percentage < 0 or stop_loss_percentage > 100:
                     st.error("Stop-loss percentage must be between 0% and 100%.")
@@ -554,7 +585,8 @@ def render_sidebar():
                 else:
                     st.session_state.update({
                         'bankroll': bankroll,
-                        'base_bet': base_bet,
+                        'user_base_bet': user_base_bet,
+                        'base_bet': user_base_bet,  # Initialize with user-specified base bet
                         'initial_bankroll': bankroll,
                         'sequence': [],
                         'bet_history': [],
@@ -657,6 +689,38 @@ def render_result_input():
                     rationale = f"AI Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
                     if len(valid_sequence) >= 3 and len(set(valid_sequence[-3:])) == 1:
                         rationale += f", Streak of {valid_sequence[-1]}"
+                    # Recompute dynamic base bet for the restored state
+                    min_bankroll_requirements = {
+                        'FourTier': FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER,
+                        'FlatbetLevelUp': FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER,
+                        'Grid': GRID_MINIMUM_BANKROLL_MULTIPLIER,
+                        'OscarGrind': 10,
+                        'T3': 5,
+                        'Parlay16': 95,
+                        'Moon': 10,
+                        'Flatbet': 1
+                    }
+                    multiplier = 1.0
+                    for strategy, min_multiplier in min_bankroll_requirements.items():
+                        required_bankroll = st.session_state.user_base_bet * min_multiplier
+                        if st.session_state.bankroll < required_bankroll:
+                            if st.session_state.money_management == strategy:
+                                st.session_state.money_management = 'Flatbet'
+                                multiplier = min(multiplier, st.session_state.bankroll / (st.session_state.user_base_bet * min_bankroll_requirements['Flatbet']))
+                        else:
+                            multiplier = min(multiplier, st.session_state.bankroll / required_bankroll)
+                    multiplier = max(0.1, min(2.0, multiplier))
+                    st.session_state.base_bet = st.session_state.user_base_bet * multiplier
+                    # AI-driven strategy selection
+                    profit_ratio = (st.session_state.bankroll - st.session_state.initial_bankroll) / st.session_state.initial_bankroll if st.session_state.initial_bankroll > 0 else 0
+                    shoe_progress = len(st.session_state.sequence) / SHOE_SIZE
+                    if shoe_progress > 0.75 and st.session_state.safety_net_enabled:
+                        st.session_state.money_management = 'Flatbet'
+                    elif abs(profit_ratio) < 0.1:
+                        st.session_state.money_management = 'Flatbet' if random.random() < 0.5 else 'OscarGrind'
+                    else:
+                        aggressive_strategies = ['T3', 'Parlay16', 'Moon']
+                        st.session_state.money_management = random.choice(aggressive_strategies)
                     bet_amount = calculate_bet_amount(bet_selection)
                     if bet_amount <= st.session_state.bankroll:
                         st.session_state.pending_bet = (bet_amount, bet_selection)
@@ -734,7 +798,8 @@ def render_status():
     with col1:
         st.markdown(f"**Bankroll**: ${st.session_state.bankroll:.2f}")
         st.markdown(f"**Current Profit**: ${st.session_state.bankroll - st.session_state.initial_bankroll:.2f}")
-        st.markdown(f"**Base Bet**: ${st.session_state.base_bet:.2f}")
+        st.markdown(f"**User Base Bet**: ${st.session_state.user_base_bet:.2f}")
+        st.markdown(f"**Adjusted Base Bet**: ${st.session_state.base_bet:.2f}")
         st.markdown(f"**Stop Loss**: {'Enabled' if st.session_state.stop_loss_enabled else 'Disabled'}, {st.session_state.stop_loss_percentage*100:.0f}%")
         target_profit_display = []
         if st.session_state.target_profit_option == 'Profit %' and st.session_state.target_profit_percentage > 0:
