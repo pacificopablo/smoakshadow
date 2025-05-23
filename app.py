@@ -355,7 +355,7 @@ def place_result(result: str):
                 st.success(f"Target profit reached: ${current_profit:.2f} (Target: ${st.session_state.target_profit_units:.2f}). Game reset.")
                 return
 
-        # AI-driven base bet adjustment
+        # Check bankroll requirements for strategies
         min_bankroll_requirements = {
             'FourTier': FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER,
             'FlatbetLevelUp': FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER,
@@ -366,7 +366,6 @@ def place_result(result: str):
             'Moon': 10,
             'Flatbet': 1
         }
-        st.session_state.base_bet = max(0.10, min(st.session_state.bankroll * 0.05, st.session_state.bankroll * 0.01))
         for strategy, multiplier in min_bankroll_requirements.items():
             if st.session_state.bankroll < st.session_state.base_bet * multiplier:
                 if st.session_state.money_management == strategy:
@@ -769,7 +768,6 @@ def render_result_input():
                     rationale = f"AI Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
                     if streak:
                         rationale += f", Streak of {valid_sequence[-1]}"
-                    st.session_state.base_bet = max(0.10, min(st.session_state.bankroll * 0.05, st.session_state.bankroll * 0.01))
                     min_bankroll_requirements = {
                         'FourTier': FOUR_TIER_MINIMUM_BANKROLL_MULTIPLIER,
                         'FlatbetLevelUp': FLATBET_LEVELUP_MINIMUM_BANKROLL_MULTIPLIER,
