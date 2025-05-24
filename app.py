@@ -769,7 +769,7 @@ def render_setup_form():
                     target_value_percentage = 0.0
 
             st.markdown('<div class="target-profit-section">', unsafe_allow_html=True)
-            st.markdown('<h3><span class="icon">ð��¯</span>Safety & Limits</h3>', unsafe_allow_html=True)
+            st.markdown('<h3><span class="icon">🔒</span>Safety & Limits</h3>', unsafe_allow_html=True)
             safety_net_enabled = st.checkbox("Enable Safety Net", value=True)
             safety_net_percentage = st.number_input("Safety Net Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.safety_net_percentage * 100 or 2.00, step=0.1, disabled=not safety_net_enabled)
             stop_loss_enabled = st.checkbox("Enable Stop-Loss", value=True)
@@ -867,7 +867,7 @@ def render_result_input():
             st.success(f"Shoe of {SHOE_SIZE} hands completed or limits reached!")
         elif st.session_state.shoe_completed and st.session_state.safety_net_enabled:
             st.info("Continuing with safety net at base bet.")
-        cols = st.columns(5)
+        cols = st.columns(4)
         with cols[0]:
             if st.button("Player", key="player_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
                 place_result("P")
@@ -966,10 +966,10 @@ def render_result_input():
                             st.session_state.advice = f"Skip betting (AI predicts {ml_predicted_outcome} {ml_confidence*100:.1f}%, sequence predicts {seq_predicted_outcome}, transition predicts {trans_predicted_outcome})"
                     st.success("Undone last action.")
                     st.rerun()
-        with cols[4]:
-            if st.button("Run AI Simulation", key="simulate_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
-                st.session_state.ai_mode = True
-                run_simulation()
+        if st.session_state.shoe_completed and st.button("Reset and Start New Shoe", key="new_shoe_btn"):
+            reset_session()
+            st.session_state.shoe_completed = False
+            st.rerun()
 
 def render_bead_plate():
     with st.expander("Bead Plate", expanded=True):
@@ -1055,8 +1055,8 @@ def render_status():
             prob_b_to_b = (st.session_state.transition_counts['BB'] / total_from_b * 100) if total_from_b > 0 else 0.0
             st.markdown(
                 f"**Transition Probabilities**:<br>"
-                f"Pâ��P: {prob_p_to_p:.1f}%, Pâ��B: {prob_p_to_b:.1f}%<br>"
-                f"Bâ��P: {prob_b_to_p:.1f}%, Bâ��B: {prob_b_to_b:.1f}%",
+                f"P→P: {prob_p_to_p:.1f}%, P→B: {prob_p_to_b:.1f}%<br>"
+                f"B→P: {prob_b_to_p:.1f}%, B→B: {prob_b_to_b:.1f}%",
                 unsafe_allow_html=True
             )
 
