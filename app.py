@@ -1,10 +1,17 @@
+import streamlit as st
 import random
 import logging
-import streamlit as st
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, filename='app.log', filemode='a',
                     format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Constants
+BET_SEQUENCE = [1, 1, 2, 3, 5, 8]
+HISTORY_LIMIT = 100
+SHOE_SIZE = 80
+GRID = [[1, 2, 3], [2, 3, 4], [3, 4, 5]]
+FLATBET_LEVELUP_THRESHOLDS = {1: -10, 2: -15, 3: -20, 4: -25}
 
 def reset_session():
     """Reset session state to initial values."""
@@ -56,10 +63,10 @@ def calculate_bet_amount(bet_selection):
         elif st.session_state.money_management == 'FlatbetLevelUp':
             return base_bet * st.session_state.flatbet_levelup_level
         elif st.session_state.money_management == 'Grid':
-            return base_bet * st.session_state.GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]]
+            return base_bet * GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]]
         elif st.session_state.money_management == 'OscarGrind':
             return base_bet * st.session_state.oscar_current_bet_level
-        return base_bet  # Default to base bet
+        return base_bet
     except Exception as e:
         logging.error(f"Error in calculate_bet_amount: {str(e)}")
         return st.session_state.base_bet
@@ -207,11 +214,11 @@ def place_result(result: str):
                         pass
                     elif st.session_state.money_management == 'Grid':
                         st.session_state.grid_pos[1] += 1
-                        if st.session_state.grid_pos[1] >= len(st.session_state.GRID[0]):
+                        if st.session_state.grid_pos[1] >= len(GRID[0]):
                             st.session_state.grid_pos[1] = 0
-                            if st.session_state.grid_pos[0] < len(st.session_state.GRID) - 1:
+                            if st.session_state.grid_pos[0] < len(GRID) - 1:
                                 st.session_state.grid_pos[0] += 1
-                        if st.session_state.GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]] == 0:
+                        if GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]] == 0:
                             st.session_state.grid_pos = [0, 0]
                     elif st.session_state.money_management == 'OscarGrind':
                         if st.session_state.oscar_cycle_profit >= st.session_state.base_bet:
@@ -257,14 +264,14 @@ def place_result(result: str):
                             st.session_state.four_tier_losses = 0
                     elif st.session_state.money_management == 'FlatbetLevelUp':
                         current_level = st.session_state.flatbet_levelup_level
-                        if current_level < 5 and st.session_state.flatbet_levelup_net_loss <= st.session_state.FLATBET_LEVELUP_THRESHOLDS[current_level]:
+                        if current_level < 5 and st.session_state.flatbet_levelup_net_loss <= FLATBET_LEVELUP_THRESHOLDS[current_level]:
                             st.session_state.flatbet_levelup_level = min(st.session_state.flatbet_levelup_level + 1, 5)
                             st.session_state.flatbet_levelup_net_loss = 0.0
                     elif st.session_state.money_management == 'Grid':
                         st.session_state.grid_pos[0] += 1
-                        if st.session_state.grid_pos[0] >= len(st.session_state.GRID):
+                        if st.session_state.grid_pos[0] >= len(GRID):
                             st.session_state.grid_pos = [0, 0]
-                        if st.session_state.GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]] == 0:
+                        if GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]] == 0:
                             st.session_state.grid_pos = [0, 0]
                     elif st.session_state.money_management == 'OscarGrind':
                         pass
@@ -305,37 +312,65 @@ def place_result(result: str):
             "Grid_Pos": f"({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})" if st.session_state.money_management == 'Grid' else "-",
             "Oscar_Bet_Level": st.session_state.oscar_current_bet_level if st.session_state.money_management == 'OscarGrind' else "-",
             "Oscar_Cycle_Profit": round(st.session_state.oscar_cycle_profit, 2) if st.session_state.money_management == 'OscarGrind' else "-",
-            "Sequence_Bet_Index": st.session_state.sequence_bet_index % len(st.session_state.GRID) if st.session_state.sequence_bet_index > 0 or bet_outcome == 'win' else "-",
+            "Sequence_Bet_Index": st.session_state.sequence_bet_index % len(BET_SEQUENCE) if st.session_state.sequence_bet_index > 0 or bet_outcome == 'win' else "-",
             "Money_Management": st.session_state.money_management,
             "Safety_Net": "On" if st.session_state.safety_net_enabled else "Off",
             "Previous_State": previous_state
         })
-        if len(st.session_state.bet_history) > st.session_state.HISTORY_LIMIT:
-            st.session_state.bet_history = st.session_state.bet_history[-st.session_state.HISTORY_LIMIT:]
+        if len(st.session_state.bet_history) > HISTORY_LIMIT:
+            st.session_state.bet_history = st.session_state.bet_history[-HISTORY_LIMIT:]
 
-        # AI-driven bet selection
+        # New AI-driven bet selection
         logging.debug("Starting AI bet selection")
         if result in ['P', 'B']:
             valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']][-6:]
+            # Base probabilities from result counts
             p_count = valid_sequence.count('P')
             total = len(valid_sequence)
             p_prob = p_count / total if total > 0 else 0.5
             b_prob = 1 - p_prob
+            rationale = f"Base: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
+            
+            # Streak detection (3+ identical results)
             streak = False
             if len(valid_sequence) >= 3 and len(set(valid_sequence[-3:])) == 1:
                 streak = True
                 if valid_sequence[-1] == 'P':
-                    p_prob += 0.2
-                    b_prob -= 0.2
+                    p_prob += 0.25
+                    b_prob -= 0.25
+                    rationale += f", Streak of P"
                 else:
-                    b_prob += 0.2
-                    p_prob -= 0.2
-            p_prob = max(0, min(1, p_prob + random.uniform(-0.1, 0.1)))
+                    b_prob += 0.25
+                    p_prob -= 0.25
+                    rationale += f", Streak of B"
+            
+            # Bigram analysis (last two results)
+            if len(valid_sequence) >= 2:
+                last_bigram = valid_sequence[-2] + valid_sequence[-1]
+                bigram_counts = {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0}
+                for i in range(len(valid_sequence)-1):
+                    bigram = valid_sequence[i] + valid_sequence[i+1]
+                    if bigram in bigram_counts:
+                        bigram_counts[bigram] += 1
+                total_bigrams = sum(bigram_counts.values())
+                if total_bigrams > 0:
+                    if last_bigram == 'PP' or last_bigram == 'BP':
+                        p_follow_prob = (bigram_counts['PP'] + bigram_counts['BP']) / total_bigrams
+                        p_prob += 0.1 * p_follow_prob
+                        b_prob -= 0.1 * p_follow_prob
+                        rationale += f", Bigram favors P ({p_follow_prob*100:.0f}%)"
+                    elif last_bigram == 'PB' or last_bigram == 'BB':
+                        b_follow_prob = (bigram_counts['PB'] + bigram_counts['BB']) / total_bigrams
+                        b_prob += 0.1 * b_follow_prob
+                        p_prob -= 0.1 * b_follow_prob
+                        rationale += f", Bigram favors B ({b_follow_prob*100:.0f}%)"
+
+            # Add randomness and normalize
+            p_prob = max(0, min(1, p_prob + random.uniform(-0.15, 0.15)))
             b_prob = 1 - p_prob
+            rationale += f", Adjusted: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
+
             bet_selection = 'P' if random.random() < p_prob else 'B'
-            rationale = f"AI Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
-            if streak:
-                rationale += f", Streak of {valid_sequence[-1]}"
             bet_amount = calculate_bet_amount(bet_selection)
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
@@ -363,10 +398,65 @@ def place_result(result: str):
                 st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
                 logging.debug(f"Bet skipped: amount ${bet_amount:.2f} exceeds bankroll")
 
-        if len(st.session_state.sequence) >= st.session_state.SHOE_SIZE:
+        if len(st.session_state.sequence) >= SHOE_SIZE:
             reset_session()
-            st.success(f"Shoe of {st.session_state.SHOE_SIZE} hands completed. Game reset.")
+            st.success(f"Shoe of {SHOE_SIZE} hands completed. Game reset.")
             logging.info("Shoe completed")
     except Exception as e:
         st.error(f"Error processing result: {str(e)}")
         logging.error(f"Error in place_result: {str(e)}", exc_info=True)
+
+# Initialize session state
+if 'bankroll' not in st.session_state:
+    st.session_state.bankroll = 514.00
+    st.session_state.initial_bankroll = 514.00
+    st.session_state.base_bet = 5.00
+    st.session_state.stop_loss_enabled = True
+    st.session_state.stop_loss_percentage = 0.5
+    st.session_state.safety_net_enabled = True
+    st.session_state.safety_net_percentage = 0.25
+    st.session_state.win_limit = 2.0
+    st.session_state.target_profit_option = 'Profit %'
+    st.session_state.target_profit_percentage = 0.5
+    st.session_state.target_profit_units = 0
+    st.session_state.sequence = []
+    st.session_state.t3_level = 1
+    st.session_state.t3_results = []
+    st.session_state.parlay_step = 1
+    st.session_state.parlay_wins = 0
+    st.session_state.parlay_using_base = True
+    st.session_state.parlay_step_changes = 0
+    st.session_state.parlay_peak_step = 1
+    st.session_state.moon_level = 1
+    st.session_state.moon_level_changes = 0
+    st.session_state.moon_peak_level = 1
+    st.session_state.four_tier_level = 1
+    st.session_state.four_tier_step = 1
+    st.session_state.four_tier_losses = 0
+    st.session_state.flatbet_levelup_level = 1
+    st.session_state.flatbet_levelup_net_loss = 0.0
+    st.session_state.bets_placed = 0
+    st.session_state.bets_won = 0
+    st.session_state.transition_counts = {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0}
+    st.session_state.pending_bet = None
+    st.session_state.shoe_completed = False
+    st.session_state.grid_pos = [0, 0]
+    st.session_state.oscar_cycle_profit = 0.0
+    st.session_state.oscar_current_bet_level = 1
+    st.session_state.sequence_bet_index = 0
+    st.session_state.bet_history = []
+    st.session_state.money_management = 'T3'
+    st.session_state.advice = "Start by entering a result."
+
+# Minimal UI
+st.title("Mang Baccarat")
+st.write(f"Bankroll: ${st.session_state.bankroll:.2f}")
+col1, col2, col3 = st.columns(3)
+if col1.button("Player"):
+    place_result("P")
+if col2.button("Banker"):
+    place_result("B")
+if col3.button("Tie"):
+    place_result("T")
+st.write(f"Advice: {st.session_state.advice}")
+st.write(f"Bets Placed: {st.session_state.bets_placed}, Bets Won: {st.session_state.bets_won}")
