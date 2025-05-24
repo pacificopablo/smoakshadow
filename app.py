@@ -1,58 +1,34 @@
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
-import tensorflow as tf
-import numpy as np
 import random
+import logging
 
-# Define LSTM model (initialized once, stored in session state)
-def initialize_lstm_model():
-    if 'lstm_model' not in st.session_state:
-        try:
-            model = tf.keras.Sequential([
-                tf.keras.layers.LSTM(16, input_shape=(6, 2), return_sequences=False),  # Reduced from 32 units
-                tf.keras.layers.Dense(8, activation='relu'),  # Reduced from 16 units
-                tf.keras.layers.Dense(2, activation='softmax')  # Outputs probabilities for P and B
-            ])
-            model.compile(optimizer='adam', loss='categorical_crossentropy')
-            st.session_state.lstm_model = model
-            # Simulate training data (further reduced for CPU performance)
-            sequences, labels = [], []
-            for _ in range(200):  # Reduced from 500
-                shoe = simulate_shoe()
-                for i in range(len(shoe) - 6):
-                    seq = shoe[i:i+6]
-                    next_result = shoe[i+6] if i+6 < len(shoe) else None
-                    if next_result in ['P', 'B']:
-                        sequences.append([[1, 0] if r == 'P' else [0, 1] for r in seq])
-                        labels.append([1, 0] if next_result == 'P' else [0, 1])
-            if sequences:  # Ensure there’s data to train
-                X = np.array(sequences)
-                y = np.array(labels)
-                st.session_state.lstm_model.fit(X, y, epochs=3, batch_size=32, verbose=0)  # Reduced from 5
-            else:
-                st.warning("No training data generated for LSTM. Using fallback logic.")
-        except Exception as e:
-            st.error(f"Failed to initialize LSTM model: {str(e)}. Using fallback logic.")
-            st.session_state.lstm_model = None
+# Set up logging to debug blank page issues
+logging.basicConfig(level=logging.DEBUG, filename='app.log', filemode='a',
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 def place_result(result: str):
+    logging.debug(f"Entering place_result with result: {result}")
     try:
         # Check limits
+        logging.debug("Checking stop-loss and safety net limits")
         if st.session_state.stop_loss_enabled:
             stop_loss_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.stop_loss_percentage
             if stop_loss_triggered and not st.session_state.safety_net_enabled:
                 reset_session()
                 st.warning(f"Stop-loss triggered at {st.session_state.stop_loss_percentage*100:.0f}% of initial bankroll. Game reset.")
+                logging.info("Stop-loss triggered, session reset")
                 return
 
         safety_net_triggered = st.session_state.bankroll <= st.session_state.initial_bankroll * st.session_state.safety_net_percentage
         if safety_net_triggered and st.session_state.safety_net_enabled:
             reset_session()
             st.info(f"Safety net triggered at {st.session_state.safety_net_percentage*100:.0f}%. Game reset to base bet.")
+            logging.info("Safety net triggered, session reset")
+            return
         
         if st.session_state.bankroll >= st.session_state.initial_bankroll * st.session_state.win_limit:
             reset_session()
             st.success(f"Win limit reached at {st.session_state.win_limit*100:.0f}% of initial bankroll. Game reset.")
+            logging.info("Win limit reached, session reset")
             return
 
         current_profit = st.session_state.bankroll - st.session_state.initial_bankroll
@@ -60,14 +36,17 @@ def place_result(result: str):
             if current_profit >= st.session_state.initial_bankroll * st.session_state.target_profit_percentage:
                 reset_session()
                 st.success(f"Target profit reached: ${current_profit:.2f} ({st.session_state.target_profit_percentage*100:.0f}%). Game reset.")
+                logging.info(f"Target profit reached: ${current_profit:.2f}")
                 return
         elif st.session_state.target_profit_option == 'Units' and st.session_state.target_profit_units > 0:
             if current_profit >= st.session_state.target_profit_units:
                 reset_session()
                 st.success(f"Target profit reached: ${current_profit:.2f} (Target: ${st.session_state.target_profit_units:.2f}). Game reset.")
+                logging.info(f"Target profit (units) reached: ${current_profit:.2f}")
                 return
 
         # Save previous state for undo
+        logging.debug("Saving previous state for undo")
         previous_state = {
             'bankroll': st.session_state.bankroll,
             't3_level': st.session_state.t3_level,
@@ -97,6 +76,7 @@ def place_result(result: str):
         }
 
         # Update transition counts
+        logging.debug("Updating transition counts")
         if len(st.session_state.sequence) >= 1 and result in ['P', 'B']:
             prev_result = st.session_state.sequence[-1]
             if prev_result in ['P', 'B']:
@@ -107,6 +87,7 @@ def place_result(result: str):
         bet_amount = 0
         bet_selection = None
         bet_outcome = None
+        logging.debug("Resolving pending bet")
         if st.session_state.pending_bet and result in ['P', 'B']:
             bet_amount, bet_selection = st.session_state.pending_bet
             st.session_state.bets_placed += 1
@@ -231,8 +212,10 @@ def place_result(result: str):
                     st.session_state.t3_level += 1
                 st.session_state.t3_results = []
             st.session_state.pending_bet = None
+            logging.debug(f"Pending bet resolved: outcome={bet_outcome}, bankroll={st.session_state.bankroll}")
 
         # Add result to sequence
+        logging.debug(f"Adding result {result} to sequence")
         if result in ['P', 'B', 'T']:
             st.session_state.sequence.append(result)
 
@@ -241,6 +224,7 @@ def place_result(result: str):
             st.session_state.sequence_bet_index += 1
 
         # Store bet history
+        logging.debug("Storing bet history")
         st.session_state.bet_history.append({
             "Result": result,
             "Bet_Amount": bet_amount,
@@ -264,31 +248,29 @@ def place_result(result: str):
         if len(st.session_state.bet_history) > HISTORY_LIMIT:
             st.session_state.bet_history = st.session_state.bet_history[-HISTORY_LIMIT:]
 
-        # LSTM-based bet selection
+        # AI-driven bet selection (from aigood)
+        logging.debug("Starting AI-driven bet selection")
         if result in ['P', 'B']:
             valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']][-6:]
             p_count = valid_sequence.count('P')
             total = len(valid_sequence)
             p_prob = p_count / total if total > 0 else 0.5
             b_prob = 1 - p_prob
+            streak = False
+            if len(valid_sequence) >= 3 and len(set(valid_sequence[-3:])) == 1:
+                streak = True
+                if valid_sequence[-1] == 'P':
+                    p_prob += 0.2
+                    b_prob -= 0.2
+                else:
+                    b_prob += 0.2
+                    p_prob -= 0.2
+            p_prob = max(0, min(1, p_prob + random.uniform(-0.1, 0.1)))
+            b_prob = 1 - p_prob
             bet_selection = 'P' if random.random() < p_prob else 'B'
-            rationale = f"Fallback Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
-            
-            if len(valid_sequence) >= 6:
-                # Initialize LSTM model if not already done
-                initialize_lstm_model()
-                if st.session_state.lstm_model is not None:
-                    try:
-                        # Prepare input for LSTM
-                        sequence_input = np.array([[1, 0] if r == 'P' else [0, 1] for r in valid_sequence]).reshape(1, 6, 2)
-                        # Predict probabilities
-                        probs = st.session_state.lstm_model.predict(sequence_input, verbose=0)[0]
-                        p_prob, b_prob = probs[0], probs[1]
-                        bet_selection = 'P' if p_prob > b_prob else 'B'
-                        rationale = f"LSTM Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
-                    except Exception as e:
-                        st.warning(f"LSTM prediction failed: {str(e)}. Using fallback logic.")
-
+            rationale = f"AI Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
+            if streak:
+                rationale += f", Streak of {valid_sequence[-1]}"
             bet_amount = calculate_bet_amount(bet_selection)
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
@@ -310,12 +292,16 @@ def place_result(result: str):
                 elif st.session_state.money_management == 'OscarGrind':
                     strategy_info += f" Bet Level {st.session_state.oscar_current_bet_level} Cycle Profit ${st.session_state.oscar_cycle_profit:.2f}"
                 st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {rationale})"
+                logging.debug(f"Bet placed: ${bet_amount:.2f} on {bet_selection}, rationale: {rationale}")
             else:
                 st.session_state.pending_bet = None
                 st.session_state.advice = f"Skip betting (bet ${bet_amount:.2f} exceeds bankroll)"
+                logging.debug(f"Bet skipped: amount ${bet_amount:.2f} exceeds bankroll")
 
         if len(st.session_state.sequence) >= SHOE_SIZE:
             reset_session()
             st.success(f"Shoe of {SHOE_SIZE} hands completed. Game reset.")
+            logging.info("Shoe completed, session reset")
     except Exception as e:
         st.error(f"Error processing result: {str(e)}")
+        logging.error(f"Error in place_result: {str(e)}", exc_info=True)
