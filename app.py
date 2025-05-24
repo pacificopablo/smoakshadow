@@ -9,7 +9,6 @@ import time
 import random
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
-import uuid
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
@@ -429,20 +428,7 @@ def place_result(result: str):
             st.session_state.pending_bet = None
             st.session_state.advice = "Need 4 more Player or Banker results"
         elif len(valid_sequence) >= 4 and result in ['P', 'B']:
-            total DEBUG: place_result: Predicting next outcome after result P
-DEBUG: place_result: Valid sequence length: 4
-DEBUG: place_result: Transition counts - PP: 1, PB: 0, BP: 0, BB: 0
-DEBUG: place_result: Total from P: 1, Total from B: 0
-DEBUG: place_result: Probabilities - P->P: 100.0%, P->B: 0.0%, B->P: 50.0%, B->B: 50.0%
-DEBUG: place_result: Transition predicted outcome: P
-DEBUG: place_result: Transition confidence: 100.0%
-DEBUG: place_result: ML predicted outcome: P, confidence: 0.52
-DEBUG: place_result: Votes - P: 0.864, B: 0.0, T: 0.0
-DEBUG: place_result: Final bet selection: P, confidence: 86.4%
-DEBUG: place_result: Calculated bet amount: 10.0
-DEBUG: place_result: Setting pending bet: (10.0, 'P')
-DEBUG: place_result: Strategy info: T3 Level 1
-DEBUG: place_result: Advice set to: Bet $10.00 on P (T3 Level 1, AI+Transition: 86.4%)_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
+            total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
             total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
             prob_p_to_p = (st.session_state.transition_counts['PP'] / total_from_p) if total_from_p > 0 else 0.5
             prob_p_to_b = (st.session_state.transition_counts['PB'] / total_from_p) if total_from_p > 0 else 0.5
