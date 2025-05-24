@@ -353,7 +353,7 @@ def initialize_session_state():
         'sequence_bet_index': 0,
         'ml_model': None,
         'ml_scaler': None,
-        'ai_mode': False,
+        'ai_mode': True,  # Changed to True to enable AI mode by default
         'current_streak': 0,
         'current_streak_type': None,
         'longest_streak': 0,
@@ -425,7 +425,7 @@ def reset_session():
         'sequence_bet_index': 0,
         'ml_model': None,
         'ml_scaler': None,
-        'ai_mode': False,
+        'ai_mode': setup_values.get('ai_mode', True),  # Preserve AI mode state on reset
         'current_streak': 0,
         'current_streak_type': None,
         'longest_streak': 0,
@@ -832,7 +832,7 @@ def run_simulation():
             break
         result = simulate_shoe_result()
         place_result(result)
-    st.session_state.ai_mode = False
+    # st.session_state.ai_mode = False  # Commented out to keep AI mode on
     st.rerun()
 
 # --- UI Components ---
@@ -866,7 +866,7 @@ def render_setup_form():
             stop_loss_percentage = st.number_input("Stop-Loss Percentage (%)", min_value=0.0, max_value=100.0, value=st.session_state.stop_loss_percentage * 100 or 100.00, step=0.1, disabled=not stop_loss_enabled)
             profit_lock_threshold = st.number_input("Profit Lock Threshold (% of Initial Bankroll)", min_value=100.0, max_value=1000.0, value=st.session_state.win_limit * 100 or 600.00, step=1.0)
             smart_skip_enabled = st.checkbox("Enable Smart Skip", value=False)
-            ai_mode = st.checkbox("Enable AI Auto-Play", value=False)
+            ai_mode = st.checkbox("Enable AI Auto-Play", value=True)  # Changed to True to enable AI mode by default
             st.markdown('</div>', unsafe_allow_html=True)
 
             if st.form_submit_button("Start Session"):
