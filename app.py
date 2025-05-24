@@ -2,30 +2,38 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
 import tensorflow as tf
 import numpy as np
+import random
 
 # Define LSTM model (initialized once, stored in session state)
 def initialize_lstm_model():
     if 'lstm_model' not in st.session_state:
-        model = tf.keras.Sequential([
-            tf.keras.layers.LSTM(32, input_shape=(6, 2), return_sequences=False),
-            tf.keras.layers.Dense(16, activation='relu'),
-            tf.keras.layers.Dense(2, activation='softmax')  # Outputs probabilities for P and B
-        ])
-        model.compile(optimizer='adam', loss='categorical_crossentropy')
-        st.session_state.lstm_model = model
-        # Simulate training data (reduced for CPU performance)
-        sequences, labels = [], []
-        for _ in range(500):  # Reduced from 1000
-            shoe = simulate_shoe()
-            for i in range(len(shoe) - 6):
-                seq = shoe[i:i+6]
-                next_result = shoe[i+6] if i+6 < len(shoe) else None
-                if next_result in ['P', 'B']:
-                    sequences.append([[1, 0] if r == 'P' else [0, 1] for r in seq])
-                    labels.append([1, 0] if next_result == 'P' else [0, 1])
-        X = np.array(sequences)
-        y = np.array(labels)
-        st.session_state.lstm_model.fit(X, y, epochs=5, batch_size=32, verbose=0)  # Reduced from 10
+        try:
+            model = tf.keras.Sequential([
+                tf.keras.layers.LSTM(16, input_shape=(6, 2), return_sequences=False),  # Reduced from 32 units
+                tf.keras.layers.Dense(8, activation='relu'),  # Reduced from 16 units
+                tf.keras.layers.Dense(2, activation='softmax')  # Outputs probabilities for P and B
+            ])
+            model.compile(optimizer='adam', loss='categorical_crossentropy')
+            st.session_state.lstm_model = model
+            # Simulate training data (further reduced for CPU performance)
+            sequences, labels = [], []
+            for _ in range(200):  # Reduced from 500
+                shoe = simulate_shoe()
+                for i in range(len(shoe) - 6):
+                    seq = shoe[i:i+6]
+                    next_result = shoe[i+6] if i+6 < len(shoe) else None
+                    if next_result in ['P', 'B']:
+                        sequences.append([[1, 0] if r == 'P' else [0, 1] for r in seq])
+                        labels.append([1, 0] if next_result == 'P' else [0, 1])
+            if sequences:  # Ensure there’s data to train
+                X = np.array(sequences)
+                y = np.array(labels)
+                st.session_state.lstm_model.fit(X, y, epochs=3, batch_size=32, verbose=0)  # Reduced from 5
+            else:
+                st.warning("No training data generated for LSTM. Using fallback logic.")
+        except Exception as e:
+            st.error(f"Failed to initialize LSTM model: {str(e)}. Using fallback logic.")
+            st.session_state.lstm_model = None
 
 def place_result(result: str):
     try:
@@ -258,25 +266,29 @@ def place_result(result: str):
 
         # LSTM-based bet selection
         if result in ['P', 'B']:
-            # Initialize LSTM model if not already done
-            initialize_lstm_model()
             valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']][-6:]
+            p_count = valid_sequence.count('P')
+            total = len(valid_sequence)
+            p_prob = p_count / total if total > 0 else 0.5
+            b_prob = 1 - p_prob
+            bet_selection = 'P' if random.random() < p_prob else 'B'
+            rationale = f"Fallback Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
+            
             if len(valid_sequence) >= 6:
-                # Prepare input for LSTM
-                sequence_input = np.array([[1, 0] if r == 'P' else [0, 1] for r in valid_sequence]).reshape(1, 6, 2)
-                # Predict probabilities
-                probs = st.session_state.lstm_model.predict(sequence_input, verbose=0)[0]
-                p_prob, b_prob = probs[0], probs[1]
-                bet_selection = 'P' if p_prob > b_prob else 'B'
-                rationale = f"LSTM Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
-            else:
-                # Fallback to simple probability if not enough data
-                p_count = valid_sequence.count('P')
-                total = len(valid_sequence)
-                p_prob = p_count / total if total > 0 else 0.5
-                b_prob = 1 - p_prob
-                bet_selection = 'P' if random.random() < p_prob else 'B'
-                rationale = f"Fallback Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
+                # Initialize LSTM model if not already done
+                initialize_lstm_model()
+                if st.session_state.lstm_model is not None:
+                    try:
+                        # Prepare input for LSTM
+                        sequence_input = np.array([[1, 0] if r == 'P' else [0, 1] for r in valid_sequence]).reshape(1, 6, 2)
+                        # Predict probabilities
+                        probs = st.session_state.lstm_model.predict(sequence_input, verbose=0)[0]
+                        p_prob, b_prob = probs[0], probs[1]
+                        bet_selection = 'P' if p_prob > b_prob else 'B'
+                        rationale = f"LSTM Probability: P {p_prob*100:.0f}%, B {b_prob*100:.0f}%"
+                    except Exception as e:
+                        st.warning(f"LSTM prediction failed: {str(e)}. Using fallback logic.")
+
             bet_amount = calculate_bet_amount(bet_selection)
             if bet_amount <= st.session_state.bankroll:
                 st.session_state.pending_bet = (bet_amount, bet_selection)
@@ -305,5 +317,5 @@ def place_result(result: str):
         if len(st.session_state.sequence) >= SHOE_SIZE:
             reset_session()
             st.success(f"Shoe of {SHOE_SIZE} hands completed. Game reset.")
-    except:
-        st.error("Error processing result.")
+    except Exception as e:
+        st.error(f"Error processing result: {str(e)}")
