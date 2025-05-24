@@ -1,3 +1,5 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
 import tensorflow as tf
 import numpy as np
 
@@ -11,9 +13,9 @@ def initialize_lstm_model():
         ])
         model.compile(optimizer='adam', loss='categorical_crossentropy')
         st.session_state.lstm_model = model
-        # Simulate training data
+        # Simulate training data (reduced for CPU performance)
         sequences, labels = [], []
-        for _ in range(1000):
+        for _ in range(500):  # Reduced from 1000
             shoe = simulate_shoe()
             for i in range(len(shoe) - 6):
                 seq = shoe[i:i+6]
@@ -23,7 +25,7 @@ def initialize_lstm_model():
                     labels.append([1, 0] if next_result == 'P' else [0, 1])
         X = np.array(sequences)
         y = np.array(labels)
-        st.session_state.lstm_model.fit(X, y, epochs=10, batch_size=32, verbose=0)
+        st.session_state.lstm_model.fit(X, y, epochs=5, batch_size=32, verbose=0)  # Reduced from 10
 
 def place_result(result: str):
     try:
