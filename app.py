@@ -1,5 +1,17 @@
 import streamlit as st
-from place_result_function_aigood import place_result
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, filename='app.log', filemode='a',
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+try:
+    from place_result_function_aigood import place_result
+    logging.info("Successfully imported place_result_function_aigood")
+except ModuleNotFoundError as e:
+    st.error(f"Failed to import place_result_function_aigood: {str(e)}. Ensure the file is in /mount/src/smoakshadow/")
+    logging.error(f"ModuleNotFoundError: {str(e)}", exc_info=True)
+    st.stop()
 
 # Initialize session state
 if 'bankroll' not in st.session_state:
