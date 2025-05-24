@@ -9,6 +9,7 @@ import random
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
+import uuid
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
@@ -202,6 +203,26 @@ def apply_custom_css():
         font-size: 1rem;
         color: #2c5282;
     }
+    .pattern-section {
+        background-color: #f7fafc;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 10px;
+        margin-bottom: 10px;
+        border: 1px solid #e2e8f0;
+    }
+    .pattern-section h3 {
+        color: #2c5282;
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+    }
+    .pattern-section h3 .icon {
+        margin-right: 8px;
+        font-size: 1.2rem;
+    }
     @media (max-width: 768px) {
         .stApp {
             padding: 10px;
@@ -332,7 +353,13 @@ def initialize_session_state():
         'sequence_bet_index': 0,
         'ml_model': None,
         'ml_scaler': None,
-        'ai_mode': False
+        'ai_mode': False,
+        'current_streak': 0,
+        'current_streak_type': None,
+        'longest_streak': 0,
+        'longest_streak_type': None,
+        'current_chop_count': 0,
+        'longest_chop': 0
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -398,7 +425,13 @@ def reset_session():
         'sequence_bet_index': 0,
         'ml_model': None,
         'ml_scaler': None,
-        'ai_mode': False
+        'ai_mode': False,
+        'current_streak': 0,
+        'current_streak_type': None,
+        'longest_streak': 0,
+        'longest_streak_type': None,
+        'current_chop_count': 0,
+        'longest_chop': 0
     })
 
 # --- Betting and Prediction Logic ---
@@ -429,7 +462,6 @@ def calculate_bet_amount(bet_selection: str) -> float:
         return 0.0
 
 def simulate_shoe_result():
-    # Simulate a realistic Baccarat outcome (approximate real-world probabilities)
     probabilities = {'P': 0.4586, 'B': 0.4460, 'T': 0.0954}
     return random.choices(['P', 'B', 'T'], weights=[probabilities['P'], probabilities['B'], probabilities['T']], k=1)[0]
 
@@ -491,7 +523,13 @@ def place_result(result: str):
             'grid_pos': st.session_state.grid_pos.copy(),
             'oscar_cycle_profit': st.session_state.oscar_cycle_profit,
             'oscar_current_bet_level': st.session_state.oscar_current_bet_level,
-            'sequence_bet_index': st.session_state.sequence_bet_index
+            'sequence_bet_index': st.session_state.sequence_bet_index,
+            'current_streak': st.session_state.current_streak,
+            'current_streak_type': st.session_state.current_streak_type,
+            'longest_streak': st.session_state.longest_streak,
+            'longest_streak_type': st.session_state.longest_streak_type,
+            'current_chop_count': st.session_state.current_chop_count,
+            'longest_chop': st.session_state.longest_chop
         }
 
         # Update transition counts
@@ -500,6 +538,38 @@ def place_result(result: str):
             if prev_result in ['P', 'B']:
                 transition = f"{prev_result}{result}"
                 st.session_state.transition_counts[transition] += 1
+
+        # Update streak and chop detection
+        valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B']]
+        if result in ['P', 'B']:
+            # Streak detection
+            if len(valid_sequence) == 0 or st.session_state.current_streak_type != result:
+                st.session_state.current_streak = 1
+                st.session_state.current_streak_type = result
+            else:
+                st.session_state.current_streak += 1
+            if st.session_state.current_streak > st.session_state.longest_streak:
+                st.session_state.longest_streak = st.session_state.current_streak
+                st.session_state.longest_streak_type = st.session_state.current_streak_type
+            
+            # Chop detection
+            if len(valid_sequence) >= 1:
+                last_valid = valid_sequence[-1]
+                if result != last_valid:  # Alternation (P to B or B to P)
+                    st.session_state.current_chop_count += 1
+                else:
+                    if st.session_state.current_chop_count > st.session_state.longest_chop:
+                        st.session_state.longest_chop = st.session_state.current_chop_count
+                    st.session_state.current_chop_count = 0
+            else:
+                st.session_state.current_chop_count = 0
+        else:  # Result is Tie
+            # Reset streak and update longest chop if necessary
+            if st.session_state.current_chop_count > st.session_state.longest_chop:
+                st.session_state.longest_chop = st.session_state.current_chop_count
+            st.session_state.current_streak = 0
+            st.session_state.current_streak_type = None
+            st.session_state.current_chop_count = 0
 
         # Resolve pending bet
         bet_amount = 0
@@ -662,6 +732,8 @@ def place_result(result: str):
             "Sequence_Bet_Index": st.session_state.sequence_bet_index % len(BET_SEQUENCE) if st.session_state.sequence_bet_index > 0 or bet_outcome == 'win' else "-",
             "Money_Management": st.session_state.money_management,
             "Safety_Net": "On" if st.session_state.safety_net_enabled else "Off",
+            "Current_Streak": f"{st.session_state.current_streak} ({st.session_state.current_streak_type})" if st.session_state.current_streak_type else "-",
+            "Current_Chop": st.session_state.current_chop_count,
             "Previous_State": previous_state
         })
         if len(st.session_state.bet_history) > HISTORY_LIMIT:
@@ -873,7 +945,13 @@ def render_setup_form():
                         'sequence_bet_index': 0,
                         'ml_model': None,
                         'ml_scaler': None,
-                        'ai_mode': ai_mode
+                        'ai_mode': ai_mode,
+                        'current_streak': 0,
+                        'current_streak_type': None,
+                        'longest_streak': 0,
+                        'longest_streak_type': None,
+                        'current_chop_count': 0,
+                        'longest_chop': 0
                     })
                     st.success(f"Session started with {money_management} strategy! AI Auto-Play: {'On' if ai_mode else 'Off'}")
                     if ai_mode:
@@ -1095,6 +1173,17 @@ def render_status():
                 f"B→P: {prob_b_to_p:.1f}%, B→B: {prob_b_to_b:.1f}%",
                 unsafe_allow_html=True
             )
+            # Pattern Detection Section
+            st.markdown('<div class="pattern-section">', unsafe_allow_html=True)
+            st.markdown('<h3><span class="icon">📈</span>Pattern Detection</h3>', unsafe_allow_html=True)
+            st.markdown(
+                f"**Current Streak**: {st.session_state.current_streak} ({st.session_state.current_streak_type or 'None'})<br>"
+                f"**Longest Streak**: {st.session_state.longest_streak} ({st.session_state.longest_streak_type or 'None'})<br>"
+                f"**Current Chop**: {st.session_state.current_chop_count}<br>"
+                f"**Longest Chop**: {st.session_state.longest_chop}",
+                unsafe_allow_html=True
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
 
 def render_history():
     with st.expander("Bet History", expanded=True):
@@ -1119,7 +1208,9 @@ def render_history():
                     "Oscar_Bet_Level": h["Oscar_Bet_Level"],
                     "Oscar_Cycle_Profit": h["Oscar_Cycle_Profit"],
                     "Sequence_Bet_Index": h["Sequence_Bet_Index"],
-                    "Safety_Net": h["Safety_Net"]
+                    "Safety_Net": h["Safety_Net"],
+                    "Current_Streak": h["Current_Streak"],
+                    "Current_Chop": h["Current_Chop"]
                 }
                 for h in st.session_state.bet_history[-n:]
             ], use_container_width=True)
@@ -1130,19 +1221,12 @@ def main():
     apply_custom_css()
     st.title("AI Baccarat")
     initialize_session_state()
-    if st.button("Clear Session State"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        render_setup_form()
-        render_result_input()
-        render_bead_plate()
-        render_prediction()
-        render_status()
-    with col2:
-        render_history()
+    render_setup_form()
+    render_result_input()
+    render_bead_plate()
+    render_prediction()
+    render_status()
+    render_history()
 
 if __name__ == "__main__":
     main()
