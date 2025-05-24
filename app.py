@@ -438,11 +438,14 @@ def place_result(result: str):
             trans_predicted_outcome = 'P' if (prob_p_to_p >= prob_p_to_b if last_result == 'P' else prob_b_to_p >= prob_b_to_b) else 'B'
             trans_confidence = max(prob_p_to_p, prob_p_to_b) * 100 if last_result == 'P' else max(prob_b_to_p, prob_b_to_b) * 100
             ml_predicted_outcome, ml_confidence = predict_next_outcome(valid_sequence, st.session_state.ml_model, st.session_state.ml_scaler)
+            random_predicted_outcome = random.choices(['P', 'B', 'T'], weights=[0.4586, 0.4460, 0.0954], k=1)[0]
             votes = {'P': 0.0, 'B': 0.0, 'T': 0.0}
             if ml_predicted_outcome in votes:
                 votes[ml_predicted_outcome] += 0.7 * ml_confidence
             if trans_predicted_outcome in votes:
                 votes[trans_predicted_outcome] += 0.3
+            if random_predicted_outcome in votes:
+                votes[random_predicted_outcome] += 0.1
             bet_selection = max(votes, key=votes.get)
             confidence = votes[bet_selection] * 100
             strategy_used = []
@@ -450,6 +453,8 @@ def place_result(result: str):
                 strategy_used.append('AI')
             if trans_predicted_outcome == bet_selection:
                 strategy_used.append('Transition')
+            if random_predicted_outcome == bet_selection:
+                strategy_used.append('Random')
             strategy_used = '+'.join(strategy_used)
             if votes[bet_selection] >= 0.5 and bet_selection in ['P', 'B'] and confidence >= 60.0:
                 bet_amount = calculate_bet_amount(bet_selection)
@@ -591,11 +596,14 @@ def render_result_input():
                         trans_predicted_outcome = 'P' if (prob_p_to_p >= prob_p_to_b if last_result == 'P' else prob_b_to_p >= prob_b_to_b) else 'B'
                         trans_confidence = max(prob_p_to_p, prob_p_to_b) * 100 if last_result == 'P' else max(prob_b_to_p, prob_b_to_b) * 100
                         ml_predicted_outcome, ml_confidence = predict_next_outcome(valid_sequence, st.session_state.ml_model, st.session_state.ml_scaler)
+                        random_predicted_outcome = random.choices(['P', 'B', 'T'], weights=[0.4586, 0.4460, 0.0954], k=1)[0]
                         votes = {'P': 0.0, 'B': 0.0, 'T': 0.0}
                         if ml_predicted_outcome in votes:
                             votes[ml_predicted_outcome] += 0.7 * ml_confidence
                         if trans_predicted_outcome in votes:
                             votes[trans_predicted_outcome] += 0.3
+                        if random_predicted_outcome in votes:
+                            votes[random_predicted_outcome] += 0.1
                         bet_selection = max(votes, key=votes.get)
                         confidence = votes[bet_selection] * 100
                         strategy_used = []
@@ -603,6 +611,8 @@ def render_result_input():
                             strategy_used.append('AI')
                         if trans_predicted_outcome == bet_selection:
                             strategy_used.append('Transition')
+                        if random_predicted_outcome == bet_selection:
+                            strategy_used.append('Random')
                         strategy_used = '+'.join(strategy_used)
                         if votes[bet_selection] >= 0.5 and bet_selection in ['P', 'B'] and confidence >= 60.0:
                             bet_amount = calculate_bet_amount(bet_selection)
