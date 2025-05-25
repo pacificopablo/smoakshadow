@@ -12,6 +12,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
+MODEL_FILE = os.path RosettePath
 MODEL_FILE = os.path.join(tempfile.gettempdir(), "baccarat_rf_model.joblib")
 SCALER_FILE = os.path.join(tempfile.gettempdir(), "baccarat_scaler.joblib")
 SHOE_SIZE = 100
@@ -35,9 +36,10 @@ GRID = [
     [1, 1, 2, 3, 5, 8, 11, 15, 15], [0, 0, 1, 2, 4, 8, 15, 15, 30]
 ]
 GRID_MIN_BANKROLL = max(max(row) for row in GRID) * 5
-STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon", "FourTier", "FlatbetLevelUp", "Grid", "OscarGrind"]
+STRATEGIES = ["T3", "Flatbet", "Parlay16", "Moon", "FourTier", "FlatbetLevelUp", "Grid", "OscarGrind", "1222"]
 OUTCOME_MAPPING = {'P': 0, 'B': 1, 'T': 2}
 REVERSE_MAPPING = {0: 'P', 1: 'B', 2: 'T'}
+_1222_MIN_BANKROLL = 10  # Assuming max level 5, multiplier 2 (5 * 2 * base_bet)
 
 # --- CSS Styling ---
 def apply_css():
@@ -56,8 +58,6 @@ def apply_css():
     .result-button-tie:hover { background: linear-gradient(to bottom, #68d391, #38a169); }
     .result-button-undo { background: linear-gradient(to bottom, #718096, #5a667f); }
     .result-button-undo:hover { background: linear-gradient(to bottom, #a0aec0, #718096); }
-    .result-button-random { background: linear-gradient(to bottom, #9f7aea, #7c3aed); }
-    .result-button-random:hover { background: linear-gradient(to bottom, #c4b5fd, #9f7aea); }
     .stNumberInput input, .stSelectbox select { border-radius: 8px; border: 1px solid #e2e8f0; padding: 10px; font-size: 14px; }
     .st-expander { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 1rem; }
     .bead-plate { background: #edf2f7; padding: 10px; border-radius: 8px; overflow-x: auto; }
@@ -119,9 +119,9 @@ def predict_next_outcome(sequence, model, scaler):
 # --- Session State ---
 def initialize_session_state():
     defaults = {
-        'bankroll': 0.0, 'base_bet': 0.0, 'initial_bankroll': 0.0, 'sequence': [], 'bet_history': [],
-        'pending_bet': None, 'bets_placed': 0, 'bets_won': 0, 't3_level': 1, 't3_results': [],
-        'money_management': 'T3', 'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
+        'bankroll': 0.0, 'base_bet': 0.0, 'initial_bankroll': 0.0, 'peak_bankroll': 0.0, 'sequence': [], 
+        'bet_history': [], 'pending_bet': None, 'bets_placed': 0, 'bets_won': 0, 't3_level': 1, 
+        't3_results': [], 'money_management': 'T3', 'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
         'stop_loss_percentage': STOP_LOSS_DEFAULT, 'stop_loss_enabled': True, 'win_limit': WIN_LIMIT,
         'shoe_completed': False, 'safety_net_enabled': True, 'safety_net_percentage': 0.02,
         'advice': "Need 4 more Player or Banker results", 'parlay_step': 1, 'parlay_wins': 0,
@@ -132,7 +132,8 @@ def initialize_session_state():
         'flatbet_levelup_net_loss': 0.0, 'grid_pos': [0, 0], 'oscar_cycle_profit': 0.0,
         'oscar_current_bet_level': 1, 'current_streak': 0, 'current_streak_type': None,
         'longest_streak': 0, 'longest_streak_type': None, 'current_chop_count': 0, 'longest_chop': 0,
-        'ml_model': None, 'ml_scaler': None, 'ai_mode': True
+        'ml_model': None, 'ml_scaler': None, 'ai_mode': True, 'level_1222': 1, 
+        'next_bet_multiplier_1222': 1, 'rounds_1222': 0, 'level_start_bankroll_1222': 0.0
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -143,7 +144,7 @@ def initialize_session_state():
 
 def reset_session():
     setup_values = {k: st.session_state[k] for k in [
-        'bankroll', 'base_bet', 'initial_bankroll', 'money_management', 'stop_loss_percentage',
+        'bankroll', 'base_bet', 'initial_bankroll', 'peak_bankroll', 'money_management', 'stop_loss_percentage',
         'stop_loss_enabled', 'safety_net_enabled', 'safety_net_percentage', 'target_profit_option',
         'target_profit_percentage', 'target_profit_units', 'win_limit', 'ai_mode'
     ]}
@@ -158,7 +159,8 @@ def reset_session():
         'four_tier_step': 1, 'four_tier_losses': 0, 'flatbet_levelup_level': 1, 'flatbet_levelup_net_loss': 0.0,
         'grid_pos': [0, 0], 'oscar_cycle_profit': 0.0, 'oscar_current_bet_level': 1,
         'current_streak': 0, 'current_streak_type': None, 'longest_streak': 0, 'longest_streak_type': None,
-        'current_chop_count': 0, 'longest_chop': 0
+        'current_chop_count': 0, 'longest_chop': 0, 'level_1222': 1, 'next_bet_multiplier_1222': 1,
+        'rounds_1222': 0, 'level_start_bankroll_1222': setup_values.get('bankroll', 0.0)
     })
     # Load model if available
     st.session_state.ml_model, st.session_state.ml_scaler = load_ml_model()
@@ -186,48 +188,14 @@ def calculate_bet_amount(bet_selection: str) -> float:
             return st.session_state.base_bet * GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]]
         elif st.session_state.money_management == 'OscarGrind':
             return st.session_state.base_bet * st.session_state.oscar_current_bet_level
+        elif st.session_state.money_management == '1222':
+            return st.session_state.base_bet * st.session_state.level_1222 * st.session_state.next_bet_multiplier_1222
         return 0.0
     except:
         return 0.0
 
 def simulate_shoe_result():
     return random.choices(['P', 'B', 'T'], weights=[0.4586, 0.4460, 0.0954], k=1)[0]
-
-def place_random_bet():
-    # Generate a random bet selection
-    bet_selection = random.choices(['P', 'B', 'T'], weights=[0.4586, 0.4460, 0.0954], k=1)[0]
-    if bet_selection in ['P', 'B']:  # Only place bets on Player or Banker
-        bet_amount = calculate_bet_amount(bet_selection)
-        if bet_amount <= st.session_state.bankroll:
-            st.session_state.pending_bet = (bet_amount, bet_selection)
-            strategy_info = f"{st.session_state.money_management}"
-            if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
-                strategy_info = "Safety Net (Flatbet)"
-            elif st.session_state.money_management == 'T3':
-                strategy_info += f" Level {st.session_state.t3_level}"
-            elif st.session_state.money_management == 'Parlay16':
-                strategy_info += f" Step {st.session_state.parlay_step}/16"
-            elif st.session_state.money_management == 'Moon':
-                strategy_info += f" Level {st.session_state.moon_level}"
-            elif st.session_state.money_management == 'FourTier':
-                strategy_info += f" Level {st.session_state.four_tier_level} Step {st.session_state.four_tier_step}"
-            elif st.session_state.money_management == 'FlatbetLevelUp':
-                strategy_info += f" Level {st.session_state.flatbet_levelup_level}"
-            elif st.session_state.money_management == 'Grid':
-                strategy_info += f" Grid ({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
-            elif st.session_state.money_management == 'OscarGrind':
-                strategy_info += f" Bet Level {st.session_state.oscar_current_bet_level}"
-            st.session_state.advice = f"Random Bet: ${bet_amount:.2f} on {bet_selection} ({strategy_info})"
-            # Simulate a result to resolve the bet
-            result = simulate_shoe_result()
-            place_result(result)
-        else:
-            st.session_state.pending_bet = None
-            st.session_state.advice = f"Skip random bet (bet ${bet_amount:.2f} exceeds bankroll)"
-    else:
-        st.session_state.pending_bet = None
-        st.session_state.advice = f"Random selection was Tie, no bet placed."
-    st.rerun()
 
 def place_result(result: str):
     try:
@@ -267,7 +235,9 @@ def place_result(result: str):
             'oscar_cycle_profit': st.session_state.oscar_cycle_profit, 'oscar_current_bet_level': st.session_state.oscar_current_bet_level,
             'current_streak': st.session_state.current_streak, 'current_streak_type': st.session_state.current_streak_type,
             'longest_streak': st.session_state.longest_streak, 'longest_streak_type': st.session_state.longest_streak_type,
-            'current_chop_count': st.session_state.current_chop_count, 'longest_chop': st.session_state.longest_chop
+            'current_chop_count': st.session_state.current_chop_count, 'longest_chop': st.session_state.longest_chop,
+            'level_1222': st.session_state.level_1222, 'next_bet_multiplier_1222': st.session_state.next_bet_multiplier_1222,
+            'rounds_1222': st.session_state.rounds_1222, 'level_start_bankroll_1222': st.session_state.level_start_bankroll_1222
         }
 
         # Update transitions
@@ -356,6 +326,8 @@ def place_result(result: str):
                             if st.session_state.oscar_cycle_profit + potential_winnings > st.session_state.base_bet:
                                 next_bet_level = max(1, int((st.session_state.base_bet - st.session_state.oscar_cycle_profit) / (st.session_state.base_bet * (0.95 if bet_selection == 'B' else 1.0)) + 0.99))
                             st.session_state.oscar_current_bet_level = next_bet_level
+                    elif st.session_state.money_management == '1222':
+                        st.session_state.next_bet_multiplier_1222 = 2
             else:
                 st.session_state.bankroll -= bet_amount
                 bet_outcome = 'loss'
@@ -396,13 +368,32 @@ def place_result(result: str):
                             st.session_state.grid_pos = [0, 0]
                         if GRID[st.session_state.grid_pos[0]][st.session_state.grid_pos[1]] == 0:
                             st.session_state.grid_pos = [0, 0]
-                    elif st.session_state.money_management == 'OscarGrind':
-                        st.session_state.oscar_cycle_profit -= bet_amount
+                    elif st.session_state.money_management == '1222':
+                        st.session_state.next_bet_multiplier_1222 = 1
             if st.session_state.money_management == 'T3' and len(st.session_state.t3_results) == 3:
                 wins = st.session_state.t3_results.count('W')
                 losses = st.session_state.t3_results.count('L')
                 st.session_state.t3_level = max(1, st.session_state.t3_level - 1 if wins > losses else st.session_state.t3_level + 1 if losses > wins else st.session_state.t3_level)
                 st.session_state.t3_results = []
+            if st.session_state.money_management == '1222' and bet_amount > 0:
+                st.session_state.rounds_1222 += 1
+                if st.session_state.rounds_1222 >= 5:
+                    if st.session_state.bankroll >= st.session_state.peak_bankroll:
+                        st.session_state.level_1222 = 1
+                        st.session_state.next_bet_multiplier_1222 = 1
+                        st.session_state.rounds_1222 = 0
+                        st.session_state.level_start_bankroll_1222 = st.session_state.bankroll
+                    elif st.session_state.bankroll > st.session_state.level_start_bankroll_1222:
+                        st.session_state.level_1222 = max(1, st.session_state.level_1222 - 1)
+                        st.session_state.next_bet_multiplier_1222 = 1
+                        st.session_state.rounds_1222 = 0
+                        st.session_state.level_start_bankroll_1222 = st.session_state.bankroll
+                    else:
+                        st.session_state.level_1222 += 1
+                        st.session_state.next_bet_multiplier_1222 = 1
+                        st.session_state.rounds_1222 = 0
+                        st.session_state.level_start_bankroll_1222 = st.session_state.bankroll
+            st.session_state.peak_bankroll = max(st.session_state.peak_bankroll, st.session_state.bankroll)
             st.session_state.pending_bet = None
 
         # Add result
@@ -438,14 +429,11 @@ def place_result(result: str):
             trans_predicted_outcome = 'P' if (prob_p_to_p >= prob_p_to_b if last_result == 'P' else prob_b_to_p >= prob_b_to_b) else 'B'
             trans_confidence = max(prob_p_to_p, prob_p_to_b) * 100 if last_result == 'P' else max(prob_b_to_p, prob_b_to_b) * 100
             ml_predicted_outcome, ml_confidence = predict_next_outcome(valid_sequence, st.session_state.ml_model, st.session_state.ml_scaler)
-            random_predicted_outcome = random.choices(['P', 'B', 'T'], weights=[0.4586, 0.4460, 0.0954], k=1)[0]
             votes = {'P': 0.0, 'B': 0.0, 'T': 0.0}
             if ml_predicted_outcome in votes:
                 votes[ml_predicted_outcome] += 0.7 * ml_confidence
             if trans_predicted_outcome in votes:
                 votes[trans_predicted_outcome] += 0.3
-            if random_predicted_outcome in votes:
-                votes[random_predicted_outcome] += 0.1
             bet_selection = max(votes, key=votes.get)
             confidence = votes[bet_selection] * 100
             strategy_used = []
@@ -453,8 +441,6 @@ def place_result(result: str):
                 strategy_used.append('AI')
             if trans_predicted_outcome == bet_selection:
                 strategy_used.append('Transition')
-            if random_predicted_outcome == bet_selection:
-                strategy_used.append('Random')
             strategy_used = '+'.join(strategy_used)
             if votes[bet_selection] >= 0.5 and bet_selection in ['P', 'B'] and confidence >= 60.0:
                 bet_amount = calculate_bet_amount(bet_selection)
@@ -477,6 +463,8 @@ def place_result(result: str):
                         strategy_info += f" Grid ({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
                     elif st.session_state.money_management == 'OscarGrind':
                         strategy_info += f" Bet Level {st.session_state.oscar_current_bet_level}"
+                    elif st.session_state.money_management == '1222':
+                        strategy_info += f" Level {st.session_state.level_1222}, Rounds {st.session_state.rounds_1222}, Bet: {st.session_state.next_bet_multiplier_1222 * st.session_state.level_1222}u"
                     st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {strategy_used}: {confidence:.1f}%)"
                 else:
                     st.session_state.pending_bet = None
@@ -519,7 +507,7 @@ def render_setup_form():
                 "T3": base_bet * 3, "Flatbet": base_bet * 5, "Parlay16": base_bet * 190,
                 "Moon": base_bet * 10, "FourTier": base_bet * FOUR_TIER_MIN_BANKROLL,
                 "FlatbetLevelUp": base_bet * FLATBET_LEVELUP_MIN_BANKROLL, "Grid": base_bet * GRID_MIN_BANKROLL,
-                "OscarGrind": base_bet * 10
+                "OscarGrind": base_bet * 10, "1222": base_bet * _1222_MIN_BANKROLL
             }
             submitted = st.form_submit_button("Start Session")
             if submitted:
@@ -531,11 +519,12 @@ def render_setup_form():
                     reset_session()
                     st.session_state.update({
                         'bankroll': bankroll, 'base_bet': base_bet, 'initial_bankroll': bankroll,
-                        'money_management': money_management, 'stop_loss_enabled': stop_loss_enabled,
+                        'peak_bankroll': bankroll, 'money_management': money_management, 'stop_loss_enabled': stop_loss_enabled,
                         'stop_loss_percentage': stop_loss_percentage, 'safety_net_enabled': safety_net_enabled,
                         'safety_net_percentage': safety_net_percentage, 'win_limit': win_limit,
                         'target_profit_option': target_mode, 'target_profit_percentage': target_value / 100 if target_mode == "Profit %" else 0.0,
-                        'target_profit_units': target_value if target_mode == "Units" else 0.0, 'ai_mode': ai_mode
+                        'target_profit_units': target_value if target_mode == "Units" else 0.0, 'ai_mode': ai_mode,
+                        'level_start_bankroll_1222': bankroll
                     })
                     st.success(f"Session started with {money_management}! AI Auto-Play: {'On' if ai_mode else 'Off'}")
                     if ai_mode:
@@ -547,7 +536,7 @@ def render_result_input():
             st.success(f"Shoe of {SHOE_SIZE} hands completed!")
         elif st.session_state.shoe_completed:
             st.info("Continuing with safety net.")
-        cols = st.columns(5)
+        cols = st.columns(4)
         with cols[0]:
             if st.button("Player", key="player_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
                 place_result("P")
@@ -561,9 +550,6 @@ def render_result_input():
                 place_result("T")
                 st.rerun()
         with cols[3]:
-            if st.button("Random Bet", key="random_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode, help="Place a random bet on Player or Banker"):
-                place_random_bet()
-        with cols[4]:
             if st.button("Undo Last", key="undo_btn", disabled=not st.session_state.bet_history or (st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
                 if not st.session_state.sequence:
                     st.warning("No results to undo.")
@@ -596,14 +582,11 @@ def render_result_input():
                         trans_predicted_outcome = 'P' if (prob_p_to_p >= prob_p_to_b if last_result == 'P' else prob_b_to_p >= prob_b_to_b) else 'B'
                         trans_confidence = max(prob_p_to_p, prob_p_to_b) * 100 if last_result == 'P' else max(prob_b_to_p, prob_b_to_b) * 100
                         ml_predicted_outcome, ml_confidence = predict_next_outcome(valid_sequence, st.session_state.ml_model, st.session_state.ml_scaler)
-                        random_predicted_outcome = random.choices(['P', 'B', 'T'], weights=[0.4586, 0.4460, 0.0954], k=1)[0]
                         votes = {'P': 0.0, 'B': 0.0, 'T': 0.0}
                         if ml_predicted_outcome in votes:
                             votes[ml_predicted_outcome] += 0.7 * ml_confidence
                         if trans_predicted_outcome in votes:
                             votes[trans_predicted_outcome] += 0.3
-                        if random_predicted_outcome in votes:
-                            votes[random_predicted_outcome] += 0.1
                         bet_selection = max(votes, key=votes.get)
                         confidence = votes[bet_selection] * 100
                         strategy_used = []
@@ -611,8 +594,6 @@ def render_result_input():
                             strategy_used.append('AI')
                         if trans_predicted_outcome == bet_selection:
                             strategy_used.append('Transition')
-                        if random_predicted_outcome == bet_selection:
-                            strategy_used.append('Random')
                         strategy_used = '+'.join(strategy_used)
                         if votes[bet_selection] >= 0.5 and bet_selection in ['P', 'B'] and confidence >= 60.0:
                             bet_amount = calculate_bet_amount(bet_selection)
@@ -635,6 +616,8 @@ def render_result_input():
                                     strategy_info += f" Grid ({st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
                                 elif st.session_state.money_management == 'OscarGrind':
                                     strategy_info += f" Bet Level {st.session_state.oscar_current_bet_level}"
+                                elif st.session_state.money_management == '1222':
+                                    strategy_info += f" Level {st.session_state.level_1222}, Rounds {st.session_state.rounds_1222}, Bet: {st.session_state.next_bet_multiplier_1222 * st.session_state.level_1222}u"
                                 st.session_state.advice = f"Bet ${bet_amount:.2f} on {bet_selection} ({strategy_info}, {strategy_used}: {confidence:.1f}%)"
                             else:
                                 st.session_state.pending_bet = None
@@ -673,7 +656,7 @@ def render_prediction():
         else:
             advice = st.session_state.advice
             text_color = '#3182ce' if ' on P ' in advice else '#e53e3e' if ' on B ' in advice else '#2d3748'
-            st.markdown(f"<p style='font-size:1.2rem; font-weight:bold; color:{text_color};'>AI Advice: {advice}</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size:1.2rem; font-weight:bold;spam:1rem; font-weight:600; margin: 1rem 0 0.5rem; color: {text_color};'>AI Advice: {advice}</p>", unsafe_allow_html=True)
 
 def render_status():
     with st.expander("Session Status", expanded=True):
@@ -689,7 +672,24 @@ def render_status():
             st.markdown(f"**Safety Net**: {'On' if st.session_state.safety_net_enabled else 'Off'}")
             st.markdown(f"**Hands Played**: {len(st.session_state.sequence)}")
             st.markdown(f"**AI Mode**: {'On' if st.session_state.ai_mode else 'Off'}")
-            st.markdown(f"**Strategy**: {st.session_state.money_management}")
+            strategy_info = f"{st.session_state.money_management}"
+            if st.session_state.money_management == 'T3':
+                strategy_info += f" (Level {st.session_state.t3_level})"
+            elif st.session_state.money_management == 'Parlay16':
+                strategy_info += f" (Step {st.session_state.parlay_step}/16)"
+            elif st.session_state.money_management == 'Moon':
+                strategy_info += f" (Level {st.session_state.moon_level})"
+            elif st.session_state.money_management == 'FourTier':
+                strategy_info += f" (Level {st.session_state.four_tier_level}, Step {st.session_state.four_tier_step})"
+            elif st.session_state.money_management == 'FlatbetLevelUp':
+                strategy_info += f" (Level {st.session_state.flatbet_levelup_level})"
+            elif st.session_state.money_management == 'Grid':
+                strategy_info += f" (Grid {st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
+            elif st.session_state.money_management == 'OscarGrind':
+                strategy_info += f" (Bet Level {st.session_state.oscar_current_bet_level})"
+            elif st.session_state.money_management == '1222':
+                strategy_info += f" (Level {st.session_state.level_1222}, Rounds {st.session_state.rounds_1222})"
+            st.markdown(f"**Strategy**: {strategy_info}")
             st.markdown(f"**Bets Placed**: {st.session_state.bets_placed}")
             st.markdown(f"**Bets Won**: {st.session_state.bets_won}")
             total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
