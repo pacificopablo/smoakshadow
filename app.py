@@ -1,3 +1,4 @@
+
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -644,8 +645,8 @@ def render_result_input():
 def render_bead_plate():
     with st.expander("Bead Plate", expanded=True):
         st.markdown("**Bead Plate**")
-        sequence = st.session_state.sequence[-54:]  # 6x9 grid
-        grid = [['' for _ in range(9)] for _ in range(6)]
+        sequence = st.session_state.sequence[-84:]  # 6x14 grid
+        grid = [['' for _ in range(14)] for _ in range(6)]
         for i, result in enumerate(sequence):
             if result in ['P', 'B', 'T']:
                 col = i // 6
@@ -733,9 +734,9 @@ def render_history():
 
 # --- Main ---
 def main():
-    st.set_page_config(layout="wide", page_title="AI Baccarat")
+    st.set_page_config(layout="wide", page_title="MANG BACCARAT GROUP")
     apply_css()
-    st.title("Mang Baccarat Group")
+    st.title("MANG BACCARAT GROUP")
     initialize_session_state()
     render_setup_form()
     render_result_input()
