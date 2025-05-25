@@ -76,7 +76,7 @@ def train_ml_model(sequence):
         window = sequence[i:i+4]
         next_outcome = sequence[i+4]
         features = [OUTCOME_MAPPING[window[j]] for j in range(4)] + [
-            st.session_state.transition_counts.get(f"{window[-1]}{k}", 0) / (st.session_state.transition_counts.get(f"{window[-1]}P", 0) + st.session_state.transition_counts.get(f"{window[-1]}B", 0) + 1)
+            st.session_state.time_before_last.get(k, len(sequence) + 1) / (len(sequence) + 1)
             for k in ['P', 'B']
         ] + [st.session_state.current_streak / 10.0, st.session_state.current_chop_count / 10.0,
              st.session_state.bets_won / max(st.session_state.bets_placed, 1)]
@@ -106,7 +106,7 @@ def predict_next_outcome(sequence, model, scaler):
         return 'P', 0.5
     window = sequence[-4:]
     features = [OUTCOME_MAPPING[window[j]] for j in range(4)] + [
-        st.session_state.transition_counts.get(f"{window[-1]}{k}", 0) / (st.session_state.transition_counts.get(f"{window[-1]}P", 0) + st.session_state.transition_counts.get(f"{window[-1]}B", 0) + 1)
+        st.session_state.time_before_last.get(k, len(sequence) + 1) / (len(sequence) + 1)
         for k in ['P', 'B']
     ] + [st.session_state.current_streak / 10.0, st.session_state.current_chop_count / 10.0,
          st.session_state.bets_won / max(st.session_state.bets_placed, 1)]
@@ -120,9 +120,9 @@ def initialize_session_state():
     defaults = {
         'bankroll': 0.0, 'base_bet': 0.0, 'initial_bankroll': 0.0, 'peak_bankroll': 0.0, 'sequence': [], 
         'bet_history': [], 'pending_bet': None, 'bets_placed': 0, 'bets_won': 0, 't3_level': 1, 
-        't3_results': [], 'money_management': 'T3', 'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
-        'stop_loss_percentage': STOP_LOSS_DEFAULT, 'stop_loss_enabled': True, 'win_limit': WIN_LIMIT,
-        'shoe_completed': False, 'safety_net_enabled': True, 'safety_net_percentage': 0.02,
+        't3_results': [], 'money_management': 'T3', 'stop_loss_percentage': STOP_LOSS_DEFAULT, 
+        'stop_loss_enabled': True, 'win_limit': WIN_LIMIT, 'shoe_completed': False, 
+        'safety_net_enabled': True, 'safety_net_percentage': 0.02,
         'advice': "Need 4 more Player or Banker results", 'parlay_step': 1, 'parlay_wins': 0,
         'parlay_using_base': True, 'parlay_step_changes': 0, 'parlay_peak_step': 1, 'moon_level': 1,
         'moon_level_changes': 0, 'moon_peak_level': 1, 'target_profit_option': 'Profit %',
@@ -132,7 +132,8 @@ def initialize_session_state():
         'oscar_current_bet_level': 1, 'current_streak': 0, 'current_streak_type': None,
         'longest_streak': 0, 'longest_streak_type': None, 'current_chop_count': 0, 'longest_chop': 0,
         'ml_model': None, 'ml_scaler': None, 'ai_mode': True, 'level_1222': 1, 
-        'next_bet_multiplier_1222': 1, 'rounds_1222': 0, 'level_start_bankroll_1222': 0.0
+        'next_bet_multiplier_1222': 1, 'rounds_1222': 0, 'level_start_bankroll_1222': 0.0,
+        'last_positions': {'P': [], 'B': [], 'T': []}, 'time_before_last': {'P': 0, 'B': 0, 'T': 0}
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -151,15 +152,16 @@ def reset_session():
     st.session_state.update(setup_values)
     st.session_state.update({
         'sequence': [], 'bet_history': [], 'pending_bet': None, 'bets_placed': 0, 'bets_won': 0,
-        't3_level': 1, 't3_results': [], 'transition_counts': {'PP': 0, 'PB': 0, 'BP': 0, 'BB': 0},
-        'shoe_completed': False, 'advice': "Need 4 more Player or Banker results", 'parlay_step': 1,
+        't3_level': 1, 't3_results': [], 'shoe_completed': False, 
+        'advice': "Need 4 more Player or Banker results", 'parlay_step': 1,
         'parlay_wins': 0, 'parlay_using_base': True, 'parlay_step_changes': 0, 'parlay_peak_step': 1,
         'moon_level': 1, 'moon_level_changes': 0, 'moon_peak_level': 1, 'four_tier_level': 1,
         'four_tier_step': 1, 'four_tier_losses': 0, 'flatbet_levelup_level': 1, 'flatbet_levelup_net_loss': 0.0,
         'grid_pos': [0, 0], 'oscar_cycle_profit': 0.0, 'oscar_current_bet_level': 1,
         'current_streak': 0, 'current_streak_type': None, 'longest_streak': 0, 'longest_streak_type': None,
         'current_chop_count': 0, 'longest_chop': 0, 'level_1222': 1, 'next_bet_multiplier_1222': 1,
-        'rounds_1222': 0, 'level_start_bankroll_1222': setup_values.get('bankroll', 0.0)
+        'rounds_1222': 0, 'level_start_bankroll_1222': setup_values.get('bankroll', 0.0),
+        'last_positions': {'P': [], 'B': [], 'T': []}, 'time_before_last': {'P': 0, 'B': 0, 'T': 0}
     })
     # Load model if available
     st.session_state.ml_model, st.session_state.ml_scaler = load_ml_model()
@@ -229,19 +231,16 @@ def place_result(result: str):
             'moon_level': st.session_state.moon_level, 'moon_level_changes': st.session_state.moon_level_changes, 'moon_peak_level': st.session_state.moon_peak_level,
             'four_tier_level': st.session_state.four_tier_level, 'four_tier_step': st.session_state.four_tier_step, 'four_tier_losses': st.session_state.four_tier_losses,
             'flatbet_levelup_level': st.session_state.flatbet_levelup_level, 'flatbet_levelup_net_loss': st.session_state.flatbet_levelup_net_loss,
-            'bets_placed': st.session_state.bets_placed, 'bets_won': st.session_state.bets_won, 'transition_counts': st.session_state.transition_counts.copy(),
-            'pending_bet': st.session_state.pending_bet, 'shoe_completed': st.session_state.shoe_completed, 'grid_pos': st.session_state.grid_pos.copy(),
+            'bets_placed': st.session_state.bets_placed, 'bets_won': st.session_state.bets_won, 'pending_bet': st.session_state.pending_bet, 
+            'shoe_completed': st.session_state.shoe_completed, 'grid_pos': st.session_state.grid_pos.copy(),
             'oscar_cycle_profit': st.session_state.oscar_cycle_profit, 'oscar_current_bet_level': st.session_state.oscar_current_bet_level,
             'current_streak': st.session_state.current_streak, 'current_streak_type': st.session_state.current_streak_type,
             'longest_streak': st.session_state.longest_streak, 'longest_streak_type': st.session_state.longest_streak_type,
             'current_chop_count': st.session_state.current_chop_count, 'longest_chop': st.session_state.longest_chop,
             'level_1222': st.session_state.level_1222, 'next_bet_multiplier_1222': st.session_state.next_bet_multiplier_1222,
-            'rounds_1222': st.session_state.rounds_1222, 'level_start_bankroll_1222': st.session_state.level_start_bankroll_1222
+            'rounds_1222': st.session_state.rounds_1222, 'level_start_bankroll_1222': st.session_state.level_start_bankroll_1222,
+            'last_positions': st.session_state.last_positions.copy(), 'time_before_last': st.session_state.time_before_last.copy()
         }
-
-        # Update transitions
-        if len(st.session_state.sequence) >= 1 and result in ['P', 'B'] and st.session_state.sequence[-1] in ['P', 'B']:
-            st.session_state.transition_counts[f"{st.session_state.sequence[-1]}{result}"] += 1
 
         # Update streak/chop
         if result in ['P', 'B']:
@@ -398,6 +397,16 @@ def place_result(result: str):
         # Add result
         if result in ['P', 'B', 'T']:
             st.session_state.sequence.append(result)
+            # Update last_positions and time_before_last
+            current_position = len(st.session_state.sequence)
+            st.session_state.last_positions[result].append(current_position)
+            if len(st.session_state.last_positions[result]) > 2:
+                st.session_state.last_positions[result].pop(0)
+            for outcome in ['P', 'B', 'T']:
+                if len(st.session_state.last_positions[outcome]) >= 2:
+                    st.session_state.time_before_last[outcome] = current_position - st.session_state.last_positions[outcome][-2]
+                else:
+                    st.session_state.time_before_last[outcome] = current_position + 1
 
         # Train or load model
         valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B', 'T']]
@@ -418,28 +427,25 @@ def place_result(result: str):
             st.session_state.pending_bet = None
             st.session_state.advice = "Need 4 more Player or Banker results"
         elif len(valid_sequence) >= 4 and result in ['P', 'B']:
-            total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
-            total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
-            prob_p_to_p = (st.session_state.transition_counts['PP'] / total_from_p) if total_from_p > 0 else 0.5
-            prob_p_to_b = (st.session_state.transition_counts['PB'] / total_from_p) if total_from_p > 0 else 0.5
-            prob_b_to_p = (st.session_state.transition_counts['BP'] / total_from_b) if total_from_b > 0 else 0.5
-            prob_b_to_b = (st.session_state.transition_counts['BB'] / total_from_b) if total_from_b > 0 else 0.5
-            last_result = valid_sequence[-1]
-            trans_predicted_outcome = 'P' if (prob_p_to_p >= prob_p_to_b if last_result == 'P' else prob_b_to_p >= prob_b_to_b) else 'B'
-            trans_confidence = max(prob_p_to_p, prob_p_to_b) * 100 if last_result == 'P' else max(prob_b_to_p, prob_b_to_b) * 100
             ml_predicted_outcome, ml_confidence = predict_next_outcome(valid_sequence, st.session_state.ml_model, st.session_state.ml_scaler)
+            # Use time_before_last for prediction
+            tbl_values = {k: st.session_state.time_before_last.get(k, len(valid_sequence) + 1) for k in ['P', 'B', 'T']}
+            max_tbl = max(tbl_values.values(), default=1)
+            tbl_weights = {k: (max_tbl - v + 1) / max_tbl if v <= len(valid_sequence) else 0.0 for k, v in tbl_values.items()}
+            tbl_predicted_outcome = min(tbl_values, key=tbl_values.get)
+            tbl_confidence = tbl_weights[tbl_predicted_outcome] * 100
             votes = {'P': 0.0, 'B': 0.0, 'T': 0.0}
             if ml_predicted_outcome in votes:
                 votes[ml_predicted_outcome] += 0.7 * ml_confidence
-            if trans_predicted_outcome in votes:
-                votes[trans_predicted_outcome] += 0.3
+            if tbl_predicted_outcome in votes:
+                votes[tbl_predicted_outcome] += 0.3 * tbl_weights[tbl_predicted_outcome]
             bet_selection = max(votes, key=votes.get)
             confidence = votes[bet_selection] * 100
             strategy_used = []
             if ml_predicted_outcome == bet_selection:
                 strategy_used.append('AI')
-            if trans_predicted_outcome == bet_selection:
-                strategy_used.append('Transition')
+            if tbl_predicted_outcome == bet_selection:
+                strategy_used.append('TimeBeforeLast')
             strategy_used = '+'.join(strategy_used)
             if votes[bet_selection] >= 0.5 and bet_selection in ['P', 'B'] and confidence >= 60.0:
                 bet_amount = calculate_bet_amount(bet_selection)
@@ -562,8 +568,16 @@ def render_result_input():
                         if last_bet["Bet_Outcome"] == 'win':
                             st.session_state.bankroll -= last_bet["Bet_Amount"] * (0.95 if last_bet["Bet_Selection"] == 'B' else 1.0)
                             st.session_state.bets_won -= 1
-                    if len(st.session_state.sequence) >= 1 and last_bet["Result"] in ['P', 'B'] and st.session_state.sequence[-1] in ['P', 'B']:
-                        st.session_state.transition_counts[f"{st.session_state.sequence[-1]}{last_bet['Result']}"] -= 1
+                    # Update last_positions and time_before_last for undo
+                    last_result = last_bet["Result"]
+                    if last_result in st.session_state.last_positions and st.session_state.last_positions[last_result]:
+                        st.session_state.last_positions[last_result].pop()
+                    current_position = len(st.session_state.sequence)
+                    for outcome in ['P', 'B', 'T']:
+                        if len(st.session_state.last_positions[outcome]) >= 2:
+                            st.session_state.time_before_last[outcome] = current_position - st.session_state.last_positions[outcome][-2]
+                        else:
+                            st.session_state.time_before_last[outcome] = current_position + 1
                     valid_sequence = [r for r in st.session_state.sequence if r in ['P', 'B', 'T']]
                     if len(valid_sequence) < 4:
                         st.session_state.pending_bet = None
@@ -571,28 +585,24 @@ def render_result_input():
                     else:
                         if len(valid_sequence) >= 5:
                             st.session_state.ml_model, st.session_state.ml_scaler = train_ml_model(valid_sequence)
-                        total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
-                        total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
-                        prob_p_to_p = (st.session_state.transition_counts['PP'] / total_from_p) if total_from_p > 0 else 0.5
-                        prob_p_to_b = (st.session_state.transition_counts['PB'] / total_from_p) if total_from_p > 0 else 0.5
-                        prob_b_to_p = (st.session_state.transition_counts['BP'] / total_from_b) if total_from_b > 0 else 0.5
-                        prob_b_to_b = (st.session_state.transition_counts['BB'] / total_from_b) if total_from_b > 0 else 0.5
-                        last_result = valid_sequence[-1]
-                        trans_predicted_outcome = 'P' if (prob_p_to_p >= prob_p_to_b if last_result == 'P' else prob_b_to_p >= prob_b_to_b) else 'B'
-                        trans_confidence = max(prob_p_to_p, prob_p_to_b) * 100 if last_result == 'P' else max(prob_b_to_p, prob_b_to_b) * 100
                         ml_predicted_outcome, ml_confidence = predict_next_outcome(valid_sequence, st.session_state.ml_model, st.session_state.ml_scaler)
+                        tbl_values = {k: st.session_state.time_before_last.get(k, len(valid_sequence) + 1) for k in ['P', 'B', 'T']}
+                        max_tbl = max(tbl_values.values(), default=1)
+                        tbl_weights = {k: (max_tbl - v + 1) / max_tbl if v <= len(valid_sequence) else 0.0 for k, v in tbl_values.items()}
+                        tbl_predicted_outcome = min(tbl_values, key=tbl_values.get)
+                        tbl_confidence = tbl_weights[tbl_predicted_outcome] * 100
                         votes = {'P': 0.0, 'B': 0.0, 'T': 0.0}
                         if ml_predicted_outcome in votes:
                             votes[ml_predicted_outcome] += 0.7 * ml_confidence
-                        if trans_predicted_outcome in votes:
-                            votes[trans_predicted_outcome] += 0.3
+                        if tbl_predicted_outcome in votes:
+                            votes[tbl_predicted_outcome] += 0.3 * tbl_weights[tbl_predicted_outcome]
                         bet_selection = max(votes, key=votes.get)
                         confidence = votes[bet_selection] * 100
                         strategy_used = []
                         if ml_predicted_outcome == bet_selection:
                             strategy_used.append('AI')
-                        if trans_predicted_outcome == bet_selection:
-                            strategy_used.append('Transition')
+                        if tbl_predicted_outcome == bet_selection:
+                            strategy_used.append('TimeBeforeLast')
                         strategy_used = '+'.join(strategy_used)
                         if votes[bet_selection] >= 0.5 and bet_selection in ['P', 'B'] and confidence >= 60.0:
                             bet_amount = calculate_bet_amount(bet_selection)
@@ -693,14 +703,9 @@ def render_status():
             st.markdown(f"**Strategy**: {strategy_info}")
             st.markdown(f"**Bets Placed**: {st.session_state.bets_placed}")
             st.markdown(f"**Bets Won**: {st.session_state.bets_won}")
-            total_from_p = st.session_state.transition_counts['PP'] + st.session_state.transition_counts['PB']
-            total_from_b = st.session_state.transition_counts['BP'] + st.session_state.transition_counts['BB']
-            prob_p_to_p = (st.session_state.transition_counts['PP'] / total_from_p * 100) if total_from_p > 0 else 0.0
-            prob_p_to_b = (st.session_state.transition_counts['PB'] / total_from_p * 100) if total_from_p > 0 else 0.0
-            prob_b_to_p = (st.session_state.transition_counts['BP'] / total_from_b * 100) if total_from_b > 0 else 0.0
-            prob_b_to_b = (st.session_state.transition_counts['BB'] / total_from_b * 100) if total_from_b > 0 else 0.0
+            tbl_display = {k: f"{v}" if v <= len(st.session_state.sequence) else "N/A" for k, v in st.session_state.time_before_last.items()}
             st.markdown(
-                f"**Transitions**:<br>P→P: {prob_p_to_p:.1f}%, P→B: {prob_p_to_b:.1f}%<br>B→P: {prob_b_to_p:.1f}%, B→B: {prob_b_to_b:.1f}%",
+                f"**Time Before Last**:<br>P: {tbl_display['P']} hands<br>B: {tbl_display['B']} hands<br>T: {tbl_display['T']} hands",
                 unsafe_allow_html=True
             )
             st.markdown(
