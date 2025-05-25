@@ -541,7 +541,7 @@ def render_result_input():
                 place_result("P")
                 st.rerun()
         with cols[1]:
-            if st.button("Banker", key="banker_btn", disabled=(st.session_state.shoe_completed and not st session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
+            if st.button("Banker", key="banker_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
                 place_result("B")
                 st.rerun()
         with cols[2]:
@@ -684,7 +684,7 @@ def render_status():
                 strategy_info += f" (Level {st.session_state.four_tier_level}, Step {st.session_state.four_tier_step})"
             elif st.session_state.money_management == 'FlatbetLevelUp':
                 strategy_info += f" (Level {st.session_state.flatbet_levelup_level})"
-            elif st.session_state.money Management == 'Grid':
+            elif st.session_state.money_management == 'Grid':
                 strategy_info += f" (Grid {st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
             elif st.session_state.money_management == 'OscarGrind':
                 strategy_info += f" (Bet Level {st.session_state.oscar_current_bet_level})"
@@ -704,7 +704,7 @@ def render_status():
                 unsafe_allow_html=True
             )
             st.markdown(
-                f"**Streak**: {st.session_state.current_streak} ({st.session_state.current_streak_type or 'None'})<br>"
+                f " **Streak **: {st.session_state.current_streak} ({st.session_state.current_streak_type or 'None'})<br>"
                 f"**Longest Streak**: {st.session_state.longest_streak} ({st.session_state.longest_streak_type or 'None'})<br>"
                 f"**Chop**: {st.session_state.current_chop_count}<br>**Longest Chop**: {st.session_state.longest_chop}",
                 unsafe_allow_html=True
