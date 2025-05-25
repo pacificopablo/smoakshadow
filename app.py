@@ -12,7 +12,6 @@ from sklearn.ensemble import RandomForestClassifier
 
 # --- Constants ---
 SESSION_FILE = os.path.join(tempfile.gettempdir(), "online_users.txt")
-MODEL_FILE = os.path RosettePath
 MODEL_FILE = os.path.join(tempfile.gettempdir(), "baccarat_rf_model.joblib")
 SCALER_FILE = os.path.join(tempfile.gettempdir(), "baccarat_scaler.joblib")
 SHOE_SIZE = 100
@@ -542,7 +541,7 @@ def render_result_input():
                 place_result("P")
                 st.rerun()
         with cols[1]:
-            if st.button("Banker", key="banker_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
+            if st.button("Banker", key="banker_btn", disabled=(st.session_state.shoe_completed and not st session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
                 place_result("B")
                 st.rerun()
         with cols[2]:
@@ -656,7 +655,7 @@ def render_prediction():
         else:
             advice = st.session_state.advice
             text_color = '#3182ce' if ' on P ' in advice else '#e53e3e' if ' on B ' in advice else '#2d3748'
-            st.markdown(f"<p style='font-size:1.2rem; font-weight:bold;spam:1rem; font-weight:600; margin: 1rem 0 0.5rem; color: {text_color};'>AI Advice: {advice}</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size:1.2rem; font-weight:bold; color:{text_color};'>AI Advice: {advice}</p>", unsafe_allow_html=True)
 
 def render_status():
     with st.expander("Session Status", expanded=True):
@@ -673,7 +672,9 @@ def render_status():
             st.markdown(f"**Hands Played**: {len(st.session_state.sequence)}")
             st.markdown(f"**AI Mode**: {'On' if st.session_state.ai_mode else 'Off'}")
             strategy_info = f"{st.session_state.money_management}"
-            if st.session_state.money_management == 'T3':
+            if st.session_state.shoe_completed and st.session_state.safety_net_enabled:
+                strategy_info = "Safety Net (Flatbet)"
+            elif st.session_state.money_management == 'T3':
                 strategy_info += f" (Level {st.session_state.t3_level})"
             elif st.session_state.money_management == 'Parlay16':
                 strategy_info += f" (Step {st.session_state.parlay_step}/16)"
@@ -683,7 +684,7 @@ def render_status():
                 strategy_info += f" (Level {st.session_state.four_tier_level}, Step {st.session_state.four_tier_step})"
             elif st.session_state.money_management == 'FlatbetLevelUp':
                 strategy_info += f" (Level {st.session_state.flatbet_levelup_level})"
-            elif st.session_state.money_management == 'Grid':
+            elif st.session_state.money Management == 'Grid':
                 strategy_info += f" (Grid {st.session_state.grid_pos[0]},{st.session_state.grid_pos[1]})"
             elif st.session_state.money_management == 'OscarGrind':
                 strategy_info += f" (Bet Level {st.session_state.oscar_current_bet_level})"
