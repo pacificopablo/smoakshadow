@@ -650,7 +650,7 @@ def render_bead_plate():
             if result in ['P', 'B', 'T']:
                 col = i // 6
                 row = i % 6
-                if col < 9:
+                if col < 14:
                     color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
                     grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
         for row in grid:
