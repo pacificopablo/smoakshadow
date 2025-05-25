@@ -735,7 +735,7 @@ def render_history():
 def main():
     st.set_page_config(layout="wide", page_title="AI Baccarat")
     apply_css()
-    st.title("AI Baccarat")
+    st.title("Mang Baccarat Group")
     initialize_session_state()
     render_setup_form()
     render_result_input()
