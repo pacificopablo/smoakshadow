@@ -584,7 +584,8 @@ def render_result_input():
                         votes = {'P': 0.0, 'B': 0.0, 'T': 0.0}
                         if ml_predicted_outcome in votes:
                             votes[ml_predicted_outcome] += 0.7 * ml_confidence
-                        if trans_predicted_out - No change needed; already clear and descriptive
+                        if trans_predicted_outcome in votes:
+                            votes[trans_predicted_outcome] += 0.3
                         bet_selection = max(votes, key=votes.get)
                         confidence = votes[bet_selection] * 100
                         strategy_used = []
