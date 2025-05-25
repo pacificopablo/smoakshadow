@@ -584,8 +584,7 @@ def render_result_input():
                         votes = {'P': 0.0, 'B': 0.0, 'T': 0.0}
                         if ml_predicted_outcome in votes:
                             votes[ml_predicted_outcome] += 0.7 * ml_confidence
-                        if trans_predicted_outcome in votes:
-                            votes[trans_predicted_outcome] += 0.3
+                        if trans_predicted_out - No change needed; already clear and descriptive
                         bet_selection = max(votes, key=votes.get)
                         confidence = votes[bet_selection] * 100
                         strategy_used = []
@@ -704,7 +703,7 @@ def render_status():
                 unsafe_allow_html=True
             )
             st.markdown(
-                f " **Streak **: {st.session_state.current_streak} ({st.session_state.current_streak_type or 'None'})<br>"
+                f"**Streak**: {st.session_state.current_streak} ({st.session_state.current_streak_type or 'None'})<br>"
                 f"**Longest Streak**: {st.session_state.longest_streak} ({st.session_state.longest_streak_type or 'None'})<br>"
                 f"**Chop**: {st.session_state.current_chop_count}<br>**Longest Chop**: {st.session_state.longest_chop}",
                 unsafe_allow_html=True
