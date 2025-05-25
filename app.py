@@ -56,6 +56,8 @@ def apply_css():
     .result-button-tie:hover { background: linear-gradient(to bottom, #68d391, #38a169); }
     .result-button-undo { background: linear-gradient(to bottom, #718096, #5a667f); }
     .result-button-undo:hover { background: linear-gradient(to bottom, #a0aec0, #718096); }
+    .result-button-random { background: linear-gradient(to bottom, #9f7aea, #7c3aed); }
+    .result-button-random:hover { background: linear-gradient(to bottom, #c4b5fd, #9f7aea); }
     .stNumberInput input, .stSelectbox select { border-radius: 8px; border: 1px solid #e2e8f0; padding: 10px; font-size: 14px; }
     .st-expander { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 1rem; }
     .bead-plate { background: #edf2f7; padding: 10px; border-radius: 8px; overflow-x: auto; }
@@ -545,7 +547,7 @@ def render_result_input():
             st.success(f"Shoe of {SHOE_SIZE} hands completed!")
         elif st.session_state.shoe_completed:
             st.info("Continuing with safety net.")
-        cols = st.columns(4)
+        cols = st.columns(5)
         with cols[0]:
             if st.button("Player", key="player_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
                 place_result("P")
@@ -559,6 +561,9 @@ def render_result_input():
                 place_result("T")
                 st.rerun()
         with cols[3]:
+            if st.button("Random Bet", key="random_btn", disabled=(st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode, help="Place a random bet on Player or Banker"):
+                place_random_bet()
+        with cols[4]:
             if st.button("Undo Last", key="undo_btn", disabled=not st.session_state.bet_history or (st.session_state.shoe_completed and not st.session_state.safety_net_enabled) or st.session_state.bankroll == 0 or st.session_state.ai_mode):
                 if not st.session_state.sequence:
                     st.warning("No results to undo.")
