@@ -742,17 +742,17 @@ def render_result_input():
 def render_bead_plate():
     with st.expander("Bead Plate", expanded=True):
         st.markdown("**Bead Plate**")
-        sequence = st.session_state.sequence[-50:]
-        grid = [['' for _ in range(10)] for _ in range(5)]
+        sequence = st.session_state.sequence[-84:]  # Show up to 84 recent results
+        grid = [['' for _ in range(14)] for _ in range(6)]  # 6x14 grid
         for i, result in enumerate(sequence):
             if result in ['P', 'B', 'T']:
-                col = i // 5
-                row = i % 5
-                if col < 10:
+                col = i // 6
+                row = i % 6
+                if col < 14:
                     color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
-                    grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
+                    grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block; margin: 2px;"></div>'
         for row in grid:
-            st.markdown(' '.join(row), unsafe_allow_html=True)
+            st.markdown(''.join(row), unsafe_allow_html=True)
 
 def render_prediction():
     with st.expander("Prediction", expanded=True):
@@ -826,7 +826,7 @@ def render_history():
         if not st.session_state.bet_history:
             st.write("No history available.")
         else:
-            n = st.slider("Show last N bets", min_value=5, max_value=50, value=10)
+            n = st.slider("Show last N bets", min_value=5, max_value=50, value=5)
             st.dataframe([
                 {
                     "Result": h["Result"], "Bet": h["Bet_Selection"] if h.get("Bet_Selection") else "-",
@@ -875,15 +875,15 @@ def render_insights():
 def main():
     st.set_page_config(layout="wide", page_title="Baccarat Simulator")
     apply_css()
-    st.title("BACCARAT SIMULATOR")
+    st.title("Baccarat Simulator")
     initialize_session_state()
     render_setup_form()
     render_result_input()
     render_bead_plate()
     render_prediction()
     render_status()
-    render_insights()
     render_history()
+    render_insights()
 
 if __name__ == "__main__":
     main()
