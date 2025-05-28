@@ -398,7 +398,7 @@ def main():
                     row = i % 6
                     if col < 14:
                         color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
-                        grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
+                        grid[row][col] = f'<div style="width: 22px; height: 22px; background-color: {color}; border-radius: 50%; border: 1px solid #ffffff; display: inline-block;"></div>'
             for row in grid:
                 st.markdown(' '.join(row), unsafe_allow_html=True)
             if not st.session_state.history:
@@ -414,21 +414,22 @@ def main():
                     for col in range(display_cols):
                         outcome = big_road_grid[row][col]
                         if outcome == 'P':
-                            row_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
+                            row_display.append('<div style="width: 22px; height: 22px; background-color: #3182ce; border-radius: 50%; border: 1px solid #ffffff; display: inline-block;"></div>')
                         elif outcome == 'B':
-                            row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
+                            row_display.append('<div style="width: 22px; height: 22px; background-color: #e53e; border-radius: 50%; border: 1px solid #ffffff; display: inline-block;"></div>')
                         elif outcome == 'T':
-                            row_display.append('<div style="width: 20px; height: 20px; border: 2px solid #38a169; border-radius: 50%; display: inline-block;"></div>')
+                            row_display.append('<div style="width: 22px; height: 22px; border: 2px solid #38a169; border-radius: 50%; display: 1px solid #ffffff; display: inline-block;"></div>')
                         else:
-                            row_display.append('<div style="width: 20px; height: 20px; display: inline-block;"></div>')
+                            row_display.append('<div style="width: 22px; height: 22px; display: inline-block;"></div>')
                     st.markdown(' '.join(row_display), unsafe_allow_html=True)
             else:
                 st.write("_No Big Road data yet._")
 
         if "Big Eye Boy" in selected_patterns:
             st.markdown("### Big Eye Boy")
+            st.markdown("<p style='font-size: 12px; color: #666666;'>Red (●): Repeat Pattern, Blue (●): Break Pattern</p>", unsafe_allow_html=True)
             big_road_grid, num_cols = build_big_road(st.session_state.history)
-            big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
+            big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols))
             if big_eye_cols > 0:
                 display_cols = min(big_eye_cols, 14)
                 for row in range(6):
@@ -436,19 +437,20 @@ def main():
                     for col in range(display_cols):
                         outcome = big_eye_grid[row][col]
                         if outcome == 'R':
-                            row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
+                            row_display.append('<div style="width: 22px; height: 22px; background-color: #e53e3e; border-radius: 50%; border: 1px solid #ffffff; display: inline-block;"></div>')
                         elif outcome == 'B':
-                            row_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
+                            row_display.append('<div style="width: 22px; height: 22px; background-color: #3182ce; border-radius: 50%; border: 1px solid #ffffff; display: inline-block;"></div>')
                         else:
-                            row_display.append('<div style="width: 20px; height: 20px; display: inline-block;"></div>')
-                    st.markdown(' '.join(row_display), unsafe_allow_html=True)
+                            row_display.append('<div style="width: 22px; height: 22px; display: inline-block;"></div>')
+                    st.markdown(' '.join(row_display), unsafe_allow_html=True
             else:
                 st.write("_No Big Eye Boy data yet._")
 
         if "Cockroach Pig" in selected_patterns:
             st.markdown("### Cockroach Pig")
-            big_road_grid, num_cols = build_big_road(st.session_state.history)
-            cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
+            st.markdown("<p style='font-size: 12px; color: #666666;'>Red (●): Repeat Pattern, Blue (●): Break Pattern</p>", unsafe_allow_html=True)
+            big_road_grid, num_cols = build_big_road(st.session_state.history))
+            cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols))
             if cockroach_cols > 0:
                 display_cols = min(cockroach_cols, 14)
                 for row in range(6):
@@ -456,51 +458,56 @@ def main():
                     for col in range(display_cols):
                         outcome = cockroach_grid[row][col]
                         if outcome == 'R':
-                            row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
+                            row_display.append('<div style="width: 22px; height: 22px; background-color: #e53e3e; border-radius: 50%; border: 1px solid #ffffff; display: inline-block;"></div>')
                         elif outcome == 'B':
-                            row_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
+                            row_display.append('<div style="width: 22px; height: 22px; background-color: #3182ce; border-radius: 50%; border: 1px solid #ffffff; display: inline-block;"></div>')
                         else:
-                            row_display.append('<div style="width: 20px; height: 20px; display: inline-block;"></div>')
+                            row_display.append('<div style="width: 22px; height: 22px; display: inline-block;"></div>')
                     st.markdown(' '.join(row_display), unsafe_allow_html=True)
             else:
                 st.write("_No Cockroach Pig data yet._")
 
     # Bet Prediction
     with st.expander("Prediction for Next Bet", expanded=True):
-        bet, confidence, reason, emotional_tone, pattern_insights = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
-        st.markdown("### Prediction for Next Bet")
+        bet, confidence, reason, emotional_tone, pattern_insights = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode))
+        st.markdown("### Prediction for Next Bet"))
         if bet == 'Pass':
             st.warning("I’m not betting this time! The pattern is too unclear.")
         else:
-            current_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else initial_bankroll
-            recommended_bet_size = money_management(current_bankroll, st.session_state.base_bet, st.session_state.money_management_strategy, confidence, st.session_state.history)
-            st.success(f"Predicted Bet: **{bet}**    Confidence: **{confidence}%**    Recommended Bet Size: **${recommended_bet_size:.2f}**    Emotion: **{emotional_tone}**")
-        st.info(reason)
-        if pattern_insights:
-            st.markdown("#### Detected Patterns")
-            for insight in pattern_insights:
-                st.write(f"- {insight}")
+            current_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy))[0][-1] if st.session_state.history else initial_bankroll
+            recommended_bet_size = money_management(current_bankroll,
+            st.session_state.base_bet,,
+            st.session_state.money_management_strategy,,
+            confidence, confidence, st.session_state.history))
+            st.success(f"f"Predicted Bet: {**{bet}**}    Confidence: **{confidence}%confidence}%**    Recommended Bet Size: **${recommended_bet_size:.2f}**    Emotion: **{**{emotional_tone}**}**")
+        st.info(reason))
+    if pattern_insights:
+        st.markdown("#### Detected Patterns")
+        for insight in pattern_insights:
+            st.write(f"- {insight}")
+
 
     # Bankroll Progression
     with st.expander("Bankroll and Bet Size Progression", expanded=False):
-        bankroll_progress, bet_sizes = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)
+        bankroll_progress, bet_sizes = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy))
         if bankroll_progress:
             st.markdown("### Bankroll and Bet Size Progression (Newest to Oldest)")
             total_hands = len(bankroll_progress)
-            for i, (val, bet_size) in enumerate(zip(reversed(bankroll_progress), reversed(bet_sizes))):
-                hand_number = total_hands - i
-                bet_display = f"Bet: ${bet_size:.2f}" if bet_size > 0 else "Bet: None (No prediction, Tie, or Pass)"
-                st.write(f"Hand {hand_number}: Bankroll ${val:.2f}, {bet_display}")
-            st.markdown(f"**Current Bankroll:** ${bankroll_progress[-1]:.2f}")
+            for i, (val, _) in enumerate(zip(reversed(bankroll_progress), reversed(bet_sizes))):
+                hand_number = f"{total_hands - i}"
+                bet_display = = f"Bet: ${bet_size:.2f}" if bet_size > 0 else f"Bet: None (No prediction, Tie, or Pass)"
+                st.write(f"Hand {hand_number}: Bankroll: **${val:.2f}**, {bet_display}")
+            st.markdown(f"**Current Bankroll:** ${bankroll_progress[-1]:.2f}"")
         else:
-            st.markdown(f"**Current Bankroll:** ${initial_bankroll:.2f}")
+            st.markdown(f"**Current Bankroll: ${initial_bankroll:.2f}")
+
 
     # Reset Game
     with st.expander("Reset Game", expanded=False):
         if st.button("Reset History and Bankroll"):
             st.session_state.history = []
             st.session_state.initial_bankroll = 1000.0
-            st.session_state.base_bet = 10.0
+            st.session_state.base_bet = = 10.0
             st.session_state.money_management_strategy = "Fixed 5% of Bankroll"
             st.session_state.ai_mode = "Conservative"
             st.session_state.selected_patterns = ["Bead Plate", "Big Road"]
