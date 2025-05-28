@@ -55,35 +55,57 @@ def frequency_count(arr):
     return count
 
 def build_big_road(results):
-    big_road = []
-    current_column = []
+    """
+    Build a Big Road grid, adding outcomes left to right.
+    Returns a 2D grid (6 rows × columns) with 'P', 'B', 'T', or ''.
+    """
+    max_rows = 6
+    max_cols = 50  # Allow enough columns for a full shoe
+    grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
+    col = 0
+    row = 0
     last_outcome = None
+
     for result in results:
         mapped = 'P' if result == 'Player' else 'B' if result == 'Banker' else 'T'
         if mapped == 'T':
-            if current_column:
-                current_column.append('T')
+            if col < max_cols and row < max_rows and grid[row][col] == '':
+                grid[row][col] = 'T'
             continue
-        if not current_column or (mapped == last_outcome and len(current_column) < 6):
-            current_column.append(mapped)
+        if col >= max_cols:
+            break
+        if last_outcome is None or (mapped == last_outcome and row < max_rows - 1):
+            grid[row][col] = mapped
+            row += 1
         else:
-            big_road.append(current_column)
-            current_column = [mapped]
-        last_outcome = mapped
-    if current_column:
-        big_road.append(current_column)
-    return big_road
+            col += 1
+            row = 0
+            if col < max_cols:
+                grid[row][col] = mapped
+                row += 1
+        last_outcome = mapped if mapped != 'T' else last_outcome
+    return grid, col + 1  # Return grid and number of columns used
 
-def analyze_big_eye_boy(big_road):
-    if len(big_road) < 3:
+def analyze_big_eye_boy(big_road_grid, num_cols):
+    """
+    Simplified Big Eye Boy analysis based on column patterns.
+    Returns 'Repeat' or 'Break' for recent patterns.
+    """
+    if num_cols < 3:
         return None
-    last_col = big_road[-1]
-    second_last = big_road[-2]
-    third_last = big_road[-3]
-    if len(last_col) == len(second_last) and last_col[0] == second_last[0]:
-        return 'Repeat'
-    elif len(second_last) == len(third_last) and second_last[0] == third_last[0]:
-        return 'Repeat'
+    # Compare last two columns for repetition
+    last_col = [big_road_grid[row][num_cols - 1] for row in range(6)]
+    second_last = [big_road_grid[row][num_cols - 2] for row in range(6)]
+    third_last = [big_road_grid[row][num_cols - 3] for row in range(6)]
+    last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
+    second_non_empty = next((i for i, x in enumerate(second_last) if x in ['P', 'B']), None)
+    third_non_empty = next((i for i, x in enumerate(third_last) if x in ['P', 'B']), None)
+    if last_non_empty is not None and second_non_empty is not None:
+        if last_col[last_non_empty] == second_last[second_non_empty]:
+            return 'Repeat'
+    if second_non_empty is not None and third_non_empty is not None:
+        if second_last[second_non_empty] == third_last[third_non_empty]:
+            return 'Repeat'
     return 'Break'
 
 def advanced_bet_selection(results, mode='Conservative'):
@@ -127,22 +149,24 @@ def advanced_bet_selection(results, mode='Conservative'):
         pattern_insights.append(f"Trend: {trend_bet} dominance")
         emotional_tone = "Hopeful"
 
-    big_road = build_big_road(recent)
-    big_eye_signal = analyze_big_eye_boy(big_road)
-    if big_road:
-        last_col = big_road[-1]
-        if len(last_col) >= 3 and last_col[0] in ['P', 'B']:
+    big_road_grid, num_cols = build_big_road(recent)
+    big_eye_signal = analyze_big_eye_boy(big_road_grid, num_cols)
+    if num_cols > 0:
+        # Check last column for a streak
+        last_col = [big_road_grid[row][num_cols - 1] for row in range(6)]
+        col_length = sum(1 for x in last_col if x in ['P', 'B'])
+        if col_length >= 3:
             bet_side = 'Player' if last_col[0] == 'P' else 'Banker'
             scores[bet_side] += 60
-            reason_parts.append(f"Big Road shows a column of {len(last_col)} {bet_side}.")
-            pattern_insights.append(f"Big Road: {len(last_col)} {bet_side}")
-        if big_eye_signal == 'Repeat' and len(big_road) >= 2:
-            last_side = 'Player' if big_road[-1][0] == 'P' else 'Banker'
+            reason_parts.append(f"Big Road column of {col_length} {bet_side}.")
+            pattern_insights.append(f"Big Road: {col_length} {bet_side}")
+        if big_eye_signal == 'Repeat' and num_cols >= 2:
+            last_side = 'Player' if last_col[0] == 'P' else 'Banker'
             scores[last_side] += 50
             reason_parts.append("Big Eye Boy suggests pattern repetition.")
             pattern_insights.append("Big Eye Boy: Repeat pattern")
         elif big_eye_signal == 'Break':
-            opposite_side = 'Player' if big_road[-1][0] == 'B' else 'Banker'
+            opposite_side = 'Player' if last_col[0] == 'B' else 'Banker'
             scores[opposite_side] += 40
             reason_parts.append("Big Eye Boy indicates a pattern break.")
             pattern_insights.append("Big Eye Boy: Break pattern")
@@ -320,18 +344,22 @@ def main():
             st.write("_No results yet. Click the buttons above to add results._")
 
         st.markdown("### Big Road")
-        big_road = build_big_road(st.session_state.history)
-        if big_road:
-            for col in big_road[:14]:
-                col_display = []
-                for outcome in col[:6]:
+        big_road_grid, num_cols = build_big_road(st.session_state.history)
+        if num_cols > 0:
+            display_cols = min(num_cols, 14)  # Limit to 14 columns for display
+            for row in range(6):
+                row_display = []
+                for col in range(display_cols):
+                    outcome = big_road_grid[row][col]
                     if outcome == 'P':
-                        col_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
+                        row_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
                     elif outcome == 'B':
-                        col_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
+                        row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
                     elif outcome == 'T':
-                        col_display.append('<div style="width: 20px; height: 20px; border: 2px solid #38a169; border-radius: 50%; display: inline-block;"></div>')
-                st.markdown(' '.join(col_display), unsafe_allow_html=True)
+                        row_display.append('<div style="width: 20px; height: 20px; border: 2px solid #38a169; border-radius: 50%; display: inline-block;"></div>')
+                    else:
+                        row_display.append('<div style="width: 20px; height: 20px; display: inline-block;"></div>')
+                st.markdown(' '.join(row_display), unsafe_allow_html=True)
         else:
             st.write("_No Big Road data yet._")
 
