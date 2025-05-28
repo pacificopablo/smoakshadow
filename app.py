@@ -55,10 +55,6 @@ def frequency_count(arr):
     return count
 
 def build_big_road(results):
-    """
-    Build a simplified Big Road, tracking Player/Banker wins in columns.
-    Returns a list of columns, each containing outcomes ('P', 'B', 'T').
-    """
     big_road = []
     current_column = []
     last_outcome = None
@@ -79,10 +75,6 @@ def build_big_road(results):
     return big_road
 
 def analyze_big_eye_boy(big_road):
-    """
-    Simplified Big Eye Boy analysis to detect pattern repetition or breaks.
-    Returns 'Repeat' or 'Break' based on recent column patterns.
-    """
     if len(big_road) < 3:
         return None
     last_col = big_road[-1]
@@ -95,26 +87,17 @@ def analyze_big_eye_boy(big_road):
     return 'Break'
 
 def advanced_bet_selection(results, mode='Conservative'):
-    """
-    Enhanced AI with roadmap analysis, contrarian betting, and adaptive confidence.
-    - Analyzes Big Road and Big Eye Boy for trends.
-    - Combines streaks, alternations, trends, and roadmap signals.
-    - Supports Conservative (safer bets) and Aggressive (riskier bets) modes.
-    Returns bet choice, confidence, reason, emotional tone, and pattern insights.
-    """
     max_recent_count = 30
     recent = results[-max_recent_count:]
     if not recent:
         return 'Pass', 0, "No results yet. Let’s wait for the shoe to develop!", "Cautious", []
 
-    # Initialize
     scores = {'Banker': 0, 'Player': 0, 'Tie': 0}
     reason_parts = []
     pattern_insights = []
     emotional_tone = "Neutral"
     confidence = 0
 
-    # Streak detection
     streak_value, streak_length = detect_streak(recent)
     if streak_length >= 3 and streak_value != "Tie":
         streak_score = min(75 + (streak_length - 3) * 10, 90)
@@ -122,7 +105,6 @@ def advanced_bet_selection(results, mode='Conservative'):
         reason_parts.append(f"Streak of {streak_length} {streak_value} wins detected.")
         pattern_insights.append(f"Streak: {streak_length} {streak_value}")
         emotional_tone = "Optimistic" if streak_length < 5 else "Confident"
-        # Contrarian logic for long streaks in Aggressive mode
         if streak_length >= 5 and mode == 'Aggressive':
             contrarian_bet = 'Player' if streak_value == 'Banker' else 'Banker'
             scores[contrarian_bet] += 30
@@ -130,7 +112,6 @@ def advanced_bet_selection(results, mode='Conservative'):
             pattern_insights.append("Possible streak break")
             emotional_tone = "Skeptical"
 
-    # Alternating pattern
     elif len(recent) >= 4 and is_alternating_pattern(recent[-4:]):
         last = recent[-1]
         alternate_bet = 'Player' if last == 'Banker' else 'Banker'
@@ -139,7 +120,6 @@ def advanced_bet_selection(results, mode='Conservative'):
         pattern_insights.append("Chop pattern: Alternating P/B")
         emotional_tone = "Excited"
 
-    # Short-term trend analysis
     trend_bet, trend_score = recent_trend_analysis(recent)
     if trend_bet:
         scores[trend_bet] += trend_score
@@ -147,7 +127,6 @@ def advanced_bet_selection(results, mode='Conservative'):
         pattern_insights.append(f"Trend: {trend_bet} dominance")
         emotional_tone = "Hopeful"
 
-    # Big Road and Big Eye Boy analysis
     big_road = build_big_road(recent)
     big_eye_signal = analyze_big_eye_boy(big_road)
     if big_road:
@@ -168,7 +147,6 @@ def advanced_bet_selection(results, mode='Conservative'):
             reason_parts.append("Big Eye Boy indicates a pattern break.")
             pattern_insights.append("Big Eye Boy: Break pattern")
 
-    # Long-term frequency as fallback
     freq = frequency_count(recent)
     total = len(recent)
     scores['Banker'] += (freq['Banker'] / total * 0.9) * 50
@@ -177,11 +155,9 @@ def advanced_bet_selection(results, mode='Conservative'):
     reason_parts.append(f"Long-term: Banker {freq['Banker']}, Player {freq['Player']}, Tie {freq['Tie']}.")
     pattern_insights.append(f"Frequency: B:{freq['Banker']}, P:{freq['Player']}, T:{freq['Tie']}")
 
-    # Determine bet choice
     bet_choice = max(scores, key=scores.get)
     confidence = min(round(max(scores['Banker'], scores['Player'], scores['Tie'])), 95)
 
-    # Mode-based adjustments
     confidence_threshold = 60 if mode == 'Conservative' else 40
     if confidence < confidence_threshold:
         bet_choice = 'Pass'
@@ -191,7 +167,6 @@ def advanced_bet_selection(results, mode='Conservative'):
         emotional_tone = "Cautious"
         reason_parts.append("Moderate confidence; proceeding cautiously.")
 
-    # Avoid Tie unless highly confident
     if bet_choice == 'Tie' and confidence < 80:
         scores['Tie'] = 0
         bet_choice = max(scores, key=scores.get)
@@ -199,7 +174,6 @@ def advanced_bet_selection(results, mode='Conservative'):
         reason_parts.append("Tie bet too risky; switching to safer option.")
         emotional_tone = "Cautious"
 
-    # Final confidence adjustment
     if len(pattern_insights) > 2 and max(scores.values()) - min(scores.values()) < 20:
         confidence = max(confidence - 15, 40)
         reason_parts.append("Multiple conflicting patterns; lowering confidence.")
@@ -209,9 +183,6 @@ def advanced_bet_selection(results, mode='Conservative'):
     return bet_choice, confidence, reason, emotional_tone, pattern_insights
 
 def money_management(bankroll, base_bet, strategy, confidence=None, history=None):
-    """
-    Calculate bet size based on selected money management strategy.
-    """
     min_bet = max(1.0, base_bet)
     max_bet = bankroll
 
@@ -248,9 +219,6 @@ def money_management(bankroll, base_bet, strategy, confidence=None, history=None
     return round(bet_size, 2)
 
 def calculate_bankroll(history, base_bet, strategy):
-    """
-    Calculate bankroll after each round.
-    """
     bankroll = st.session_state.initial_bankroll if 'initial_bankroll' in st.session_state else 1000.0
     current_bankroll = bankroll
     bankroll_progress = []
@@ -290,7 +258,7 @@ def main():
         st.session_state.money_management_strategy = "Fixed 5% of Bankroll"
         st.session_state.ai_mode = "Conservative"
 
-    # Input Fields
+    # Game Settings
     with st.expander("Game Settings", expanded=False):
         col_init, col_base, col_strategy, col_mode = st.columns(4)
         with col_init:
@@ -307,6 +275,8 @@ def main():
         st.session_state.base_bet = base_bet
         st.session_state.money_management_strategy = money_management_strategy
         st.session_state.ai_mode = ai_mode
+
+        st.markdown(f"**Selected Money Management Strategy:** {money_management_strategy}")
 
     # Game Input Buttons
     with st.expander("Input Game Results", expanded=True):
@@ -331,7 +301,7 @@ def main():
                 else:
                     st.warning("Nothing to undo!")
 
-    # Bead Plate and Big Road
+    # Shoe Patterns
     with st.expander("Shoe Patterns", expanded=False):
         st.markdown("### Bead Plate")
         sequence = [r for r in st.session_state.history][-84:]
@@ -352,9 +322,9 @@ def main():
         st.markdown("### Big Road")
         big_road = build_big_road(st.session_state.history)
         if big_road:
-            for col in big_road[:14]:  # Limit to 14 columns
+            for col in big_road[:14]:
                 col_display = []
-                for outcome in col[:6]:  # Limit to 6 rows
+                for outcome in col[:6]:
                     if outcome == 'P':
                         col_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
                     elif outcome == 'B':
@@ -364,10 +334,6 @@ def main():
                 st.markdown(' '.join(col_display), unsafe_allow_html=True)
         else:
             st.write("_No Big Road data yet._")
-
-    # Selected Money Management Strategy
-    with st.expander("Money Management Strategy", expanded=False):
-        st.markdown(f"**Selected Money Management Strategy:** {money_management_strategy}")
 
     # Bet Prediction
     with st.expander("Prediction for Next Bet", expanded=True):
@@ -401,7 +367,7 @@ def main():
         else:
             st.markdown(f"**Current Bankroll:** ${initial_bankroll:.2f}")
 
-    # Reset History and Bankroll
+    # Reset Game
     with st.expander("Reset Game", expanded=False):
         if st.button("Reset History and Bankroll"):
             st.session_state.history = []
