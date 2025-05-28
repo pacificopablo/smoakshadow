@@ -313,6 +313,7 @@ def main():
         st.session_state.base_bet = 10.0
         st.session_state.money_management_strategy = "Fixed 5% of Bankroll"
         st.session_state.ai_mode = "Conservative"
+        st.session_state.selected_patterns = ["Bead Plate", "Big Road"]
 
     # Game Settings
     with st.expander("Game Settings", expanded=False):
@@ -360,7 +361,13 @@ def main():
     # Shoe Patterns
     with st.expander("Shoe Patterns", expanded=False):
         pattern_options = ["Bead Plate", "Big Road", "Big Eye Boy", "Cockroach Pig"]
-        selected_patterns = st.multiselect("Select Patterns to Display", pattern_options, default=["Bead Plate", "Big Road"])
+        selected_patterns = st.multiselect(
+            "Select Patterns to Display",
+            pattern_options,
+            default=st.session_state.selected_patterns,
+            key="pattern_select"
+        )
+        st.session_state.selected_patterns = selected_patterns
 
         if "Bead Plate" in selected_patterns:
             st.markdown("### Bead Plate")
@@ -405,7 +412,7 @@ def main():
             big_road_grid, num_cols = build_big_road(st.session_state.history)
             big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
             if big_eye_cols > 0:
-                for row in range(1):  # Single row for simplicity
+                for row in range(1):
                     row_display = []
                     for col in range(min(big_eye_cols, 14)):
                         outcome = big_eye_grid[row][col]
@@ -424,7 +431,7 @@ def main():
             big_road_grid, num_cols = build_big_road(st.session_state.history)
             cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
             if cockroach_cols > 0:
-                for row in range(1):  # Single row for simplicity
+                for row in range(1):
                     row_display = []
                     for col in range(min(cockroach_cols, 14)):
                         outcome = cockroach_grid[row][col]
@@ -444,13 +451,11 @@ def main():
         st.markdown("### Prediction for Next Bet")
         if bet == 'Pass':
             st.warning("I’m not betting this time! The pattern is too unclear.")
-            st.info(reason)
-            recommended_bet_size = 0.0
         else:
             current_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else initial_bankroll
             recommended_bet_size = money_management(current_bankroll, st.session_state.base_bet, st.session_state.money_management_strategy, confidence, st.session_state.history)
             st.success(f"Predicted Bet: **{bet}**    Confidence: **{confidence}%**    Recommended Bet Size: **${recommended_bet_size:.2f}**    Emotion: **{emotional_tone}**")
-            st.write(reason)
+        st.info(reason)
         if pattern_insights:
             st.markdown("#### Detected Patterns")
             for insight in pattern_insights:
@@ -478,6 +483,7 @@ def main():
             st.session_state.base_bet = 10.0
             st.session_state.money_management_strategy = "Fixed 5% of Bankroll"
             st.session_state.ai_mode = "Conservative"
+            st.session_state.selected_patterns = ["Bead Plate", "Big Road"]
             st.rerun()
 
 if __name__ == "__main__":
