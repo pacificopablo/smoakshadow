@@ -87,6 +87,7 @@ def build_big_eye_boy(big_road_grid, num_cols):
     max_cols = 50
     grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
     col = 0
+    row = 0
 
     for c in range(3, num_cols):
         if col >= max_cols:
@@ -97,17 +98,24 @@ def build_big_eye_boy(big_road_grid, num_cols):
         third_non_empty = next((i for i, x in enumerate(third_last) if x in ['P', 'B']), None)
         if last_non_empty is not None and third_non_empty is not None:
             if last_col[last_non_empty] == third_last[third_non_empty]:
-                grid[0][col] = 'R'  # Repeat (red)
+                grid[row][col] = 'R'  # Repeat (red)
             else:
-                grid[0][col] = 'B'  # Break (blue)
+                grid[row][col] = 'B'  # Break (blue)
+            row += 1
+            if row >= max_rows:
+                col += 1
+                row = 0
+        else:
             col += 1
-    return grid, col
+            row = 0
+    return grid, col + 1 if row > 0 else col
 
 def build_cockroach_pig(big_road_grid, num_cols):
     max_rows = 6
     max_cols = 50
     grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
     col = 0
+    row = 0
 
     for c in range(4, num_cols):
         if col >= max_cols:
@@ -118,11 +126,17 @@ def build_cockroach_pig(big_road_grid, num_cols):
         fourth_non_empty = next((i for i, x in enumerate(fourth_last) if x in ['P', 'B']), None)
         if last_non_empty is not None and fourth_non_empty is not None:
             if last_col[last_non_empty] == fourth_last[fourth_non_empty]:
-                grid[0][col] = 'R'  # Repeat (red)
+                grid[row][col] = 'R'  # Repeat (red)
             else:
-                grid[0][col] = 'B'  # Break (blue)
+                grid[row][col] = 'B'  # Break (blue)
+            row += 1
+            if row >= max_rows:
+                col += 1
+                row = 0
+        else:
             col += 1
-    return grid, col
+            row = 0
+    return grid, col + 1 if row > 0 else col
 
 def advanced_bet_selection(results, mode='Conservative'):
     max_recent_count = 30
@@ -176,32 +190,36 @@ def advanced_bet_selection(results, mode='Conservative'):
             pattern_insights.append(f"Big Road: {col_length} {bet_side}")
 
     big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
-    if big_eye_cols > 0 and big_eye_grid[0][big_eye_cols - 1] != '':
-        signal = big_eye_grid[0][big_eye_cols - 1]
-        last_side = 'Player' if last_col[0] == 'P' else 'Banker'
-        opposite_side = 'Player' if last_col[0] == 'B' else 'Banker'
-        if signal == 'R':
-            scores[last_side] += 50
-            reason_parts.append("Big Eye Boy suggests pattern repetition.")
-            pattern_insights.append("Big Eye Boy: Repeat pattern")
-        else:
-            scores[opposite_side] += 40
-            reason_parts.append("Big Eye Boy indicates a pattern break.")
-            pattern_insights.append("Big Eye Boy: Break pattern")
+    if big_eye_cols > 0:
+        last_col = [big_eye_grid[row][big_eye_cols - 1] for row in range(6)]
+        last_signal = next((x for x in last_col if x in ['R', 'B']), None)
+        if last_signal:
+            last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
+            opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
+            if last_signal == 'R':
+                scores[last_side] += 50
+                reason_parts.append("Big Eye Boy suggests pattern repetition.")
+                pattern_insights.append("Big Eye Boy: Repeat pattern")
+            else:
+                scores[opposite_side] += 40
+                reason_parts.append("Big Eye Boy indicates a pattern break.")
+                pattern_insights.append("Big Eye Boy: Break pattern")
 
     cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
-    if cockroach_cols > 0 and cockroach_grid[0][cockroach_cols - 1] != '':
-        signal = cockroach_grid[0][cockroach_cols - 1]
-        last_side = 'Player' if last_col[0] == 'P' else 'Banker'
-        opposite_side = 'Player' if last_col[0] == 'B' else 'Banker'
-        if signal == 'R':
-            scores[last_side] += 45
-            reason_parts.append("Cockroach Pig suggests pattern repetition.")
-            pattern_insights.append("Cockroach Pig: Repeat pattern")
-        else:
-            scores[opposite_side] += 35
-            reason_parts.append("Cockroach Pig indicates a pattern break.")
-            pattern_insights.append("Cockroach Pig: Break pattern")
+    if cockroach_cols > 0:
+        last_col = [cockroach_grid[row][cockroach_cols - 1] for row in range(6)]
+        last_signal = next((x for x in last_col if x in ['R', 'B']), None)
+        if last_signal:
+            last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
+            opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
+            if last_signal == 'R':
+                scores[last_side] += 45
+                reason_parts.append("Cockroach Pig suggests pattern repetition.")
+                pattern_insights.append("Cockroach Pig: Repeat pattern")
+            else:
+                scores[opposite_side] += 35
+                reason_parts.append("Cockroach Pig indicates a pattern break.")
+                pattern_insights.append("Cockroach Pig: Break pattern")
 
     freq = frequency_count(recent)
     total = len(recent)
@@ -412,9 +430,10 @@ def main():
             big_road_grid, num_cols = build_big_road(st.session_state.history)
             big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
             if big_eye_cols > 0:
-                for row in range(1):
+                display_cols = min(big_eye_cols, 14)
+                for row in range(6):
                     row_display = []
-                    for col in range(min(big_eye_cols, 14)):
+                    for col in range(display_cols):
                         outcome = big_eye_grid[row][col]
                         if outcome == 'R':
                             row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
@@ -431,9 +450,10 @@ def main():
             big_road_grid, num_cols = build_big_road(st.session_state.history)
             cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
             if cockroach_cols > 0:
-                for row in range(1):
+                display_cols = min(cockroach_cols, 14)
+                for row in range(6):
                     row_display = []
-                    for col in range(min(cockroach_cols, 14)):
+                    for col in range(display_cols):
                         outcome = cockroach_grid[row][col]
                         if outcome == 'R':
                             row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
