@@ -55,12 +55,8 @@ def frequency_count(arr):
     return count
 
 def build_big_road(results):
-    """
-    Build a Big Road grid, adding outcomes left to right.
-    Returns a 2D grid (6 rows × columns) with 'P', 'B', 'T', or ''.
-    """
     max_rows = 6
-    max_cols = 50  # Allow enough columns for a full shoe
+    max_cols = 50
     grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
     col = 0
     row = 0
@@ -84,29 +80,49 @@ def build_big_road(results):
                 grid[row][col] = mapped
                 row += 1
         last_outcome = mapped if mapped != 'T' else last_outcome
-    return grid, col + 1  # Return grid and number of columns used
+    return grid, col + 1
 
-def analyze_big_eye_boy(big_road_grid, num_cols):
-    """
-    Simplified Big Eye Boy analysis based on column patterns.
-    Returns 'Repeat' or 'Break' for recent patterns.
-    """
-    if num_cols < 3:
-        return None
-    # Compare last two columns for repetition
-    last_col = [big_road_grid[row][num_cols - 1] for row in range(6)]
-    second_last = [big_road_grid[row][num_cols - 2] for row in range(6)]
-    third_last = [big_road_grid[row][num_cols - 3] for row in range(6)]
-    last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
-    second_non_empty = next((i for i, x in enumerate(second_last) if x in ['P', 'B']), None)
-    third_non_empty = next((i for i, x in enumerate(third_last) if x in ['P', 'B']), None)
-    if last_non_empty is not None and second_non_empty is not None:
-        if last_col[last_non_empty] == second_last[second_non_empty]:
-            return 'Repeat'
-    if second_non_empty is not None and third_non_empty is not None:
-        if second_last[second_non_empty] == third_last[third_non_empty]:
-            return 'Repeat'
-    return 'Break'
+def build_big_eye_boy(big_road_grid, num_cols):
+    max_rows = 6
+    max_cols = 50
+    grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
+    col = 0
+
+    for c in range(3, num_cols):
+        if col >= max_cols:
+            break
+        last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
+        third_last = [big_road_grid[r][c - 3] for r in range(max_rows)]
+        last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
+        third_non_empty = next((i for i, x in enumerate(third_last) if x in ['P', 'B']), None)
+        if last_non_empty is not None and third_non_empty is not None:
+            if last_col[last_non_empty] == third_last[third_non_empty]:
+                grid[0][col] = 'R'  # Repeat (red)
+            else:
+                grid[0][col] = 'B'  # Break (blue)
+            col += 1
+    return grid, col
+
+def build_cockroach_pig(big_road_grid, num_cols):
+    max_rows = 6
+    max_cols = 50
+    grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
+    col = 0
+
+    for c in range(4, num_cols):
+        if col >= max_cols:
+            break
+        last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
+        fourth_last = [big_road_grid[r][c - 4] for r in range(max_rows)]
+        last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
+        fourth_non_empty = next((i for i, x in enumerate(fourth_last) if x in ['P', 'B']), None)
+        if last_non_empty is not None and fourth_non_empty is not None:
+            if last_col[last_non_empty] == fourth_last[fourth_non_empty]:
+                grid[0][col] = 'R'  # Repeat (red)
+            else:
+                grid[0][col] = 'B'  # Break (blue)
+            col += 1
+    return grid, col
 
 def advanced_bet_selection(results, mode='Conservative'):
     max_recent_count = 30
@@ -150,9 +166,7 @@ def advanced_bet_selection(results, mode='Conservative'):
         emotional_tone = "Hopeful"
 
     big_road_grid, num_cols = build_big_road(recent)
-    big_eye_signal = analyze_big_eye_boy(big_road_grid, num_cols)
     if num_cols > 0:
-        # Check last column for a streak
         last_col = [big_road_grid[row][num_cols - 1] for row in range(6)]
         col_length = sum(1 for x in last_col if x in ['P', 'B'])
         if col_length >= 3:
@@ -160,16 +174,34 @@ def advanced_bet_selection(results, mode='Conservative'):
             scores[bet_side] += 60
             reason_parts.append(f"Big Road column of {col_length} {bet_side}.")
             pattern_insights.append(f"Big Road: {col_length} {bet_side}")
-        if big_eye_signal == 'Repeat' and num_cols >= 2:
-            last_side = 'Player' if last_col[0] == 'P' else 'Banker'
+
+    big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
+    if big_eye_cols > 0 and big_eye_grid[0][big_eye_cols - 1] != '':
+        signal = big_eye_grid[0][big_eye_cols - 1]
+        last_side = 'Player' if last_col[0] == 'P' else 'Banker'
+        opposite_side = 'Player' if last_col[0] == 'B' else 'Banker'
+        if signal == 'R':
             scores[last_side] += 50
             reason_parts.append("Big Eye Boy suggests pattern repetition.")
             pattern_insights.append("Big Eye Boy: Repeat pattern")
-        elif big_eye_signal == 'Break':
-            opposite_side = 'Player' if last_col[0] == 'B' else 'Banker'
+        else:
             scores[opposite_side] += 40
             reason_parts.append("Big Eye Boy indicates a pattern break.")
             pattern_insights.append("Big Eye Boy: Break pattern")
+
+    cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
+    if cockroach_cols > 0 and cockroach_grid[0][cockroach_cols - 1] != '':
+        signal = cockroach_grid[0][cockroach_cols - 1]
+        last_side = 'Player' if last_col[0] == 'P' else 'Banker'
+        opposite_side = 'Player' if last_col[0] == 'B' else 'Banker'
+        if signal == 'R':
+            scores[last_side] += 45
+            reason_parts.append("Cockroach Pig suggests pattern repetition.")
+            pattern_insights.append("Cockroach Pig: Repeat pattern")
+        else:
+            scores[opposite_side] += 35
+            reason_parts.append("Cockroach Pig indicates a pattern break.")
+            pattern_insights.append("Cockroach Pig: Break pattern")
 
     freq = frequency_count(recent)
     total = len(recent)
@@ -327,41 +359,84 @@ def main():
 
     # Shoe Patterns
     with st.expander("Shoe Patterns", expanded=False):
-        st.markdown("### Bead Plate")
-        sequence = [r for r in st.session_state.history][-84:]
-        sequence = ['P' if r == 'Player' else 'B' if r == 'Banker' else 'T' for r in sequence]
-        grid = [['' for _ in range(14)] for _ in range(6)]
-        for i, result in enumerate(sequence):
-            if result in ['P', 'B', 'T']:
-                col = i // 6
-                row = i % 6
-                if col < 14:
-                    color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
-                    grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
-        for row in grid:
-            st.markdown(' '.join(row), unsafe_allow_html=True)
-        if not st.session_state.history:
-            st.write("_No results yet. Click the buttons above to add results._")
+        pattern_options = ["Bead Plate", "Big Road", "Big Eye Boy", "Cockroach Pig"]
+        selected_patterns = st.multiselect("Select Patterns to Display", pattern_options, default=["Bead Plate", "Big Road"])
 
-        st.markdown("### Big Road")
-        big_road_grid, num_cols = build_big_road(st.session_state.history)
-        if num_cols > 0:
-            display_cols = min(num_cols, 14)  # Limit to 14 columns for display
-            for row in range(6):
-                row_display = []
-                for col in range(display_cols):
-                    outcome = big_road_grid[row][col]
-                    if outcome == 'P':
-                        row_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
-                    elif outcome == 'B':
-                        row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
-                    elif outcome == 'T':
-                        row_display.append('<div style="width: 20px; height: 20px; border: 2px solid #38a169; border-radius: 50%; display: inline-block;"></div>')
-                    else:
-                        row_display.append('<div style="width: 20px; height: 20px; display: inline-block;"></div>')
-                st.markdown(' '.join(row_display), unsafe_allow_html=True)
-        else:
-            st.write("_No Big Road data yet._")
+        if "Bead Plate" in selected_patterns:
+            st.markdown("### Bead Plate")
+            sequence = [r for r in st.session_state.history][-84:]
+            sequence = ['P' if r == 'Player' else 'B' if r == 'Banker' else 'T' for r in sequence]
+            grid = [['' for _ in range(14)] for _ in range(6)]
+            for i, result in enumerate(sequence):
+                if result in ['P', 'B', 'T']:
+                    col = i // 6
+                    row = i % 6
+                    if col < 14:
+                        color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
+                        grid[row][col] = f'<div style="width: 20px; height: 20px; background-color: {color}; border-radius: 50%; display: inline-block;"></div>'
+            for row in grid:
+                st.markdown(' '.join(row), unsafe_allow_html=True)
+            if not st.session_state.history:
+                st.write("_No results yet. Click the buttons above to add results._")
+
+        if "Big Road" in selected_patterns:
+            st.markdown("### Big Road")
+            big_road_grid, num_cols = build_big_road(st.session_state.history)
+            if num_cols > 0:
+                display_cols = min(num_cols, 14)
+                for row in range(6):
+                    row_display = []
+                    for col in range(display_cols):
+                        outcome = big_road_grid[row][col]
+                        if outcome == 'P':
+                            row_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
+                        elif outcome == 'B':
+                            row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
+                        elif outcome == 'T':
+                            row_display.append('<div style="width: 20px; height: 20px; border: 2px solid #38a169; border-radius: 50%; display: inline-block;"></div>')
+                        else:
+                            row_display.append('<div style="width: 20px; height: 20px; display: inline-block;"></div>')
+                    st.markdown(' '.join(row_display), unsafe_allow_html=True)
+            else:
+                st.write("_No Big Road data yet._")
+
+        if "Big Eye Boy" in selected_patterns:
+            st.markdown("### Big Eye Boy")
+            big_road_grid, num_cols = build_big_road(st.session_state.history)
+            big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
+            if big_eye_cols > 0:
+                for row in range(1):  # Single row for simplicity
+                    row_display = []
+                    for col in range(min(big_eye_cols, 14)):
+                        outcome = big_eye_grid[row][col]
+                        if outcome == 'R':
+                            row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
+                        elif outcome == 'B':
+                            row_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
+                        else:
+                            row_display.append('<div style="width: 20px; height: 20px; display: inline-block;"></div>')
+                    st.markdown(' '.join(row_display), unsafe_allow_html=True)
+            else:
+                st.write("_No Big Eye Boy data yet._")
+
+        if "Cockroach Pig" in selected_patterns:
+            st.markdown("### Cockroach Pig")
+            big_road_grid, num_cols = build_big_road(st.session_state.history)
+            cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
+            if cockroach_cols > 0:
+                for row in range(1):  # Single row for simplicity
+                    row_display = []
+                    for col in range(min(cockroach_cols, 14)):
+                        outcome = cockroach_grid[row][col]
+                        if outcome == 'R':
+                            row_display.append('<div style="width: 20px; height: 20px; background-color: #e53e3e; border-radius: 50%; display: inline-block;"></div>')
+                        elif outcome == 'B':
+                            row_display.append('<div style="width: 20px; height: 20px; background-color: #3182ce; border-radius: 50%; display: inline-block;"></div>')
+                        else:
+                            row_display.append('<div style="width: 20px; height: 20px; display: inline-block;"></div>')
+                    st.markdown(' '.join(row_display), unsafe_allow_html=True)
+            else:
+                st.write("_No Cockroach Pig data yet._")
 
     # Bet Prediction
     with st.expander("Prediction for Next Bet", expanded=True):
