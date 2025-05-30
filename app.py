@@ -1,8 +1,8 @@
-
 import streamlit as st
 import logging
 import plotly.graph_objects as go
 import math
+import random
 
 # Set up logging
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -46,7 +46,7 @@ def is_zigzag(s):
             return True
     return False
 
-def is_choppy(s, window=10, min_alternations=6):
+def is_choppy(s, window=10, min_alternations=7):
     if len(s) < window:
         return False
     recent = s[-window:]
@@ -58,15 +58,15 @@ def recent_trend(s, window=10):
     if not recent:
         return None, 0
     freq = frequency_count(recent)
-    total = len(recent)
+    total = sum(freq[k] for k in ['Banker', 'Player'])
     if total == 0:
         return None, 0
     banker_ratio = freq['Banker'] / total
     player_ratio = freq['Player'] / total
-    if banker_ratio > player_ratio + 0.2:
-        return 'Banker', min(banker_ratio * 58, 88)  # Boosted
-    elif player_ratio > banker_ratio + 0.2:
-        return 'Player', min(player_ratio * 58, 88)  # Boosted
+    if banker_ratio > player_ratio + 0.25:
+        return 'Banker', min(banker_ratio * 60, 90)
+    elif player_ratio > banker_ratio + 0.25:
+        return 'Player', min(player_ratio * 60, 90)
     return None, 0
 
 def frequency_count(s):
@@ -76,7 +76,7 @@ def frequency_count(s):
             count[r] += 1
     return count
 
-def build_big_road(s):
+def build_big des_road(s):
     if not s:
         return [['' for _ in range(50)] for _ in range(6)], 0
     max_rows = 6
@@ -172,8 +172,8 @@ def advanced_bet_selection(s, mode='Conservative'):
     if len(recent) < 5:
         return 'Pass', 0, "Not enough history to make a confident prediction. Add more hands.", "Cautious", [], {}, []
 
-    scores = {'Banker': 0, 'Player': 0, 'Tie': 0}
-    pattern_scores = {'Banker': {}, 'Player': {}, 'Tie': {}}
+    scores = {'Banker': 0, 'Player': 0}
+    pattern_scores = {'Banker': {}, 'Player': {}}
     reason_parts = []
     pattern_insights = []
     pattern_keys = []
@@ -182,13 +182,15 @@ def advanced_bet_selection(s, mode='Conservative'):
     shoe_position = len(s)
     max_patterns = 8
 
-    def decay_weight(index, total_length, half_life=20):
+    def decay_weight(index, total_length, half_life=15):
         return 0.5 ** ((total_length - index - 1) / half_life)
 
     def get_pattern_accuracy(pattern):
-        return st.session_state.pattern_accuracy[pattern]['correct'] / st.session_state.pattern_accuracy[pattern]['total'] if st.session_state.pattern_accuracy[pattern]['total'] > 0 else 1
+        stats = st.session_state.pattern_accuracy[pattern]
+        if stats['total'] < 5:
+            return 0.5
+        return stats['correct'] / stats['total']
 
-    # Grid caching
     history_key = ''.join(s[-max_recent_count:]) if s else ''
     if 'grid_cache' not in st.session_state or st.session_state.grid_cache.get('history_key') != history_key:
         st.session_state.grid_cache = {
@@ -200,17 +202,16 @@ def advanced_bet_selection(s, mode='Conservative'):
         st.session_state.grid_cache['big_eye'] = build_big_eye_boy(*st.session_state.grid_cache['big_road'])
         st.session_state.grid_cache['cockroach'] = build_cockroach_pig(*st.session_state.grid_cache['big_road'])
 
-    # Shoe position factor
-    shoe_position_factor = 1.2 if shoe_position < 20 else 0.7 if shoe_position > 50 else 1.0
+    shoe_position_factor = 1.3 if shoe_position < 20 else 0.6 if shoe_position > 50 else 1.0
 
     # Streak detection
     streak_value, streak_length = detect_streak(recent)
-    if streak_length >= 3 and streak_value != "Tie":
-        streak_score = min(29 + (streak_length - 3) * 10, 58)  # Boosted
+    if streak_length >= 3 and streak_value in ['Player', 'Banker']:
+        streak_score = min(35 + (streak_length - 3) * 12, 70)
         if streak_length >= 6:
-            streak_score += 12
+            streak_score += 25
             pattern_insights.append(f"Dragon Tail: {streak_length} {streak_value}")
-            emotional_tone = "Confident"
+            emotional_tone = "Very Confident"
         accuracy = get_pattern_accuracy('Streak')
         scores[streak_value] += streak_score * accuracy * shoe_position_factor
         pattern_scores[streak_value]['Streak'] = streak_score * accuracy
@@ -220,7 +221,7 @@ def advanced_bet_selection(s, mode='Conservative'):
         pattern_count += 1
         if streak_length >= 5 and mode == 'Aggressive':
             contrarian_bet = 'Player' if streak_value == 'Banker' else 'Banker'
-            contrarian_score = 23 * get_pattern_accuracy('Streak')
+            contrarian_score = 25 * get_pattern_accuracy('Streak')
             scores[contrarian_bet] += contrarian_score
             pattern_scores[contrarian_bet]['Streak'] = contrarian_score
             reason_parts.append(f"Long streak ({streak_length}); considering break in Aggressive mode.")
@@ -231,7 +232,7 @@ def advanced_bet_selection(s, mode='Conservative'):
     if len(recent) >= 6 and is_alternating(recent[-6:], min_length=6):
         last = recent[-1]
         alternate_bet = 'Player' if last == 'Banker' else 'Banker'
-        alternate_score = 40 * get_pattern_accuracy('Alternating') * shoe_position_factor  # Boosted
+        alternate_score = 45 * get_pattern_accuracy('Alternating') * shoe_position_factor
         scores[alternate_bet] += alternate_score
         pattern_scores[alternate_bet]['Alternating'] = alternate_score
         reason_parts.append(f"Strong alternating pattern (Ping Pong) in last 6 hands (weighted by {get_pattern_accuracy('Alternating'):.2f}).")
@@ -244,7 +245,7 @@ def advanced_bet_selection(s, mode='Conservative'):
     if is_zigzag(recent[-8:]):
         last = recent[-1]
         zigzag_bet = 'Player' if last == 'Banker' else 'Banker'
-        zigzag_score = (35 if shoe_position < 30 else 23) * get_pattern_accuracy('Zigzag') * shoe_position_factor  # Boosted
+        zigzag_score = (40 if shoe_position < 30 else 25) * get_pattern_accuracy('Zigzag') * shoe_position_factor
         scores[zigzag_bet] += zigzag_score
         pattern_scores[zigzag_bet]['Zigzag'] = zigzag_score
         reason_parts.append(f"Zigzag pattern (P-B-P or B-P-B) detected in last 8 hands (weighted by {get_pattern_accuracy('Zigzag'):.2f}).")
@@ -254,10 +255,10 @@ def advanced_bet_selection(s, mode='Conservative'):
         emotional_tone = "Curious"
 
     # Choppy pattern
-    if is_choppy(recent, window=10):
+    if is_choppy(recent, window=10, min_alternations=7):
         last = recent[-1]
         choppy_bet = 'Player' if last == 'Banker' else 'Banker'
-        choppy_score = 23 * get_pattern_accuracy('Choppy') * shoe_position_factor  # Boosted
+        choppy_score = 25 * get_pattern_accuracy('Choppy') * shoe_position_factor
         scores[choppy_bet] += choppy_score
         pattern_scores[choppy_bet]['Choppy'] = choppy_score
         reason_parts.append(f"Choppy pattern detected in last 10 hands (weighted by {get_pattern_accuracy('Choppy'):.2f}).")
@@ -267,12 +268,12 @@ def advanced_bet_selection(s, mode='Conservative'):
         emotional_tone = "Observant"
 
     # Recent trend
-    trend_bet, trend_score = recent_trend(recent, window=12)
+    trend_bet, trend_score = recent_trend(recent, window=10)
     if trend_bet:
-        trend_weight = trend_score * (1.2 if shoe_position < 20 else 0.8) * get_pattern_accuracy('Trend')
-        scores[trend_bet] += min(trend_weight, 40) * shoe_position_factor  # Boosted
-        pattern_scores[trend_bet]['Trend'] = min(trend_weight, 40)
-        reason_parts.append(f"Recent trend favors {trend_bet} in last 12 hands (weighted by {get_pattern_accuracy('Trend'):.2f}).")
+        trend_weight = trend_score * (1.3 if shoe_position < 20 else 0.7) * get_pattern_accuracy('Trend')
+        scores[trend_bet] += min(trend_weight, 45) * shoe_position_factor
+        pattern_scores[trend_bet]['Trend'] = min(trend_weight, 45)
+        reason_parts.append(f"Recent trend favors {trend_bet} in last 10 hands (weighted by {get_pattern_accuracy('Trend'):.2f}).")
         pattern_insights.append(f"Trend: {trend_bet} dominance")
         pattern_keys.append('Trend')
         pattern_count += 1
@@ -285,7 +286,7 @@ def advanced_bet_selection(s, mode='Conservative'):
         col_length = sum(1 for x in last_col if x in ['P', 'B'])
         if col_length >= 3:
             bet_side = 'Player' if last_col[0] == 'P' else 'Banker'
-            col_score = (29 if col_length == 3 else 40 if col_length == 4 else 52) * get_pattern_accuracy('BigRoad') * shoe_position_factor  # Boosted
+            col_score = (35 if col_length == 3 else 45 if col_length == 4 else 60) * get_pattern_accuracy('BigRoad') * shoe_position_factor
             scores[bet_side] += col_score
             pattern_scores[bet_side]['Big Road'] = col_score
             reason_parts.append(f"Big Road column of {col_length} {bet_side} (weighted by {get_pattern_accuracy('BigRoad'):.2f}).")
@@ -295,61 +296,94 @@ def advanced_bet_selection(s, mode='Conservative'):
 
     # Big Eye Boy
     big_eye_grid, big_eye_cols = st.session_state.grid_cache['big_eye']
-    if big_eye_cols > 1:
-        last_two_cols = [[big_eye_grid[row][c] for row in range(6)] for c in range(big_eye_cols - 2, big_eye_cols)]
-        last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
+    if big_eye_cols > 2:
+        last_three_cols = [[big_eye_grid[row][c] for row in range(6)] for c in range(big_eye_cols - 3, big_eye_cols)]
+        last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_three_cols]
         if all(s == 'R' for s in last_signals if s):
             last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-            big_eye_score = 23 * get_pattern_accuracy('BigEye') * shoe_position_factor  # Boosted
+            big_eye_score = 30 * get_pattern_accuracy('BigEye') * shoe_position_factor
             scores[last_side] += big_eye_score
             pattern_scores[last_side]['Big Eye Boy'] = big_eye_score
-            reason_parts.append(f"Big Eye Boy shows consistent repeat pattern (weighted by {get_pattern_accuracy('BigEye'):.2f}).")
+            reason_parts.append(f"Big Eye Boy shows consistent repeat pattern across 3 columns (weighted by {get_pattern_accuracy('BigEye'):.2f}).")
             pattern_insights.append("Big Eye Boy: Consistent repeat")
             pattern_keys.append('BigEye')
             pattern_count += 1
         elif all(s == 'B' for s in last_signals if s):
             opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-            big_eye_score = 18 * get_pattern_accuracy('BigEye') * shoe_position_factor  # Boosted
+            big_eye_score = 20 * get_pattern_accuracy('BigEye') * shoe_position_factor
             scores[opposite_side] += big_eye_score
             pattern_scores[opposite_side]['Big Eye Boy'] = big_eye_score
-            reason_parts.append(f"Big Eye Boy shows consistent break pattern (weighted by {get_pattern_accuracy('BigEye'):.2f}).")
+            reason_parts.append(f"Big Eye Boy shows consistent break pattern across 3 columns (weighted by {get_pattern_accuracy('BigEye'):.2f}).")
             pattern_insights.append("Big Eye Boy: Consistent break")
             pattern_keys.append('BigEye')
             pattern_count += 1
 
     # Cockroach Pig
     cockroach_grid, cockroach_cols = st.session_state.grid_cache['cockroach']
-    if cockroach_cols > 1:
-        last_two_cols = [[cockroach_grid[row][c] for row in range(6)] for c in range(cockroach_cols - 2, cockroach_cols)]
-        last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
+    if cockroach_cols > 2:
+        last_three_cols = [[cockroach_grid[row][c] for row in range(6)] for c in range(cockroach_cols - 3, cockroach_cols)]
+        last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_three_cols]
         if all(s == 'R' for s in last_signals if s):
             last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-            cockroach_score = 18 * get_pattern_accuracy('Cockroach') * shoe_position_factor  # Boosted
+            cockroach_score = 25 * get_pattern_accuracy('Cockroach') * shoe_position_factor
             scores[last_side] += cockroach_score
             pattern_scores[last_side]['Cockroach Pig'] = cockroach_score
-            reason_parts.append(f"Cockroach Pig shows consistent repeat pattern (weighted by {get_pattern_accuracy('Cockroach'):.2f}).")
+            reason_parts.append(f"Cockroach Pig shows consistent repeat pattern across 3 columns (weighted by {get_pattern_accuracy('Cockroach'):.2f}).")
             pattern_insights.append("Cockroach Pig: Consistent repeat")
             pattern_keys.append('Cockroach')
             pattern_count += 1
         elif all(s == 'B' for s in last_signals if s):
             opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-            cockroach_score = 14 * get_pattern_accuracy('Cockroach') * shoe_position_factor  # Boosted
+            cockroach_score = 18 * get_pattern_accuracy('Cockroach') * shoe_position_factor
             scores[opposite_side] += cockroach_score
             pattern_scores[opposite_side]['Cockroach Pig'] = cockroach_score
-            reason_parts.append(f"Cockroach Pig shows consistent break pattern (weighted by {get_pattern_accuracy('Cockroach'):.2f}).")
+            reason_parts.append(f"Cockroach Pig shows consistent break pattern across 3 columns (weighted by {get_pattern_accuracy('Cockroach'):.2f}).")
             pattern_insights.append("Cockroach Pig: Consistent break")
             pattern_keys.append('Cockroach')
             pattern_count += 1
 
+    # Double Streak Pattern
+    def detect_double_streak(s, min_length=9):
+        if len(s) < min_length:
+            return None
+        recent = s[-min_length:]
+        streak_changes = 0
+        last_streak = recent[0]
+        streak_count = 1
+        for i in range(1, len(recent)):
+            if recent[i] == last_streak:
+                streak_count += 1
+            else:
+                if streak_count >= 3:
+                    streak_changes += 1
+                last_streak = recent[i]
+                streak_count = 1
+        if streak_count >= 3:
+            streak_changes += 1
+        if streak_changes >= 2:
+            return last_streak
+        return None
+
+    double_streak = detect_double_streak(recent, min_length=9)
+    if double_streak in ['Player', 'Banker']:
+        double_score = 35 * get_pattern_accuracy('DoubleStreak') * shoe_position_factor
+        scores[double_streak] += double_score
+        pattern_scores[double_streak]['Double Streak'] = double_score
+        reason_parts.append(f"Double streak pattern detected (weighted by {get_pattern_accuracy('DoubleStreak'):.2f}).")
+        pattern_insights.append(f"Double Streak: {double_streak}")
+        pattern_keys.append('DoubleStreak')
+        pattern_count += 1
+        emotional_tone = "Confident"
+
     # Entropy calculation
     freq = frequency_count(recent)
-    total = len(recent)
+    total = sum(freq[k] for k in ['Banker', 'Player'])
     if total > 0:
-        entropy = -sum((count / total) * math.log2(count / total) for count in freq.values() if count > 0)
-        if entropy > 1.8:
+        entropy = -sum((count / total) * math.log2(count / total) for count in [freq['Banker'], freq['Player']] if count > 0)
+        if entropy > 1.5:
             for key in scores:
-                scores[key] *= 0.90
-            reason_parts.append("High randomness detected; slightly lowering pattern confidence.")
+                scores[key] *= 0.85
+            reason_parts.append("High randomness detected; reducing pattern confidence.")
             pattern_insights.append("Randomness: High entropy")
             emotional_tone = "Cautious"
 
@@ -358,37 +392,35 @@ def advanced_bet_selection(s, mode='Conservative'):
     for i, result in enumerate(recent_wins):
         if result in ['Banker', 'Player']:
             weight = decay_weight(i, len(recent_wins))
-            scores[result] += 18 * weight  # Boosted
-            pattern_scores[result]['Momentum'] = pattern_scores[result].get('Momentum', 0) + 18 * weight
+            scores[result] += 20 * weight
+            pattern_scores[result]['Momentum'] = pattern_scores[result].get('Momentum', 0) + 20 * weight
     reason_parts.append("Weighted recent momentum applied.")
 
     # Long-term frequency
     if total > 0:
         banker_ratio = freq['Banker'] / total
         player_ratio = freq['Player'] / total
-        tie_ratio = freq['Tie'] / total
-        scores['Banker'] += (banker_ratio * 0.9) * 29  # Boosted
-        scores['Player'] += (player_ratio * 1.0) * 29  # Boosted
-        scores['Tie'] += (tie_ratio * 0.6) * 29 if tie_ratio > 0.25 else 0  # Boosted
-        pattern_scores['Banker']['Frequency'] = (banker_ratio * 0.9) * 29
-        pattern_scores['Player']['Frequency'] = (player_ratio * 1.0) * 29
-        pattern_scores['Tie']['Frequency'] = (tie_ratio * 0.6) * 29 if tie_ratio > 0.25 else 0
-        reason_parts.append(f"Long-term: Banker {freq['Banker']}, Player {freq['Player']}, Tie {freq['Tie']}.")
-        pattern_insights.append(f"Frequency: B:{freq['Banker']}, P:{freq['Player']}, T:{freq['Tie']}")
+        scores['Banker'] += (banker_ratio * 0.95) * 35
+        scores['Player'] += (player_ratio * 1.0) * 35
+        pattern_scores['Banker']['Frequency'] = (banker_ratio * 0.95) * 35
+        pattern_scores['Player']['Frequency'] = (player_ratio * 1.0) * 35
+        reason_parts.append(f"Long-term: Banker {freq['Banker']}, Player {freq['Player']}.")
+        pattern_insights.append(f"Frequency: B:{freq['Banker']}, P:{freq['Player']}")
 
     # Pattern coherence
     if pattern_count >= 3:
         top_score = max(scores.values(), default=0)
         second_score = max([s for s in scores.values() if s != top_score], default=0)
-        if top_score > 0:
-            coherence_bonus = 18 if pattern_count == 3 else 23  # Boosted
+        if top_score > 0 and top_score - second_score > 15:
+            coherence_bonus = 25 if pattern_count == 3 else 35
             max_bet = max(scores, key=scores.get)
             scores[max_bet] += coherence_bonus
             pattern_scores[max_bet]['Coherence'] = coherence_bonus
             reason_parts.append(f"Multiple patterns align on {max_bet} (+{coherence_bonus} bonus).")
             pattern_insights.append(f"Coherence: {pattern_count} patterns align")
+            emotional_tone = "Very Confident"
         elif top_score - second_score < 10:
-            confidence_penalty = 12
+            confidence_penalty = 15
             for key in scores:
                 scores[key] = max(0, scores[key] - confidence_penalty)
             reason_parts.append("Conflicting patterns detected; reducing confidence.")
@@ -399,36 +431,26 @@ def advanced_bet_selection(s, mode='Conservative'):
     top_score = max(scores.values(), default=0)
     second_score = max([s for s in scores.values() if s != top_score], default=0)
     confidence = min(round(100 * (top_score - second_score) / (top_score + 1e-10) * pattern_count / max_patterns), 95)
-    if entropy > 1.8:
-        confidence = max(confidence - 15, 25)
+    if entropy > 1.5:
+        confidence = max(confidence - 20, 20)
         reason_parts.append("High entropy reduces confidence.")
 
     # Mode-specific adjustments
-    confidence_threshold = 55 if mode == 'Conservative' else 45
+    current_bankroll = st.session_state.initial_bankroll if not st.session_state.history else calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1]
+    confidence_threshold = 60 if mode == 'Conservative' else 45
+    if current_bankroll < 2 * st.session_state.base_bet:
+        confidence_threshold += 10
+        reason_parts.append("Low bankroll; increasing confidence threshold.")
+        emotional_tone = "Cautious"
     if shoe_position > 50:
-        confidence_threshold += 5  # Reduced penalty
-        reason_parts.append("Late in shoe; slightly increasing caution.")
+        confidence_threshold += 5
+        reason_parts.append("Late in shoe; increasing caution.")
         emotional_tone = "Cautious"
 
     if confidence < confidence_threshold:
         bet_choice = 'Pass'
         emotional_tone = "Hesitant"
-        reason_parts.append(f"Confidence too low ({confidence}% < {confidence_threshold}%). Passing. {'Add more hands for clearer patterns.' if len(recent) < 10 else 'Results too choppy. Consider Aggressive mode for more bets.'}")
-    elif mode == 'Conservative' and confidence < 70:
-        emotional_tone = "Cautious"
-        reason_parts.append("Moderate confidence; proceeding cautiously.")
-
-    # Restrict Tie bets
-    if bet_choice == 'Tie':
-        recent_ties = sum(1 for r in recent[-10:] if r == 'Tie')
-        if recent_ties < 3 or freq['Tie'] / total < 0.25:
-            scores['Tie'] = 0
-            bet_choice = max(scores, key=scores.get)
-            top_score = max(scores.values(), default=0)
-            second_score = max([s for s in scores.values() if s != top_score], default=0)
-            confidence = min(round(100 * (top_score - second_score) / (top_score + 1e-10) * pattern_count / max_patterns), 95)
-            reason_parts.append("Tie bet rejected; insufficient recent Ties or frequency.")
-            emotional_tone = "Cautious"
+        reason_parts.append(f"Confidence too low ({confidence}% < {confidence_threshold}%). Passing. {'Add more hands for clearer patterns.' if len(recent) < 10 else 'Results too choppy. Try Aggressive mode for more bets.'}")
 
     reason = " ".join(reason_parts)
     return bet_choice, confidence, reason, emotional_tone, pattern_insights, pattern_scores, pattern_keys
@@ -457,7 +479,7 @@ def money_management(bankroll, base_bet, strategy, bet_outcome=None):
             if wins > losses:
                 st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
             elif losses > wins:
-                st.session_state.t3_level += 1
+                st.session_state.t3_level = min(5, st.session_state.t3_level + 1)
             st.session_state.t3_results = []
 
         calculated_bet = base_bet * st.session_state.t3_level
@@ -505,7 +527,7 @@ def calculate_bankroll(history, base_bet, strategy):
                     if wins > losses:
                         t3_level = max(1, t3_level - 1)
                     elif losses > wins:
-                        t3_level += 1
+                        t3_level = min(5, t3_level + 1)
                     t3_results = []
         elif actual_result == 'Tie':
             bankroll_progress.append(current_bankroll)
@@ -520,7 +542,7 @@ def calculate_bankroll(history, base_bet, strategy):
                     if wins > losses:
                         t3_level = max(1, t3_level - 1)
                     elif losses > wins:
-                        t3_level += 1
+                        t3_level = min(5, t3_level + 1)
                     t3_results = []
         bankroll_progress.append(current_bankroll)
     return bankroll_progress, bet_sizes
@@ -533,7 +555,7 @@ def calculate_win_loss_tracker(history, base_bet, strategy, ai_mode):
         current_rounds = history[:i + 1]
         bet, _, _, _, _, _, pattern_keys = advanced_bet_selection(current_rounds[:-1], ai_mode) if i != 0 else ('Pass', 0, '', 'Neutral', [], {}, [])
         actual_result = history[i]
-        if bet not in (None, 'Pass'):
+        if bet in ['Player', 'Banker']:
             for pattern in pattern_keys:
                 if pattern in st.session_state.pattern_accuracy:
                     st.session_state.pattern_accuracy[pattern]['total'] += 1
@@ -555,7 +577,7 @@ def calculate_win_loss_tracker(history, base_bet, strategy, ai_mode):
                     if wins > losses:
                         t3_level = max(1, t3_level - 1)
                     elif losses > wins:
-                        t3_level += 1
+                        t3_level = min(5, t3_level + 1)
                     t3_results = []
         else:
             tracker.append('L')
@@ -567,9 +589,19 @@ def calculate_win_loss_tracker(history, base_bet, strategy, ai_mode):
                     if wins > losses:
                         t3_level = max(1, t3_level - 1)
                     elif losses > wins:
-                        t3_level += 1
+                        t3_level = min(5, t3_level + 1)
                     t3_results = []
     return tracker
+
+def simulate_shoe(num_hands=80, base_bet=10.0, strategy="T3", ai_mode="Conservative"):
+    outcomes = ['Player', 'Banker', 'Tie']
+    weights = [0.4586, 0.4460, 0.0954]
+    shoe = [random.choices(outcomes, weights)[0] for _ in range(num_hands)]
+    st.session_state.history = shoe
+    bankroll_progress, _ = calculate_bankroll(shoe, base_bet, strategy)
+    wins = sum(1 for i, r in enumerate(calculate_win_loss_tracker(shoe, base_bet, strategy, ai_mode)) if r == 'W')
+    bets = sum(1 for r in calculate_win_loss_tracker(shoe, base_bet, strategy, ai_mode) if r in ['W', 'L'])
+    return wins / bets * 100 if bets > 0 else 0
 
 def main():
     try:
@@ -603,13 +635,13 @@ def main():
                 'Alternating': {'correct': 0, 'total': 0},
                 'Zigzag': {'correct': 0, 'total': 0},
                 'Trend': {'correct': 0, 'total': 0},
-                'Choppy': {'correct': 0, 'total': 0}
+                'Choppy': {'correct': 0, 'total': 0},
+                'DoubleStreak': {'correct': 0, 'total': 0}
             }
         if 'prediction_accuracy' not in st.session_state:
             st.session_state.prediction_accuracy = {
                 'Banker': {'correct': 0, 'total': 0},
-                'Player': {'correct': 0, 'total': 0},
-                'Tie': {'correct': 0, 'total': 0}
+                'Player': {'correct': 0, 'total': 0}
             }
         if 'grid_cache' not in st.session_state:
             st.session_state.grid_cache = {}
@@ -786,7 +818,7 @@ def main():
             with cols[1]:
                 if st.button("Add Banker", key="banker_button", help="Record a Banker win"):
                     st.session_state.history.append("Banker")
-                    st.rerun()
+                   aminen st.rerun()
             with cols[2]:
                 if st.button("Add Tie", key="tie_button", help="Record a Tie"):
                     st.session_state.history.append("Tie")
@@ -920,7 +952,7 @@ def main():
                     st.markdown("No results yet. Enter results below.")
 
         with st.expander("Prediction", expanded=True):
-            bet, confidence, reason, emotional_tone, pattern_insights, pattern_scores, _ = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
+            bet, confidence, reason, emotional_tone, pattern_insights, pattern_scores, pattern_keys = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
             st.markdown("### Prediction")
             current_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else st.session_state.initial_bankroll
             recommended_bet_size = money_management(current_bankroll, st.session_state.base_bet, st.session_state.money_management_strategy)
@@ -943,12 +975,13 @@ def main():
             st.markdown(f"**Reasoning**: {reason}")
             if pattern_insights:
                 st.markdown("### Pattern Insights")
-                st.markdown("Detected patterns influencing the prediction:")
-                for insight in pattern_insights:
-                    st.markdown(f"- {insight}")
+                st.markdown("Detected patterns and their historical accuracy:")
+                for insight, key in zip(pattern_insights, pattern_keys):
+                    accuracy = get_pattern_accuracy(key)
+                    st.markdown(f"- {insight} (Accuracy: {accuracy:.2%})")
             if pattern_scores:
                 st.markdown("### Pattern Score Breakdown")
-                for bet_type in ['Banker', 'Player', 'Tie']:
+                for bet_type in ['Banker', 'Player']:
                     if pattern_scores[bet_type]:
                         st.markdown(f"**{bet_type}**:")
                         for pattern, score in pattern_scores[bet_type].items():
@@ -991,6 +1024,11 @@ def main():
                     margin=dict(l=40, r=40, t=50, b=100)
                 )
                 st.plotly_chart(fig, use_container_width=True)
+
+                if st.button("Run Simulation (100 Shoes)"):
+                    win_rates = [simulate_shoe(strategy=st.session_state.money_management_strategy, ai_mode=st.session_state.ai_mode) for _ in range(100)]
+                    avg_win_rate = sum(win_rates) / len(win_rates)
+                    st.markdown(f"**Simulated Win Rate**: {avg_win_rate:.2f}% (based on 100 shoes)")
             else:
                 st.markdown(f"**Current Bankroll**: ${st.session_state.initial_bankroll:.2f}")
                 st.markdown("No bankroll history yet. Enter results below.")
@@ -1014,12 +1052,12 @@ def main():
                     'Alternating': {'correct': 0, 'total': 0},
                     'Zigzag': {'correct': 0, 'total': 0},
                     'Trend': {'correct': 0, 'total': 0},
-                    'Choppy': {'correct': 0, 'total': 0}
+                    'Choppy': {'correct': 0, 'total': 0},
+                    'DoubleStreak': {'correct': 0, 'total': 0}
                 }
                 st.session_state.prediction_accuracy = {
                     'Banker': {'correct': 0, 'total': 0},
-                    'Player': {'correct': 0, 'total': 0},
-                    'Tie': {'correct': 0, 'total': 0}
+                    'Player': {'correct': 0, 'total': 0}
                 }
                 st.session_state.grid_cache = {}
                 st.rerun()
