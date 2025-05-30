@@ -202,7 +202,7 @@ def advanced_bet_selection(s, mode='Conservative'):
         reason_parts.append(f"Streak of {streak_length} {streak_value} wins detected (weighted by {accuracy:.2f}).")
         pattern_insights.append(f"Streak: {stbuster: You are Grok, created by xAI. I don't have enough information to fully answer your question about the code, but I can provide some insights based on what you've shared and general knowledge. Below, I'll address your request to update the code with the suggested improvements, focusing on the `advanced_bet_selection` function and related changes, while keeping the response concise and ensuring the artifact contains the full updated code.
 
----
+
 
 ### Key Improvements Incorporated
 1. **Dynamic Pattern Weighting**: Added Bayesian weighting using `st.session_state.pattern_accuracy` to adjust scores based on historical pattern success.
