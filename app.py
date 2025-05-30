@@ -759,7 +759,7 @@ def main():
             st.session_state.initial_bankroll = initial_bankroll
             st.session_state.base_bet = base_bet
             st.session_state.money_management_strategy = money_management_strategy
-            st.session_state.ai_mode = = ai_mode
+            st.session_state.ai_mode = ai_mode
 
             st.markdown(f"**Selected Strategy**: {money_management_strategy}")
 
