@@ -4,17 +4,17 @@ import logging
 import plotly.graph_objects as go
 import math
 
-# Set up basic logging
+# Set up logging
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Normalize input
 def normalize(s):
     s = s.strip().lower()
-    if s == 'banker' or s == 'b':
+    if s in ('banker', 'b'):
         return 'Banker'
-    if s == 'player' or s == 'p':
+    if s in ('player', 'p'):
         return 'Player'
-    if s == 'tie' or s == 't':
+    if s in ('tie', 't'):
         return 'Tie'
     return None
 
@@ -173,14 +173,14 @@ def advanced_bet_selection(s, mode='Conservative'):
         return 'Pass', 0, "Not enough history to make a confident prediction.", "Cautious", [], {}, []
 
     scores = {'Banker': 0, 'Player': 0, 'Tie': 0}
-    pattern_scores = {'Banker': {}, 'Player': {}, 'Tie': {}}  # Track pattern contributions
+    pattern_scores = {'Banker': {}, 'Player': {}, 'Tie': {}}
     reason_parts = []
     pattern_insights = []
-    pattern_keys = []  # Store pattern names for accuracy tracking
+    pattern_keys = []
     emotional_tone = "Neutral"
     pattern_count = 0
     shoe_position = len(s)
-    max_patterns = 8  # Streak, BigRoad, BigEye, Cockroach, Alternating, Zigzag, Trend, Choppy
+    max_patterns = 8
 
     def decay_weight(index, total_length, half_life=20):
         return 0.5 ** ((total_length - index - 1) / half_life)
@@ -404,7 +404,7 @@ def advanced_bet_selection(s, mode='Conservative'):
         reason_parts.append("High entropy reduces confidence.")
 
     # Mode-specific adjustments
-    confidence_threshold = 65 if mode == 'Conservative' else 45
+    confidence_threshold = 70 if mode == 'Conservative' else 45
     if shoe_position > 50:
         confidence_threshold += 10
         reason_parts.append("Late in shoe; increasing caution.")
@@ -414,7 +414,7 @@ def advanced_bet_selection(s, mode='Conservative'):
         bet_choice = 'Pass'
         emotional_tone = "Hesitant"
         reason_parts.append(f"Confidence too low ({confidence}% < {confidence_threshold}%). Passing.")
-    elif mode == 'Conservative' and confidence < 75:
+    elif mode == 'Conservative' and confidence < 80:
         emotional_tone = "Cautious"
         reason_parts.append("Moderate confidence; proceeding cautiously.")
 
@@ -445,13 +445,12 @@ def money_management(bankroll, base_bet, strategy, bet_outcome=None):
 
     if strategy == "T3":
         if bet_outcome == 'win':
-            if not st.session_state.t3_results:  # First step in T3 cycle
+            if not st.session_state.t3_results:
                 st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
             st.session_state.t3_results.append('W')
         elif bet_outcome == 'loss':
             st.session_state.t3_results.append('L')
 
-        # Update T3 level after 3 results
         if len(st.session_state.t3_results) == 3:
             wins = st.session_state.t3_results.count('W')
             losses = st.session_state.t3_results.count('L')
@@ -474,7 +473,6 @@ def calculate_bankroll(history, base_bet, strategy):
     current_bankroll = bankroll
     bankroll_progress = []
     bet_sizes = []
-    # Use temporary T3 state
     t3_level = 1
     t3_results = []
     for i in range(len(history)):
@@ -666,6 +664,7 @@ def main():
                 width: 100%;
                 padding: 8px;
                 margin: 5px 0;
+                border-radius: 5px;
             }
             .stNumberInput, .stSelectbox {
                 width: 100% !important;
@@ -695,6 +694,18 @@ def main():
                 display: inline-block;
                 margin: 2px;
             }
+            .player-button {
+                background-color: #3182ce !important;
+                color: white !important;
+            }
+            .banker-button {
+                background-color: #e53e3e !important;
+                color: white !important;
+            }
+            .tie-button {
+                background-color: #38a169 !important;
+                color: white !important;
+            }
             @media (min-width: 769px) {
                 .stButton > button, .stNumberInput, .stSelectbox {
                     max-width: 200px;
@@ -720,9 +731,6 @@ def main():
                 }
                 .stNumberInput input, .stSelectbox div {
                     font-size: 0.9rem;
-                }
-                .st-emotion-cache-1dj3wfg {
-                    flex-wrap: wrap;
                 }
             }
             @media (max-width: 500px) {
@@ -760,19 +768,19 @@ def main():
         with st.expander("Input Game Results", expanded=True):
             cols = st.columns(4)
             with cols[0]:
-                if st.button("Add Player"):
+                if st.button("Add Player", key="player_button", help="Record a Player win"):
                     st.session_state.history.append("Player")
                     st.rerun()
             with cols[1]:
-                if st.button("Add Banker"):
+                if st.button("Add Banker", key="banker_button", help="Record a Banker win"):
                     st.session_state.history.append("Banker")
                     st.rerun()
             with cols[2]:
-                if st.button("Add Tie"):
+                if st.button("Add Tie", key="tie_button", help="Record a Tie"):
                     st.session_state.history.append("Tie")
                     st.rerun()
             with cols[3]:
-                undo_clicked = st.button("Undo", disabled=len(st.session_state.history) == 0)
+                undo_clicked = st.button("Undo", key="undo_button", disabled=len(st.session_state.history) == 0, help="Remove the last result")
                 if undo_clicked and len(st.session_state.history) == 0:
                     st.warning("No results to undo!")
                 elif undo_clicked:
@@ -792,7 +800,7 @@ def main():
             )
             st.session_state.selected_patterns = selected_patterns
 
-            max_display_cols = 6 if st.session_state.screen_width <= 500 else 10 if st.session_state.screen_width < 768 else 14
+            max_display_cols = 6 if st.session_state.screen_width <= 500 else 10 if st.session_state.screen_width < 768 else 12
 
             if "Bead Bin" in st.session_state.selected_patterns:
                 st.markdown("### Bead Bin")
@@ -911,7 +919,7 @@ def main():
                 reason = "Bankroll too low to continue betting."
                 emotional_tone = "Cautious"
             if bet == 'Pass':
-                st.markdown("**No Bet**: Insufficient confidence or bankroll to place a bet.")
+                st.markdown(f"**No Bet**: {reason}")
             else:
                 st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Bet Size**: ${recommended_bet_size:.2f} | **Mood**: {emotional_tone}")
             st.markdown(f"**Reasoning**: {reason}")
@@ -970,7 +978,7 @@ def main():
                 st.markdown("No bankroll history yet. Enter results below.")
 
         with st.expander("Reset", expanded=False):
-            if st.button("New Game"):
+            if st.button("New Game", key="reset_button", help="Start a new game"):
                 final_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else st.session_state.initial_bankroll
                 st.session_state.history = []
                 st.session_state.initial_bankroll = max(1.0, final_bankroll)
