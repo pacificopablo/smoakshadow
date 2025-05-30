@@ -829,7 +829,7 @@ def main():
                         row_display = []
                         for col in range(display_cols):
                             outcome = big_road_grid[row][col];
-                                if outcome == 'P':
+                             if outcome == 'P':
                                     row_display.append(f'<div class="pattern-circle" style="background-color: blue; border-radius: 50%; border: 2px solid #333;"></div>')
                                 else:
                                     outcome == 'B':
