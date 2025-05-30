@@ -1,225 +1,4 @@
-import streamlit as st
-import logging
-import plotly.graph_objects as go
-import math
-import uuid
 
-# Set up basic logging
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Normalize input
-def normalize(s):
-    s = s.strip().lower()
-    if s == 'banker' or s == 'b':
-        return 'Banker'
-    if s == 'player' or s == 'p':
-        return 'Player'
-    if s == 'tie' or s == 't':
-        return 'Tie'
-    return None
-
-def detect_streak(s):
-    if not s:
-        return None, 0
-    last = s[-1]
-    count = 1
-    for i in range(len(s) - 2, -1, -1):
-        if s[i] == last:
-            count += 1
-        else:
-            break
-    return last, count
-
-def is_alternating(s, min_length=4):
-    if len(s) < min_length:
-        return False
-    for i in range(len(s) - 1):
-        if s[i] == s[i + 1]:
-            return False
-    return True
-
-def is_zigzag(s):
-    if len(s) < 3:
-        return False
-    for i in range(len(s) - 2):
-        if s[i] == s[i + 2] and s[i] != s[i + 1]:
-            return True
-    return False
-
-def is_choppy(s, window=10, min_alternations=6):
-    if len(s) < window:
-        return False
-    recent = s[-window:]
-    alternations = sum(1 for i in range(len(recent) - 1) if recent[i] != recent[i + 1])
-    return alternations >= min_alternations
-
-def recent_trend(s, window=10):
-    recent = s[-window:] if len(s) >= window else s
-    if not recent:
-        return None, 0
-    freq = frequency_count(recent)
-    total = len(recent)
-    if total == 0:
-        return None, 0
-    banker_ratio = freq['Banker'] / total
-    player_ratio = freq['Player'] / total
-    if banker_ratio > player_ratio + 0.2:
-        return 'Banker', min(banker_ratio * 50, 80)
-    elif player_ratio > banker_ratio + 0.2:
-        return 'Player', min(player_ratio * 50, 80)
-    return None, 0
-
-def frequency_count(s):
-    count = {'Banker': 0, 'Player': 0, 'Tie': 0}
-    for r in s:
-        if r in count:
-            count[r] += 1
-    return count
-
-def build_big_road(s):
-    max_rows = 6
-    max_cols = 50
-    grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
-    col = 0
-    row = 0
-    last_outcome = None
-
-    for result in s:
-        mapped = 'P' if result == 'Player' else 'B' if result == 'Banker' else 'T'
-        if mapped == 'T':
-            if col < max_cols and row < max_rows and grid[row][col] == '':
-                grid[row][col] = 'T'
-            continue
-        if col >= max_cols:
-            break
-        if last_outcome is None or (mapped == last_outcome and row < max_rows - 1):
-            grid[row][col] = mapped
-            row += 1
-        else:
-            col += 1
-            row = 0
-            if col < max_cols:
-                grid[row][col] = mapped
-                row += 1
-        last_outcome = mapped if mapped != 'T' else last_outcome
-    return grid, col + 1
-
-def build_big_eye_boy(big_road_grid, num_cols):
-    max_rows = 6
-    max_cols = 50
-    grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
-    col = 0
-    row = 0
-
-    for c in range(3, num_cols):
-        if col >= max_cols:
-            break
-        last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
-        third_last = [big_road_grid[r][c - 3] for r in range(max_rows)]
-        last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
-        third_non_empty = next((i for i, x in enumerate(third_last) if x in ['P', 'B']), None)
-        if last_non_empty is not None and third_non_empty is not None:
-            if last_col[last_non_empty] == third_last[third_non_empty]:
-                grid[row][col] = 'R'
-            else:
-                grid[row][col] = 'B'
-            row += 1
-            if row >= max_rows:
-                col += 1
-                row = 0
-        else:
-            col += 1
-            row = 0
-    return grid, col + 1 if row > 0 else col
-
-def build_cockroach_pig(big_road_grid, num_cols):
-    max_rows = 6
-    max_cols = 50
-    grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
-    col = 0
-    row = 0
-
-    for c in range(4, num_cols):
-        if col >= max_cols:
-            break
-        last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
-        fourth_last = [big_road_grid[r][c - 4] for r in range(max_rows)]
-        last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
-        fourth_non_empty = next((i for i, x in enumerate(fourth_last) if x in ['P', 'B']), None)
-        if last_non_empty is not None and fourth_non_empty is not None:
-            if last_col[last_non_empty] == fourth_last[fourth_non_empty]:
-                grid[row][col] = 'R'
-            else:
-                grid[row][col] = 'B'
-            row += 1
-            if row >= max_rows:
-                col += 1
-                row = 0
-        else:
-            col += 1
-            row = 0
-    return grid, col + 1 if row > 0 else col
-
-def advanced_bet_selection(s, mode='Conservative'):
-    max_recent_count = 40
-    recent = s[-max_recent_count:] if len(s) >= max_recent_count else s
-    if len(recent) < 5:
-        return 'Pass', 0, "Not enough history to make a confident prediction.", "Cautious", []
-
-    scores = {'Banker': 0, 'Player': 0, 'Tie': 0}
-    pattern_scores = {'Banker': {}, 'Player': {}, 'Tie': {}}  # Track pattern contributions
-    reason_parts = []
-    pattern_insights = []
-    emotional_tone = "Neutral"
-    pattern_count = 0
-    shoe_position = len(s)
-    max_patterns = 7  # Streak, BigRoad, BigEye, Cockroach, Alternating, Zigzag, Trend
-
-    def decay_weight(index, total_length, half_life=20):
-        return 0.5 ** ((total_length - index - 1) / half_life)
-
-    def get_pattern_accuracy(pattern):
-        return st.session_state.pattern_accuracy[pattern]['correct'] / st.session_state.pattern_accuracy[pattern]['total'] if st.session_state.pattern_accuracy[pattern]['total'] > 0 else 1
-
-    # Shoe position factor
-    shoe_position_factor = 1.0
-    if shoe_position < 20:
-        shoe_position_factor = 1.2 if 'Trend' in pattern_insights else 0.8
-    elif shoe_position > 50:
-        shoe_position_factor = 0.7 if 'Streak' in pattern_insights else 1.0
-
-    # Streak detection
-    streak_value, streak_length = detect_streak(recent)
-    if streak_length >= 3 and streak_value != "Tie":
-        streak_score = min(25 + (streak_length - 3) * 8, 50)
-        if streak_length >= 6:
-            streak_score += 10
-            pattern_insights.append(f"Dragon Tail: {streak_length} {streak_value}")
-            emotional_tone = "Confident"
-        accuracy = get_pattern_accuracy('Streak')
-        scores[streak_value] += streak_score * accuracy * shoe_position_factor
-        pattern_scores[streak_value]['Streak'] = streak_score * accuracy
-        reason_parts.append(f"Streak of {streak_length} {streak_value} wins detected (weighted by {accuracy:.2f}).")
-        pattern_insights.append(f"Streak: {stbuster: You are Grok, created by xAI. I don't have enough information to fully answer your question about the code, but I can provide some insights based on what you've shared and general knowledge. Below, I'll address your request to update the code with the suggested improvements, focusing on the `advanced_bet_selection` function and related changes, while keeping the response concise and ensuring the artifact contains the full updated code.
-
-
-
-### Key Improvements Incorporated
-1. **Dynamic Pattern Weighting**: Added Bayesian weighting using `st.session_state.pattern_accuracy` to adjust scores based on historical pattern success.
-2. **Shoe Position Adjustments**: Introduced dynamic weighting based on shoe position (early, mid, late).
-3. **New Choppy Pattern**: Added detection for choppy patterns (frequent alternations).
-4. **Improved Tie Bet Logic**: Restricted Tie bets to require 3+ recent Ties and >25% frequency.
-5. **Real-Time Feedback**: Tracks prediction accuracy to adjust weights.
-6. **Optimized Confidence**: Normalized confidence based on score differences and pattern count.
-7. **UI Transparency**: Added pattern score breakdown in the UI.
-8. **Edge Case Handling**: Defaults to 'Pass' for short histories and handles conflicting patterns.
-
-The unchanged parts of the original code (e.g., UI rendering, bankroll management) are included as-is to provide a complete, functional script.
-
----
-
-<xaiArtifact artifact_id="97be4940-be72-4cfe-9c39-9024c304dc07" artifact_version_id="70ee12c4-e013-48e5-803f-134e254c35c7" title="Mang Baccarat Predictor" contentType="text/python">
-```python
 import streamlit as st
 import logging
 import plotly.graph_objects as go
@@ -365,7 +144,9 @@ def build_cockroach_pig(big_road_grid, num_cols):
             break
         last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
         fourth_last = [big_road_grid[r][c - 4] for r in range(max_rows)]
-        last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
+        last_non_empty = next((i for i, x in enumerate
+
+(last_col) if x in ['P', 'B']), None)
         fourth_non_empty = next((i for i, x in enumerate(fourth_last) if x in ['P', 'B']), None)
         if last_non_empty is not None and fourth_non_empty is not None:
             if last_col[last_non_empty] == fourth_last[fourth_non_empty]:
@@ -385,7 +166,7 @@ def advanced_bet_selection(s, mode='Conservative'):
     max_recent_count = 40
     recent = s[-max_recent_count:] if len(s) >= max_recent_count else s
     if len(recent) < 5:
-        return 'Pass', 0, "Not enough history to make a confident prediction.", "Cautious", []
+        return 'Pass', 0, "Not enough history to make a confident prediction.", "Cautious", [], {}
 
     scores = {'Banker': 0, 'Player': 0, 'Tie': 0}
     pattern_scores = {'Banker': {}, 'Player': {}, 'Tie': {}}  # Track pattern contributions
@@ -405,9 +186,9 @@ def advanced_bet_selection(s, mode='Conservative'):
     # Shoe position factor
     shoe_position_factor = 1.0
     if shoe_position < 20:
-        shoe_position_factor = 1.2 if 'Trend' in pattern_insights else 0.8
+        shoe_position_factor = 1.2  # Boost trends in early shoe
     elif shoe_position > 50:
-        shoe_position_factor = 0.7 if 'Streak' in pattern_insights else 1.0
+        shoe_position_factor = 0.7  # Reduce streak reliance in late shoe
 
     # Streak detection
     streak_value, streak_length = detect_streak(recent)
@@ -471,7 +252,7 @@ def advanced_bet_selection(s, mode='Conservative'):
     # Recent trend
     trend_bet, trend_score = recent_trend(recent, window=12)
     if trend_bet:
-        trend_weight = trend_score * (1 if shoe_position < 20 else 0.8) * get_pattern_accuracy('Trend')
+        trend_weight = trend_score * (1.2 if shoe_position < 20 else 0.8) * get_pattern_accuracy('Trend')
         scores[trend_bet] += min(trend_weight, 35) * shoe_position_factor
         pattern_scores[trend_bet]['Trend'] = min(trend_weight, 35)
         reason_parts.append(f"Recent trend favors {trend_bet} in last 12 hands (weighted by {get_pattern_accuracy('Trend'):.2f}).")
@@ -596,7 +377,7 @@ def advanced_bet_selection(s, mode='Conservative'):
     second_score = max([s for s in scores.values() if s != top_score], default=0)
     confidence = min(round(100 * (top_score - second_score) / (top_score + 1e-10) * pattern_count / max_patterns), 95)
     if entropy > 1.8:
-        confidence = max(confidence - 20, 20)
+        confidence = max(confidence - 20 sustentável: 20)
         reason_parts.append("High entropy reduces confidence.")
 
     # Mode-specific adjustments
@@ -620,7 +401,7 @@ def advanced_bet_selection(s, mode='Conservative'):
         if recent_ties < 3 or freq['Tie'] / total < 0.25:
             scores['Tie'] = 0
             bet_choice = max(scores, key=scores.get)
-            confidence = min(round(scores[bet_choice] * 1.3), 95)
+            confidence = min(round(100 * (max(scores.values(), default=0) - max([s for s in scores.values() if s != max(scores.values(), default=0)], default=0)) / (max(scores.values(), default=0) + 1e-10) * pattern_count / max_patterns), 95)
             reason_parts.append("Tie bet rejected; insufficient recent Ties or frequency.")
             emotional_tone = "Cautious"
 
@@ -1158,3 +939,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
