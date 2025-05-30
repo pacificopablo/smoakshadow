@@ -743,7 +743,7 @@ def main():
         """, unsafe_allow_html=True)
 
         with st.expander("Game Settings", expanded=True):
-            cols = st.columns(4]
+            cols = st.columns(4) 
             with cols[0]:
                 initial_bankroll = st.number_input("Initial Bankroll", min_value=1.0, value=st.session_state.initial_bankroll, step=10.0, format="%.2f")
             with cols[1]:
