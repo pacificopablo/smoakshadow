@@ -310,7 +310,7 @@ def advanced_bet_selection(s, mode='Conservative'):
             if small_road_bet:
                 signal_type = "repeat" if small_road_signal == 'R' else "break"
                 votes.append((small_road_bet, 18, 0.87, f"Small Road predicts {signal_type} pattern ({small_road_signal})", f"Small Road: {signal_type.capitalize()} ({small_road_signal})"))
-                pattern_insights.append(f"Small Road: {signal_type.capitalize()} ({small_road_signal})")
+                pattern_insights.append(f"Small Road: {signal_type.capitalize()} ({small_road_signal})"})
                 derived_road_predictions['Small Road'] = small_road_signal
                 pattern_count += 1
 
@@ -846,10 +846,14 @@ def main():
             
             if derived_road_predictions:
                 st.markdown("### Derived Road Predictions")
-                st.markdown("Predicted next signals for Derived Roads (R = Repeat, B = Break):")
+                st.markdown("Predicted next signals for Derived Roads (R = Repeat, B = Break) and corresponding bets:")
+                big_road_grid, num_cols = build_big_road(st.session_state.history)
+                last_big_road = big_road_grid[0][num_cols - 1] if num_cols > 0 else None
                 for road, signal in derived_road_predictions.items():
                     color = "Red" if signal == 'R' else "Blue"
-                    st.markdown(f"- **{road}**: {color} ({signal})")
+                    bet_prediction = map_signal_to_bet(signal, last_big_road)
+                    bet_display = bet_prediction if bet_prediction else "No bet (insufficient data)"
+                    st.markdown(f"- **{road}**: {color} ({signal}) -> Predicts **{bet_display}**")
             
             if vote_details:
                 st.markdown("### Voting Breakdown")
