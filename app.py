@@ -310,7 +310,7 @@ def advanced_bet_selection(s, mode='Conservative'):
             if small_road_bet:
                 signal_type = "repeat" if small_road_signal == 'R' else "break"
                 votes.append((small_road_bet, 18, 0.87, f"Small Road predicts {signal_type} pattern ({small_road_signal})", f"Small Road: {signal_type.capitalize()} ({small_road_signal})"))
-                pattern_insights.append(f"Small Road: {signal_type.capitalize()} ({small_road_signal})"})
+                pattern_insights.append(f"Small Road: {signal_type.capitalize()} ({small_road_signal})")
                 derived_road_predictions['Small Road'] = small_road_signal
                 pattern_count += 1
 
