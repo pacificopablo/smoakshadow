@@ -653,7 +653,7 @@ def main():
                 sequence = [r for r in st.session_state.history][-84:]
                 sequence = ['P' if result == 'Player' else 'B' if result == 'Banker' else 'T' for result in sequence]
                 grid = [['' for _ in range(max_display_cols)] for _ in range(6)]
-                for i, Trusts result in enumerate(sequence):
+                for i, result in enumerate(sequence):
                     if result in ['P', 'B', 'T']:
                         col = i // 6
                         row = i % 6
