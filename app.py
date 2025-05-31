@@ -1,69 +1,58 @@
 
 import streamlit as st
+import time
 import logging
 import plotly.graph_objects as go
 import math
-import uuid
 
-# Set up basic logging
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # Initialize pattern weights
 if 'PATTERN_WEIGHTS' not in st.session_state:
     st.session_state.PATTERN_WEIGHTS = {
-        'streak': 1.2,
-        'alternating': 1.0,
-        'zigzag': 0.8,
-        'trend': 0.9,
-        'big_road': 0.7,
-        'big_eye': 0.6,
-        'cockroach': 0.5,
-        'choppy': 0.8,
-        'double': 0.7,
-        'markov': 0.9
-    }
-
-# Function to adjust pattern weights based on performance
-def adjust_pattern_weights():
-    performance = st.session_state.get('pattern_performance', {})
-    min_predictions = 5  # Minimum predictions before adjusting
-    min_weight, max_weight = 0.5, 2.0  # Weight bounds
-    default_weights = {
         'streak': 1.2, 'alternating': 1.0, 'zigzag': 0.8, 'trend': 0.9,
         'big_road': 0.7, 'big_eye': 0.6, 'cockroach': 0.5, 'choppy': 0.8,
         'double': 0.7, 'markov': 0.9
     }
 
+# Function to adjust pattern weights
+@st.cache_data
+def adjust_pattern_weights(performance_history):
+    if not performance_history:
+        return
+    performance = performance_history
+    min_predictions = 10
+    min_weight, max_weight = 0.5, 2.0
+    default_weights = {
+        'streak': 1.2, 'alternating': 1.0, 'zigzag': 0.8, 'trend': 0.9,
+        'big_road': 0.7, 'big_eye': 0.6, 'cockroach': 0.5, 'choppy': 0.8,
+        'double': 0.7, 'markov': 0.9
+    }
+    start_time = time.time()
     for pattern in st.session_state.PATTERN_WEIGHTS:
         if pattern in performance and performance[pattern]['total'] >= min_predictions:
             accuracy = performance[pattern]['correct'] / performance[pattern]['total']
             current_weight = st.session_state.PATTERN_WEIGHTS[pattern]
-            # Increase weight for high accuracy, decrease for low accuracy
             if accuracy > 0.6:
-                new_weight = current_weight * 1.1  # Increase by 10%
+                new_weight = current_weight * 1.1
             elif accuracy < 0.4:
-                new_weight = current_weight * 0.9  # Decrease by 10%
+                new_weight = current_weight * 0.9
             else:
-                new_weight = current_weight  # No change for 40-60% accuracy
-            # Cap weights
+                new_weight = current_weight
             new_weight = max(min_weight, min(new_weight, max_weight))
             st.session_state.PATTERN_WEIGHTS[pattern] = round(new_weight, 2)
         else:
-            # Reset to default if insufficient data
             st.session_state.PATTERN_WEIGHTS[pattern] = default_weights[pattern]
+    logging.info(f"Pattern weights adjustment took {time.time() - start_time:.2f} seconds")
 
 # Pattern detection functions
 def normalize(s):
     s = s.strip().lower()
-    if s == 'banker' or s == 'b':
-        return 'Banker'
-    if s == 'player' or s == 'p':
-        return 'Player'
-    if s == 'tie' or s == 't':
-        return 'Tie'
-    return None
+    return 'Banker' if s in ('banker', 'b') else 'Player' if s in ('player', 'p') else 'Tie' if s in ('tie', 't') else None
 
-def detect_streaks(s, window=20):
+@st.cache_data
+def detect_streaks(s, window=32):
     streaks = []
     if not s:
         return streaks
@@ -83,18 +72,12 @@ def detect_streaks(s, window=20):
 def is_alternating(s, min_length=4):
     if len(s) < min_length:
         return False
-    for i in range(len(s) - 1):
-        if s[i] == s[i + 1]:
-            return False
-    return True
+    return all(s[i] != s[i + 1] for i in range(len(s) - 1))
 
 def is_zigzag(s):
     if len(s) < 3:
         return False
-    for i in range(len(s) - 2):
-        if s[i] == s[i + 2] and s[i] != s[i + 1]:
-            return True
-    return False
+    return any(s[i] == s[i + 2] and s[i] != s[i + 1] for i in range(len(s) - 2))
 
 def is_choppy(s, min_length=6):
     if len(s) < min_length:
@@ -122,13 +105,7 @@ def is_double_pattern(s, min_length=6):
 def tie_streak(s):
     if not s:
         return 0
-    count = 0
-    for i in range(len(s) - 1, -1, -1):
-        if s[i] == 'Tie':
-            count += 1
-        else:
-            break
-    return count
+    return sum(1 for i in range(len(s)-1, -1, -1) if s[i] == 'Tie')
 
 def recent_trend(s, window=12):
     recent = s[-window:] if len(s) >= window else s
@@ -147,13 +124,9 @@ def recent_trend(s, window=12):
     return None, 0
 
 def frequency_count(s):
-    count = {'Banker': 0, 'Player': 0, 'Tie': 0}
-    for r in s:
-        if r in count:
-            count[r] += 1
-    return count
+    return {'Banker': s.count('Banker'), 'Player': s.count('Player'), 'Tie': s.count('Tie')}
 
-def calculate_transition_probs(s, window=30):
+def calculate_transition_probs(s, window=20):
     recent = s[-window:] if len(s) >= window else s
     transitions = {('B', 'B'): 0, ('B', 'P'): 0, ('P', 'B'): 0, ('P', 'P'): 0}
     total_from = {'B': 0, 'P': 0}
@@ -163,22 +136,17 @@ def calculate_transition_probs(s, window=30):
             to_outcome = 'B' if recent[i+1] == 'Banker' else 'P'
             transitions[(from_outcome, to_outcome)] += 1
             total_from[from_outcome] += 1
-    probs = {}
-    for from_outcome in ['B', 'P']:
-        for to_outcome in ['B', 'P']:
-            count = transitions[(from_outcome, to_outcome)]
-            total = total_from[from_outcome]
-            probs[(from_outcome, to_outcome)] = count / total if total > 0 else 0
+    probs = {(f, t): transitions[(f, t)] / total_from[f] if total_from[f] > 0 else 0 
+             for f in ['B', 'B'] for t in ['B', 'P']}
     return probs
 
+@st.cache_data
 def build_big_road(s):
     max_rows = 6
-    max_cols = 50
+    max_cols = 32
     grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
-    col = 0
-    row = 0
+    col = row = 0
     last_outcome = None
-
     for result in s:
         mapped = 'P' if result == 'Player' else 'B' if result == 'Banker' else 'T'
         if mapped == 'T':
@@ -199,13 +167,12 @@ def build_big_road(s):
         last_outcome = mapped if mapped != 'T' else last_outcome
     return grid, col + 1
 
+@st.cache_data
 def build_big_eye_boy(big_road_grid, num_cols):
     max_rows = 6
-    max_cols = 50
+    max_cols = 32
     grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
-    col = 0
-    row = 0
-
+    col = row = 0
     for c in range(3, num_cols):
         if col >= max_cols:
             break
@@ -214,10 +181,7 @@ def build_big_eye_boy(big_road_grid, num_cols):
         last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
         third_non_empty = next((i for i, x in enumerate(third_last) if x in ['P', 'B']), None)
         if last_non_empty is not None and third_non_empty is not None:
-            if last_col[last_non_empty] == third_last[third_non_empty]:
-                grid[row][col] = 'R'
-            else:
-                grid[row][col] = 'B'
+            grid[row][col] = 'R' if last_col[last_non_empty] == third_last[third_non_empty] else 'B'
             row += 1
             if row >= max_rows:
                 col += 1
@@ -227,13 +191,12 @@ def build_big_eye_boy(big_road_grid, num_cols):
             row = 0
     return grid, col + 1 if row > 0 else col
 
+@st.cache_data
 def build_cockroach_pig(big_road_grid, num_cols):
-    max_rows = 6
-    max_cols = 50
+    max_rows = 2
+    max_cols = 32
     grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
-    col = 0
-    row = 0
-
+    col = row = 0
     for c in range(4, num_cols):
         if col >= max_cols:
             break
@@ -242,10 +205,7 @@ def build_cockroach_pig(big_road_grid, num_cols):
         last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
         fourth_non_empty = next((i for i, x in enumerate(fourth_last) if x in ['P', 'B']), None)
         if last_non_empty is not None and fourth_non_empty is not None:
-            if last_col[last_non_empty] == fourth_last[fourth_non_empty]:
-                grid[row][col] = 'R'
-            else:
-                grid[row][col] = 'B'
+            grid[row][col] = 'R' if last_col[last_non_empty] == fourth_last[fourth_non_empty] else 'B'
             row += 1
             if row >= max_rows:
                 col += 1
@@ -255,6 +215,7 @@ def build_cockroach_pig(big_road_grid, num_cols):
             row = 0
     return grid, col + 1 if row > 0 else col
 
+@st.cache_data
 def cache_roads(history):
     cache = {}
     big_road_grid, num_cols = build_big_road(history)
@@ -277,10 +238,10 @@ def dynamic_confidence_threshold(bankroll, initial_bankroll, entropy, mode):
     base_threshold = 65 if mode == 'Conservative' else 45
     bankroll_ratio = bankroll / initial_bankroll
     if bankroll_ratio < 0.5:
-        base_threshold += 10
-    if entropy > 1.8:
         base_threshold += 5
-    return min(base_threshold, 90)
+    if entropy > 1.5:
+        base_threshold += 5
+    return min(base_threshold, 5, 90)
 
 def score_streaks(recent, scores, reason_parts, pattern_insights, pattern_count, mode, position_factor):
     streaks = detect_streaks(recent, window=20)
@@ -394,9 +355,9 @@ def score_big_eye(recent, scores, reason_parts, pattern_insights, pattern_count,
 
 def score_cockroach(recent, scores, reason_parts, pattern_insights, pattern_count, road_cache, position_factor):
     cockroach_grid, cockroach_cols = road_cache['cockroach']
-    big_road_grid, num_cols = road_cache['big_road']
+    big_road_grid, num_cols = big_road_grid
     if cockroach_cols > 1:
-        last_two_cols = [[cockroach_grid[row][c] for row in range(6)] for c in range(cockroach_cols - 2, cockroach_cols)]
+        last_two_cols = [[cockroach_grid[row][c] for c in range(cockroach_cols - 2, cockroach_cols)] for row in range(6)]
         last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
         if all(s == 'R' for s in last_signals if s):
             last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
@@ -432,7 +393,7 @@ def score_markov(recent, scores, reason_parts, pattern_insights, pattern_count, 
     return pattern_count
 
 def update_pattern_performance(history, pattern_insights, bet, actual_result, performance_tracker):
-    for insight in pattern_insights:
+    for insight in set(pattern_insights):
         pattern = insight.split(':')[0].lower()
         if pattern not in performance_tracker:
             performance_tracker[pattern] = {'correct': 0, 'total': 0}
@@ -440,9 +401,11 @@ def update_pattern_performance(history, pattern_insights, bet, actual_result, pe
         if bet == actual_result:
             performance_tracker[pattern]['correct'] += 1
 
-def advanced_bet_selection(s, mode='Conservative'):
-    max_recent_count = 40
-    recent = s[-max_recent_count:] if len(s) >= max_recent_count else s
+@st.cache_data
+def advanced_bet_selection(history, mode='Conservative'):
+    start_time = time.time()
+    max_recent = 32
+    recent = history[-max_recent:] if len(history) >= max_recent else history
     if not recent:
         return 'Pass', 0, "No results yet. Waiting for shoe to develop.", "Cautious", []
 
@@ -451,21 +414,19 @@ def advanced_bet_selection(s, mode='Conservative'):
     pattern_insights = []
     emotional_tone = "Neutral"
     pattern_count = 0
-    shoe_position = len(s)
+    shoe_position = len(history)
     position_factor = shoe_position_factor(shoe_position)
     current_bankroll = st.session_state.get('initial_bankroll', 1000.0)
-    road_cache = cache_roads(recent)
+    road_cache = cache_roads(history)
 
     freq = frequency_count(recent)
     total = len(recent)
-    entropy = -sum((count / total) * math.log2(count / total) for count in freq.values() if count > 0) if total > 0 else 0
+    entropy = -sum((count / total) * math.log2(count / total) for count in freq.values() if count > 0 else total > 0 else 0
 
-    tie_streak_length = tie_streak(recent)
-    if tie_streak_length >= 2:
-        return 'Pass', 0, f"Recent streak of {tie_streak_length} Ties; too unstable to bet.", "Cautious", []
+    if tie_streak(recent) >= 2:
+        return 'Pass', 0, f"Recent streak of {tie_streak(recent)} Ties; too unstable to bet.", "Cautious", []
 
-    # Check for three consecutive losses
-    tracker = calculate_win_loss_tracker(s, st.session_state.get('base_bet', 10.0), st.session_state.get('money_management_strategy', 'Flat Betting'), mode)
+    tracker = calculate_win_loss_tracker(recent, st.session_state.get('base_bet', 10.0), st.session_state.get('money_management_strategy', 'Flat Betting'), mode)
     if len(tracker) >= 3 and tracker[-3:] == ['L', 'L', 'L']:
         return 'Pass', 0, "Three consecutive losses detected; skipping until a win.", "Cautious", []
 
@@ -544,42 +505,42 @@ def advanced_bet_selection(s, mode='Conservative'):
         emotional_tone = "Cautious"
 
     reason = " ".join(reason_parts)
+    logging.info(f"advanced_bet_selection took {time.time() - start_time:.2f} seconds")
     return bet_choice, confidence, reason, emotional_tone, pattern_insights
 
+@st.cache_data
 def money_management(bankroll, base_bet, strategy, bet_outcome=None):
     min_bet = max(1.0, base_bet)
     max_bet = bankroll
-
     if bankroll < min_bet:
-        logging.warning(f"Bankroll ({bankroll:.2f}) is less than minimum bet ({min_bet:.2f}).")
+        logging.warning(f"Bankroll ({bankroll:.2f}) < min bet ({min_bet:.2f}).")
         return 0.0
-
     if strategy == "T3":
         if bet_outcome == 'win':
-            if not st.session_state.t3_results:
-                st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
-            st.session_state.t3_results.append('W')
+            if not st.session_state.get('t3_results', []):
+                st.session_state.t3_level = max(1, st.session_state.get('t3_level', 1) - 1)
+            st.session_state.t3_results = st.session_state.get('t3_results', []) + ['W']
         elif bet_outcome == 'loss':
-            st.session_state.t3_results.append('L')
-
-        if len(st.session_state.t3_results) == 3:
+            st.session_state.t3_results = st.session_state.get('t3_results', []) + ['L']
+        if len(st.session_state.get('t3_results', [])) == 3:
             wins = st.session_state.t3_results.count('W')
+            st.session_state.t3_level = wins
             losses = st.session_state.t3_results.count('L')
             if wins > losses:
-                st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
+                st.session_state.t3_level = max(1, st.session_state.get('t3_level', 1) - 1)
             elif losses > wins:
-                st.session_state.t3_level += 1
+                st.session_state.t3_level = st.session_state.get('t3_level', 1) + 1
             st.session_state.t3_results = []
-
-        calculated_bet = base_bet * st.session_state.t3_level
+        calculated_bet = base_bet * st.session_state.get('t3_level', 1)
     else:
         calculated_bet = base_bet
-
     bet_size = round(calculated_bet / base_bet) * base_bet
-    bet_size = max(min_bet, min(bet_size, max_bet))
-    return round(bet_size, 2)
+    return round(max(min_bet, min(bet_size, max_bet)), 2)
 
-def calculate_bankroll(history, base_bet, strategy):
+@st.cache_data
+def calculate_bankroll(history, base_bet, strategy, max_window=32):
+    start_time = time.time()
+    history = history[-max_window:] if len(history) > max_window else history
     bankroll = st.session_state.initial_bankroll
     current_bankroll = bankroll
     bankroll_progress = []
@@ -588,39 +549,42 @@ def calculate_bankroll(history, base_bet, strategy):
     st.session_state.t3_results = []
     for i in range(len(history)):
         current_rounds = history[:i + 1]
-        bet, confidence, _, _, pattern_insights = advanced_bet_selection(current_rounds[:-1], st.session_state.ai_mode) if i != 0 else ('Pass', 0, '', 'Neutral', [])
+        bet, confidence, _, _, pattern_insights = advanced_bet_selection(current_rounds[:-1], st.session_state.get('ai_mode', 'Conservative')) if i != 0 else ('Pass', 0, '', 'Neutral', [])
         actual_result = history[i]
-        if bet in (None, 'Pass', 'Tie'):
+        if bet in ('Pass', 'Tie', None):
             bankroll_progress.append(current_bankroll)
             bet_sizes.append(0.0)
             continue
         bet_size = money_management(current_bankroll, base_bet, strategy)
-        if bet_size == 0.0:
+        if bet_size == 0:
             bankroll_progress.append(current_bankroll)
             bet_sizes.append(0.0)
             continue
         bet_sizes.append(bet_size)
         if actual_result == bet:
             if bet == 'Banker':
-                win_amount = bet_size * 0.95
-                current_bankroll += win_amount
+                current_bankroll += bet_size * 0.95
             else:
                 current_bankroll += bet_size
             if strategy == "T3":
-                money_management(current_bankroll, base_bet, strategy, bet_outcome='win')
-            update_pattern_performance(current_rounds, pattern_insights, bet, actual_result, st.session_state.pattern_performance)
+                money_management(current_bankroll, base_bet, strategy, 'win')
+            update_pattern_performance(current_rounds, pattern_insights, bet, actual_result, st.session_state.get('pattern_performance', {}))
         elif actual_result == 'Tie':
             bankroll_progress.append(current_bankroll)
             continue
         else:
             current_bankroll -= bet_size
             if strategy == "T3":
-                money_management(current_bankroll, base_bet, strategy, bet_outcome='loss')
-            update_pattern_performance(current_rounds, pattern_insights, bet, actual_result, st.session_state.pattern_performance)
+                money_management(current_bankroll, base_bet, strategy, 'loss')
+            update_pattern_performance(current_rounds, pattern_insights, bet, actual_result, st.session_state.get('pattern_performance', {}))
         bankroll_progress.append(current_bankroll)
+    logging.info(f"calculate_bankroll took {time.time() - start_time:.2f} seconds")
     return bankroll_progress, bet_sizes
 
-def calculate_win_loss_tracker(history, base_bet, strategy, ai_mode):
+@st.cache_data
+def calculate_win_loss_tracker(history, base_bet, strategy, ai_mode, max_hands=20):
+    start_time = time.time()
+    history = history[-max_hands:] if len(history) > max_hands else history
     tracker = []
     st.session_state.t3_level = 1
     st.session_state.t3_results = []
@@ -630,19 +594,31 @@ def calculate_win_loss_tracker(history, base_bet, strategy, ai_mode):
         actual_result = history[i]
         if actual_result == 'Tie':
             tracker.append('T')
-        elif bet in (None, 'Pass'):
+        elif bet in ('Pass', None):
             tracker.append('S')
         elif actual_result == bet:
             tracker.append('W')
-            if strategy == "T3":
-                money_management(st.session_state.initial_bankroll, base_bet, strategy, bet_outcome='win')
+            if strategy == 'T3':
+                money_management(st.session_state.get('initial_bankroll', 1000.0), base_bet, strategy, 'win')
         else:
             tracker.append('L')
-            if strategy == "T3":
-                money_management(st.session_state.initial_bankroll, base_bet, strategy, bet_outcome='loss')
+            if strategy == 'T3':
+                money_management(st.session_state.get('initial_bankroll', 1000.0), base_bet, strategy, 'loss')
+    logging.info(f"calculate_win_loss_tracker took {time.time() - start_time:.2f} seconds")
     return tracker
 
+def add_result(result):
+    st.session_state.history.append(result)
+
+def undo_result():
+    if st.session_state.history:
+        st.session_state.history.pop()
+        if st.session_state.get('money_management_strategy') == "T3":
+            st.session_state.t3_results = []
+            st.session_state.t3_level = 1
+
 def main():
+    start_time = time.time()
     try:
         st.set_page_config(page_title="Mang Baccarat Predictor", page_icon="🎲", layout="wide")
         st.title("Mang Baccarat Predictor")
@@ -659,7 +635,7 @@ def main():
         if 'ai_mode' not in st.session_state:
             st.session_state.ai_mode = "Conservative"
         if 'selected_patterns' not in st.session_state:
-            st.session_state.selected_patterns = ["Bead Bin", "Win/Loss"]
+            st.session_state.selected_patterns = ["Win/Loss"]
         if 't3_level' not in st.session_state:
             st.session_state.t3_level = 1
         if 't3_results' not in st.session_state:
@@ -669,127 +645,38 @@ def main():
         if 'pattern_performance' not in st.session_state:
             st.session_state.pattern_performance = {}
 
-        # Adjust pattern weights every 5 hands or after a loss streak
-        if len(st.session_state.history) % 5 == 0 or (len(st.session_state.history) >= 3 and calculate_win_loss_tracker(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy, st.session_state.ai_mode)[-3:] == ['L', 'L', 'L']):
-            adjust_pattern_weights()
+        # Adjust weights less frequently
+        if len(st.session_state.history) % 10 == 0 or (len(st.session_state.history) >= 3 and calculate_win_loss_tracker(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy, st.session_state.ai_mode)[-3:] == ['L', 'L', 'L']):
+            adjust_pattern_weights(st.session_state.pattern_performance)
 
-        # JavaScript for screen width and auto-scroll
+        # JavaScript for screen width
         st.markdown("""
             <script>
             function updateScreenWidth() {
-                const width = window.innerWidth;
-                document.getElementById('screen-width-input').value = width;
+                document.getElementById('screen-width-input').value = window.innerWidth;
             }
-            function autoScrollPatterns() {
-                const containers = [
-                    'bead-bin-scroll',
-                    'big-road-scroll',
-                    'big-eye-scroll',
-                    'cockroach-scroll',
-                    'win-loss-scroll'
-                ];
-                containers.forEach(id => {
-                    const element = document.getElementById(id);
-                    if (element) {
-                        element.scrollLeft = element.scrollWidth;
-                    }
-                });
-            }
-            window.onload = function() {
-                updateScreenWidth();
-                autoScrollPatterns();
-            };
+            window.onload = updateScreenWidth;
             window.onresize = updateScreenWidth;
             </script>
             <input type="hidden" id="screen-width-input">
         """, unsafe_allow_html=True)
 
         screen_width_input = st.text_input("Screen Width", key="screen_width_input", value=str(st.session_state.screen_width), disabled=True)
-        try:
-            st.session_state.screen_width = int(screen_width_input) if screen_width_input.isdigit() else 1024
-        except ValueError:
-            st.session_state.screen_width = 1024
+        st.session_state.screen_width = int(screen_width_input) if screen_width_input.isdigit() else 1024
 
         # CSS for styling
         st.markdown("""
             <style>
-            .pattern-scroll {
-                overflow-x: auto;
-                white-space: nowrap;
-                max-width: 100%;
-                padding: 10px;
-                border: 1px solid #e1e1e1;
-                background-color: #f9f9f9;
-            }
-            .pattern-scroll::-webkit-scrollbar {
-                height: 8px;
-            }
-            .pattern-scroll::-webkit-scrollbar-thumb {
-                background-color: #888;
-                border-radius: 4px;
-            }
-            .stButton > button {
-                width: 100%;
-                padding: 8px;
-                margin: 5px 0;
-            }
-            .stNumberInput, .stSelectbox {
-                width: 100% !important;
-            }
-            .stExpander {
-                margin-bottom: 10px;
-            }
-            h1 {
-                font-size: 2.5rem;
-                text-align: center;
-            }
-            h3 {
-                font-size: 1.5rem;
-            }
-            p, div, span {
-                font-size: 1rem;
-            }
-            .pattern-circle {
-                width: 22px;
-                height: 22px;
-                display: inline-block;
-                margin: 2px;
-            }
-            .display-circle {
-                width: 22px;
-                height: 22px;
-                display: inline-block;
-                margin: 2px;
-            }
-            @media (min-width: 769px) {
-                .stButton > button, .stNumberInput, .stSelectbox {
-                    max-width: 200px;
-                }
-            }
+            .pattern-scroll { overflow-x: auto; white-space: nowrap; max-width: 100%; padding: 10px; border: 1px solid #e1e1e1; background-color: #f9f9f9; }
+            .pattern-scroll::-webkit-scrollbar { height: 8px; }
+            .pattern-scroll::-webkit-scrollbar-thumb { background-color: #888; border-radius: 4px; }
+            .stButton > button { width: 100%; padding: 8px; margin: 5px 0; }
+            .stNumberInput, .stSelectbox { width: 100% !important; }
+            .pattern-circle { width: 20px; height: 20px; display: inline-block; margin: 2px; }
+            .display-circle { width: 20px; height: 20px; display: inline-block; margin: 2px; }
             @media (max-width: 768px) {
-                h1 {
-                    font-size: 1.8rem;
-                }
-                h3 {
-                    font-size: 1.2rem;
-                }
-                p, div, span {
-                    font-size: 0.9rem;
-                }
-                .pattern-circle, .display-circle {
-                    width: 16px !important;
-                    height: 16px !important;
-                }
-                .stButton > button {
-                    font-size: 0.9rem;
-                    padding: 6px;
-                }
-                .stNumberInput input, .stSelectbox div {
-                    font-size: 0.9rem;
-                }
-                .st-emotion-cache-1dj3wfg {
-                    flex-wrap: wrap;
-                }
+                .pattern-circle, .display-circle { width: 16px !important; height: 16px !important; }
+                .stButton > button { font-size: 0.9rem; padding: 6px; }
             }
             </style>
         """, unsafe_allow_html=True)
@@ -800,11 +687,10 @@ def main():
             with cols[0]:
                 initial_bankroll = st.number_input("Initial Bankroll", min_value=1.0, value=st.session_state.initial_bankroll, step=10.0, format="%.2f")
             with cols[1]:
-                base_bet = st.number_input("Base Bet (Unit Size)", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=1.0, format="%.2f")
+                base_bet = st.number_input("Base Bet", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=1.0, format="%.2f")
             with cols[2]:
                 strategy_options = ["Flat Betting", "T3"]
-                money_management_strategy = st.selectbox("Money Management Strategy", strategy_options, index=strategy_options.index(st.session_state.money_management_strategy))
-                st.markdown("*Flat Betting: Fixed bet size. T3: Adjusts bet level based on the last three bet outcomes (increase if more losses, decrease if more wins or first-step win).*")
+                money_management_strategy = st.selectbox("Strategy", strategy_options, index=strategy_options.index(st.session_state.money_management_strategy))
             with cols[3]:
                 ai_mode = st.selectbox("AI Mode", ["Conservative", "Aggressive"], index=["Conservative", "Aggressive"].index(st.session_state.ai_mode))
 
@@ -813,16 +699,14 @@ def main():
             st.session_state.money_management_strategy = money_management_strategy
             st.session_state.ai_mode = ai_mode
 
-            st.markdown(f"**Selected Strategy: {money_management_strategy}**")
-
-        # Pattern Weights Display
+        # Pattern Weights
         with st.expander("Pattern Weights", expanded=False):
             st.markdown("**Pattern Weights (Auto-Adjusted)**")
             for pattern, weight in st.session_state.PATTERN_WEIGHTS.items():
                 perf = st.session_state.pattern_performance.get(pattern, {'correct': 0, 'total': 0})
                 accuracy = perf['correct'] / perf['total'] if perf['total'] > 0 else 0
                 st.markdown(f"{pattern.capitalize()}: {weight:.2f} (Accuracy: {accuracy:.2%})")
-            if st.button("Reset to Default Weights"):
+            if st.button("Reset Weights"):
                 st.session_state.PATTERN_WEIGHTS = {
                     'streak': 1.2, 'alternating': 1.0, 'zigzag': 0.8, 'trend': 0.9,
                     'big_road': 0.7, 'big_eye': 0.6, 'cockroach': 0.5, 'choppy': 0.8,
@@ -834,45 +718,25 @@ def main():
         with st.expander("Input Game Results", expanded=True):
             cols = st.columns(4)
             with cols[0]:
-                if st.button("Player"):
-                    st.session_state.history.append("Player")
-                    st.rerun()
+                st.button("Player", on_click=add_result, args=("Player",))
             with cols[1]:
-                if st.button("Banker"):
-                    st.session_state.history.append("Banker")
-                    st.rerun()
+                st.button("Banker", on_click=add_result, args=("Banker",))
             with cols[2]:
-                if st.button("Tie"):
-                    st.session_state.history.append("Tie")
-                    st.rerun()
+                st.button("Tie", on_click=add_result, args=("Tie",))
             with cols[3]:
-                undo_clicked = st.button("Undo", disabled=len(st.session_state.history) == 0)
-                if undo_clicked and len(st.session_state.history) == 0:
-                    st.warning("No results to undo!")
-                elif undo_clicked:
-                    st.session_state.history.pop()
-                    if st.session_state.money_management_strategy == "T3":
-                        st.session_state.t3_results = []
-                        st.session_state.t3_level = 1
-                    st.rerun()
+                st.button("Undo", on_click=undo_result, disabled=len(st.session_state.history) == 0)
 
         # Shoe Patterns
         with st.expander("Shoe Patterns", expanded=False):
             pattern_options = ["Bead Bin", "Big Road", "Big Eye", "Cockroach", "Win/Loss"]
-            selected_patterns = st.multiselect(
-                "Select Patterns to Display",
-                pattern_options,
-                default=st.session_state.selected_patterns,
-                key="pattern_select"
-            )
+            selected_patterns = st.multiselect("Select Patterns", pattern_options, default=st.session_state.selected_patterns, key="pattern_select")
             st.session_state.selected_patterns = selected_patterns
+            max_display_cols = 8 if st.session_state.screen_width < 768 else 12
 
-            max_display_cols = 10 if st.session_state.screen_width < 768 else 14
-
-            if "Bead Bin" in st.session_state.selected_patterns:
+            if "Bead Bin" in selected_patterns:
                 st.markdown("### Bead Bin")
-                sequence = [r for r in st.session_state.history][-84:]
-                sequence = ['P' if result == 'Player' else 'B' if result == 'Banker' else 'T' for result in sequence]
+                sequence = st.session_state.history[-72:]
+                sequence = ['P' if r == 'Player' else 'B' if r == 'Banker' else 'T' for r in sequence]
                 grid = [['' for _ in range(max_display_cols)] for _ in range(6)]
                 for i, result in enumerate(sequence):
                     if result in ['P', 'B', 'T']:
@@ -880,111 +744,98 @@ def main():
                         row = i % 6
                         if col < max_display_cols:
                             color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
-                            grid[row][col] = f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #ffffff;"></div>'
-                st.markdown('<div id="bead-bin-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+                            grid[row][col] = f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #fff;"></div>'
+                st.markdown('<div class="pattern-scroll">', unsafe_allow_html=True)
                 for row in grid:
                     st.markdown(' '.join(row), unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
-                if not st.session_state.history:
-                    st.markdown("No results yet. Enter results below.")
 
-            if "Big Road" in st.session_state.selected_patterns:
+            if "Big Road" in selected_patterns:
                 st.markdown("### Big Road")
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 if num_cols > 0:
                     display_cols = min(num_cols, max_display_cols)
-                    st.markdown('<div id="big-road-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+                    st.markdown('<div class="pattern-scroll">', unsafe_allow_html=True)
                     for row in range(6):
                         row_display = []
                         for col in range(display_cols):
                             outcome = big_road_grid[row][col]
                             if outcome == 'P':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #ffffff;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #fff;"></div>')
                             elif outcome == 'B':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #ffffff;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #fff;"></div>')
                             elif outcome == 'T':
                                 row_display.append(f'<div class="pattern-circle" style="border: 2px solid #38a169; border-radius: 50%;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
                         st.markdown(''.join(row_display), unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown("No Big Road data.")
 
-            if "Big Eye" in st.session_state.selected_patterns:
+            if "Big Eye" in selected_patterns:
                 st.markdown("### Big Eye Boy")
-                st.markdown("<p style='font-size: 12px; color: #666666;'>Red (🔴): Repeat Pattern, Blue (🔵): Break Pattern</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 12px; color: #666;'>Red (🔴): Repeat, Blue (🔵): Break</p>", unsafe_allow_html=True)
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
                 if big_eye_cols > 0:
                     display_cols = min(big_eye_cols, max_display_cols)
-                    st.markdown('<div id="big-eye-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+                    st.markdown('<div class="pattern-scroll">', unsafe_allow_html=True)
                     for row in range(6):
                         row_display = []
                         for col in range(display_cols):
                             outcome = big_eye_grid[row][col]
                             if outcome == 'R':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #000000;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #000;"></div>')
                             elif outcome == 'B':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000000;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
                         st.markdown(''.join(row_display), unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown("No recent Big Eye data.")
 
-            if "Cockroach" in st.session_state.selected_patterns:
+            if "Cockroach" in selected_patterns:
                 st.markdown("### Cockroach Pig")
-                st.markdown("<p style='font-size: 12px; color: #666666;'>Red (🔴): Repeat Pattern, Blue (🔵): Break Pattern</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 12px; color: #666;'>Red (🔴): Repeat, Blue (🔵): Break</p>", unsafe_allow_html=True)
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
                 if cockroach_cols > 0:
                     display_cols = min(cockroach_cols, max_display_cols)
-                    st.markdown('<div id="cockroach-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+                    st.markdown('<div class="pattern-scroll">', unsafe_allow_html=True)
                     for row in range(6):
                         row_display = []
                         for col in range(display_cols):
                             outcome = cockroach_grid[row][col]
                             if outcome == 'R':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #000000;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #000;"></div>')
                             elif outcome == 'B':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000000;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
                         st.markdown(''.join(row_display), unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown("No recent Cockroach data.")
 
-            if "Win/Loss" in st.session_state.selected_patterns:
+            if "Win/Loss" in selected_patterns:
                 st.markdown("### Win/Loss")
-                st.markdown("<p style='font-size: 12px; color: #666666;'>Green (🟢): Win, Red (🔴): Loss, Gray (⬜): Skip or Tie</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 12px; color: #666;'>Green (🟢): Win, Red (🔴): Loss, Gray (⬜): Skip/Tie</p>", unsafe_allow_html=True)
                 tracker = calculate_win_loss_tracker(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy, st.session_state.ai_mode)[-max_display_cols:]
                 row_display = []
                 for result in tracker:
-                    if result in ['W', 'L', 'S', 'T']:
-                        color = '#38a169' if result == 'W' else '#e53e3e' if result == 'L' else '#A0AEC0'
-                        row_display.append(f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #000000;"></div>')
-                    else:
-                        row_display.append(f'<div class="display-circle"></div>')
-                st.markdown('<div id="win-loss-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+                    color = '#38a169' if result == 'W' else '#e53e3e' if result == 'L' else '#A0AEC0'
+                    row_display.append(f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #000;"></div>')
+                st.markdown('<div class="pattern-scroll">', unsafe_allow_html=True)
                 st.markdown(''.join(row_display), unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
-                if not st.session_state.history:
-                    st.markdown("No results yet. Enter results below.")
 
         # Prediction
         with st.expander("Prediction", expanded=True):
-            bet, confidence, reason, emotional_tone, pattern_insights = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
+            bet, confidence, reason, emotional_tone, pattern_insights = advanced_bet_selection(st.session_state.history)
             st.markdown("### Prediction")
             current_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else st.session_state.initial_bankroll
             recommended_bet_size = money_management(current_bankroll, st.session_state.base_bet, st.session_state.money_management_strategy)
             if current_bankroll < max(1.0, st.session_state.base_bet):
-                st.warning("Insufficient bankroll to place a bet. Please increase your bankroll or reset the game.")
+                st.warning("Insufficient bankroll to bet. Increase bankroll or reset.")
                 bet = 'Pass'
                 confidence = 0
-                reason = "Bankroll too low to continue betting."
+                reason = "Bankroll too low."
                 emotional_tone = "Cautious"
             if bet == 'Pass':
                 st.markdown("**No Bet**: Insufficient confidence, bankroll, or three consecutive losses.")
@@ -993,13 +844,12 @@ def main():
             st.markdown(f"**Reasoning**: {reason}")
             if pattern_insights:
                 st.markdown("### Pattern Insights")
-                st.markdown("Detected patterns influencing the prediction:")
                 for insight in pattern_insights:
                     st.markdown(f"- {insight}")
 
         # Pattern Performance
         with st.expander("Pattern Performance", expanded=False):
-            st.markdown("### Pattern Contributions and Performance")
+            st.markdown("### Pattern Contributions")
             for insight in pattern_insights:
                 pattern = insight.split(':')[0].lower()
                 weight = st.session_state.PATTERN_WEIGHTS.get(pattern, 1.0)
@@ -1010,44 +860,21 @@ def main():
         # Bankroll Progress
         with st.expander("Bankroll Progress", expanded=True):
             bankroll_progress, bet_sizes = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)
+            bankroll_progress = bankroll_progress[-50:] if len(bankroll_progress) > 50 else bankroll_progress
+            bet_sizes = bet_sizes[-50:] if len(bet_sizes) > 50 else bet_sizes
             if bankroll_progress:
                 st.markdown("### Bankroll Progress")
-                total_hands = len(bankroll_progress)
-                for i in range(total_hands):
-                    hand_number = total_hands - i
-                    val = bankroll_progress[total_hands - i - 1]
-                    bet_size = bet_sizes[total_hands - i - 1]
+                for i, (val, bet_size) in enumerate(zip(bankroll_progress[::-1], bet_sizes[::-1])):
+                    hand = len(bankroll_progress) - i
                     bet_display = f"Bet ${bet_size:.2f}" if bet_size > 0 else "No Bet"
-                    st.markdown(f"Hand {hand_number}: ${val:.2f} | {bet_display}")
+                    st.markdown(f"Hand {hand}: ${val:.2f} | {bet_display}")
                 st.markdown(f"**Current Bankroll**: ${bankroll_progress[-1]:.2f}")
 
-                st.markdown("### Bankroll Progression Chart")
+                st.markdown("### Bankroll Chart")
                 labels = [f"Hand {i+1}" for i in range(len(bankroll_progress))]
-                fig = go.Figure()
-                fig.add_trace(
-                    go.Scatter(
-                        x=labels,
-                        y=bankroll_progress,
-                        mode='lines+markers',
-                        name='Bankroll',
-                        line=dict(color='#38a169', width=2),
-                        marker=dict(size=6)
-                    )
-                )
-                fig.update_layout(
-                    title=dict(text="Bankroll Over Time", x=0.5, xanchor='center'),
-                    xaxis_title="Hand",
-                    yaxis_title="Bankroll ($)",
-                    xaxis=dict(tickangle=45),
-                    yaxis=dict(autorange=True),
-                    template="plotly_white",
-                    height=400,
-                    margin=dict(l=40, r=40, t=50, b=100)
-                )
+                fig = go.Figure(go.Scatter(x=labels, y=bankroll_progress, mode='lines+markers', name='Bankroll', line=dict(color='#38a169'), marker=dict(size=6)))
+                fig.update_layout(title="Bankroll Over Time", xaxis_title="Hand", yaxis_title="Bankroll ($)", xaxis=dict(tickangle=45), yaxis=dict(autorange=True), height=400, margin=dict(l=40, r=40, t=50, b=100))
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.markdown(f"**Current Bankroll**: ${st.session_state.initial_bankroll:.2f}")
-                st.markdown("No bankroll history yet. Enter results below.")
 
         # Reset
         with st.expander("Reset", expanded=False):
@@ -1058,7 +885,7 @@ def main():
                 st.session_state.base_bet = min(10.0, st.session_state.initial_bankroll)
                 st.session_state.money_management_strategy = "Flat Betting"
                 st.session_state.ai_mode = "Conservative"
-                st.session_state.selected_patterns = ["Bead Bin", "Win/Loss"]
+                st.session_state.selected_patterns = ["Win/Loss"]
                 st.session_state.t3_level = 1
                 st.session_state.t3_results = []
                 st.session_state.pattern_performance = {}
@@ -1069,12 +896,10 @@ def main():
                 }
                 st.rerun()
 
-    except (KeyError, ValueError, IndexError) as e:
-        logging.error(f"Error in main: {str(e)}")
-        st.error(f"Error occurred: {str(e)}. Please try refreshing the page or resetting the game.")
     except Exception as e:
-        logging.error(f"Unexpected error in main: {str(e)}")
-        st.error(f"Unexpected error: {str(e)}. Contact support if this persists.")
+        logging.error(f"Error in main: {str(e)}")
+        st.error(f"Error: {str(e)}. Try refreshing or resetting.")
+    logging.info(f"Main loop took {time.time() - start_time:.2f} seconds")
 
 if __name__ == "__main__":
     main()
