@@ -105,6 +105,8 @@ def build_big_road(s):
         return grid, 0
 
     for result in s:
+        if result not in ['Banker', 'Player', 'Tie']:
+            continue
         mapped = 'P' if result == 'Player' else 'B' if result == 'Banker' else 'T'
         if mapped == 'T':
             if col < max_cols and row < max_rows and grid[row][col] == '':
@@ -137,20 +139,25 @@ def build_big_eye_boy(big_road_grid, num_cols):
     for c in range(3, num_cols):
         if col >= max_cols:
             break
-        last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
-        third_last = [big_road_grid[r][c - 3] for r in range(max_rows)]
-        last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
-        third_non_empty = next((i for i, x in enumerate(third_last) if x in ['P', 'B']), None)
-        if last_non_empty is not None and third_non_empty is not None:
-            if last_col[last_non_empty] == third_last[third_non_empty]:
-                grid[row][col] = 'R'
+        try:
+            last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
+            third_last = [big_road_grid[r][c - 3] for r in range(max_rows)]
+            last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
+            third_non_empty = next((i for i, x in enumerate(third_last) if x in ['P', 'B']), None)
+            if last_non_empty is not None and third_non_empty is not None:
+                if last_col[last_non_empty] == third_last[third_non_empty]:
+                    grid[row][col] = 'R'
+                else:
+                    grid[row][col] = 'B'
+                row += 1
+                if row >= max_rows:
+                    col += 1
+                    row = 0
             else:
-                grid[row][col] = 'B'
-            row += 1
-            if row >= max_rows:
                 col += 1
                 row = 0
-        else:
+        except IndexError:
+            logging.debug(f"IndexError in build_big_eye_boy at column {c}")
             col += 1
             row = 0
     return grid, col + 1 if row > 0 else col
@@ -168,20 +175,25 @@ def build_cockroach_pig(big_road_grid, num_cols):
     for c in range(4, num_cols):
         if col >= max_cols:
             break
-        last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
-        fourth_last = [big_road_grid[r][c - 4] for r in range(max_rows)]
-        last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
-        fourth_non_empty = next((i for i, x in enumerate(fourth_last) if x in ['P', 'B']), None)
-        if last_non_empty is not None and fourth_non_empty is not None:
-            if last_col[last_non_empty] == fourth_last[fourth_non_empty]:
-                grid[row][col] = 'R'
+        try:
+            last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
+            fourth_last = [big_road_grid[r][c - 4] for r in range(max_rows)]
+            last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
+            fourth_non_empty = next((i for i, x in enumerate(fourth_last) if x in ['P', 'B']), None)
+            if last_non_empty is not None and fourth_non_empty is not None:
+                if last_col[last_non_empty] == fourth_last[fourth_non_empty]:
+                    grid[row][col] = 'R'
+                else:
+                    grid[row][col] = 'B'
+                row += 1
+                if row >= max_rows:
+                    col += 1
+                    row = 0
             else:
-                grid[row][col] = 'B'
-            row += 1
-            if row >= max_rows:
                 col += 1
                 row = 0
-        else:
+        except IndexError:
+            logging.debug(f"IndexError in build_cockroach_pig at column {c}")
             col += 1
             row = 0
     return grid, col + 1 if row > 0 else col
@@ -199,31 +211,36 @@ def build_small_road(big_road_grid, num_cols):
     for c in range(2, num_cols):
         if col >= max_cols:
             break
-        last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
-        second_last = [big_road_grid[r][c - 2] for r in range(max_rows)]
-        last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
-        second_non_empty = next((i for i, x in enumerate(second_last) if x in ['P', 'B']), None)
-        if last_non_empty is not None and second_non_empty is not None:
-            if last_col[last_non_empty] == second_last[second_non_empty]:
-                grid[row][col] = 'R'
+        try:
+            last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
+            second_last = [big_road_grid[r][c - 2] for r in range(max_rows)]
+            last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
+            second_non_empty = next((i for i, x in enumerate(second_last) if x in ['P', 'B']), None)
+            if last_non_empty is not None and second_non_empty is not None:
+                if last_col[last_non_empty] == second_last[second_non_empty]:
+                    grid[row][col] = 'R'
+                else:
+                    grid[row][col] = 'B'
+                row += 1
+                if row >= max_rows:
+                    col += 1
+                    row = 0
             else:
-                grid[row][col] = 'B'
-            row += 1
-            if row >= max_rows:
                 col += 1
                 row = 0
-        else:
+        except IndexError:
+            logging.debug(f"IndexError in build_small_road at column {c}")
             col += 1
             row = 0
     return grid, col + 1 if row > 0 else col
 
 def advanced_bet_selection(s, mode='Conservative'):
-    logging.debug(f"Entering advanced_bet_selection with history length: {len(s)}, mode: {mode}")
+    logging.debug(f"Entering advanced_bet_selection with history: {s}, mode: {mode}")
     max_recent_count = 40
     recent = s[-max_recent_count:] if len(s) >= max_recent_count else s
-    if not recent or len(recent) < 3:
-        logging.info("Insufficient history for prediction")
-        return 'Pass', 0, "Not enough results to make a prediction. Waiting for more hands.", "Cautious", []
+    if not recent or len(recent) < 3 or not all(r in ['Banker', 'Player', 'Tie'] for r in recent):
+        logging.info("Invalid or insufficient history for prediction")
+        return 'Pass', 0, "Not enough valid results to make a prediction. Please add more hands.", "Cautious", []
 
     scores = {'Banker': 0, 'Player': 0, 'Tie': 0}
     reason_parts = []
@@ -307,57 +324,72 @@ def advanced_bet_selection(s, mode='Conservative'):
 
         # Big Eye Boy
         big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
-        if big_eye_cols > 1:
-            last_two_cols = [[big_eye_grid[row][c] for row in range(6) if c < big_eye_cols] for c in range(max(0, big_eye_cols - 2), big_eye_cols)]
-            last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-            if all(s == 'R' for s in last_signals if s):
-                last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-                scores[last_side] += 18 * (1.2 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
-                reason_parts.append("Big Eye Boy shows consistent repeat pattern (+18).")
-                pattern_insights.append("Big Eye Boy: Consistent repeat")
-                pattern_count += 1
-            elif all(s == 'B' for s in last_signals if s):
-                opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-                scores[opposite_side] += 12 * (1.2 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
-                reason_parts.append("Big Eye Boy shows consistent break pattern (+12).")
-                pattern_insights.append("Big Eye Boy: Consistent break")
-                pattern_count += 1
+        if big_eye_cols > 1 and num_cols > 1:
+            last_two_cols = []
+            for c in range(max(0, big_eye_cols - 2), big_eye_cols):
+                col = [big_eye_grid[row][c] for row in range(6) if c < big_eye_cols]
+                if col:
+                    last_two_cols.append(col)
+            if last_two_cols:
+                last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
+                if num_cols > 1 and all(s == 'R' for s in last_signals if s):
+                    last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
+                    scores[last_side] += 18 * (1.2 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
+                    reason_parts.append("Big Eye Boy shows consistent repeat pattern (+18).")
+                    pattern_insights.append("Big Eye Boy: Consistent repeat")
+                    pattern_count += 1
+                elif num_cols > 1 and all(s == 'B' for s in last_signals if s):
+                    opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
+                    scores[opposite_side] += 12 * (1.2 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
+                    reason_parts.append("Big Eye Boy shows consistent break pattern (+12).")
+                    pattern_insights.append("Big Eye Boy: Consistent break")
+                    pattern_count += 1
 
         # Cockroach Pig
         cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
-        if cockroach_cols > 1:
-            last_two_cols = [[cockroach_grid[row][c] for row in range(6) if c < cockroach_cols] for c in range(max(0, cockroach_cols - 2), cockroach_cols)]
-            last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-            if all(s == 'R' for s in last_signals if s):
-                last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-                scores[last_side] += 15 * (1.2 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
-                reason_parts.append("Cockroach Pig shows consistent repeat pattern (+15).")
-                pattern_insights.append("Cockroach Pig: Consistent repeat")
-                pattern_count += 1
-            elif all(s == 'B' for s in last_signals if s):
-                opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-                scores[opposite_side] += 10 * (1.2 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
-                reason_parts.append("Cockroach Pig shows consistent break pattern (+10).")
-                pattern_insights.append("Cockroach Pig: Consistent break")
-                pattern_count += 1
+        if cockroach_cols > 1 and num_cols > 1:
+            last_two_cols = []
+            for c in range(max(0, cockroach_cols - 2), cockroach_cols):
+                col = [cockroach_grid[row][c] for row in range(6) if c < cockroach_cols]
+                if col:
+                    last_two_cols.append(col)
+            if last_two_cols:
+                last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
+                if num_cols > 1 and all(s == 'R' for s in last_signals if s):
+                    last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
+                    scores[last_side] += 15 * (1.2 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
+                    reason_parts.append("Cockroach Pig shows consistent repeat pattern (+15).")
+                    pattern_insights.append("Cockroach Pig: Consistent repeat")
+                    pattern_count += 1
+                elif num_cols > 1 and all(s == 'B' for s in last_signals if s):
+                    opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
+                    scores[opposite_side] += 10 * (1.2 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
+                    reason_parts.append("Cockroach Pig shows consistent break pattern (+10).")
+                    pattern_insights.append("Cockroach Pig: Consistent break")
+                    pattern_count += 1
 
         # Small Road
         small_road_grid, small_road_cols = build_small_road(big_road_grid, num_cols)
-        if small_road_cols > 1:
-            last_two_cols = [[small_road_grid[row][c] for row in range(6) if c < small_road_cols] for c in range(max(0, small_road_cols - 2), small_road_cols)]
-            last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-            if all(s == 'R' for s in last_signals if s):
-                last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-                scores[last_side] += 18 * (1.2 if pattern_accuracy['small_road'] > 0.7 else 1.0)
-                reason_parts.append("Small Road shows consistent repeat pattern (+18).")
-                pattern_insights.append("Small Road: Consistent repeat")
-                pattern_count += 1
-            elif all(s == 'B' for s in last_signals if s):
-                opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-                scores[opposite_side] += 12 * (1.2 if pattern_accuracy['small_road'] > 0.7 else 1.0)
-                reason_parts.append("Small Road shows consistent break pattern (+12).")
-                pattern_insights.append("Small Road: Consistent break")
-                pattern_count += 1
+        if small_road_cols > 1 and num_cols > 1:
+            last_two_cols = []
+            for c in range(max(0, small_road_cols - 2), small_road_cols):
+                col = [small_road_grid[row][c] for row in range(6) if c < small_road_cols]
+                if col:
+                    last_two_cols.append(col)
+            if last_two_cols:
+                last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
+                if num_cols > 1 and all(s == 'R' for s in last_signals if s):
+                    last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
+                    scores[last_side] += 18 * (1.2 if pattern_accuracy['small_road'] > 0.7 else 1.0)
+                    reason_parts.append("Small Road shows consistent repeat pattern (+18).")
+                    pattern_insights.append("Small Road: Consistent repeat")
+                    pattern_count += 1
+                elif num_cols > 1 and all(s == 'B' for s in last_signals if s):
+                    opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
+                    scores[opposite_side] += 12 * (1.2 if pattern_accuracy['small_road'] > 0.7 else 1.0)
+                    reason_parts.append("Small Road shows consistent break pattern (+12).")
+                    pattern_insights.append("Small Road: Consistent break")
+                    pattern_count += 1
 
         # Bead Plate Dominance
         bead_sequence = ['P' if r == 'Player' else 'B' if r == 'Banker' else 'T' for r in recent[-12:]]
@@ -493,10 +525,10 @@ def advanced_bet_selection(s, mode='Conservative'):
             })
 
     except IndexError as e:
-        logging.error(f"Index error in advanced_bet_selection: {str(e)}")
-        return 'Pass', 0, f"Error processing patterns: {str(e)}. Please add more results.", "Cautious", []
+        logging.error(f"Index error in advanced_bet_selection: {str(e)}, history: {recent}")
+        return 'Pass', 0, f"Error processing patterns: {str(e)}. Please add more valid results.", "Cautious", []
     except Exception as e:
-        logging.error(f"Unexpected error in advanced_bet_selection: {str(e)}")
+        logging.error(f"Unexpected error in advanced_bet_selection: {str(e)}, history: {recent}")
         return 'Pass', 0, f"Unexpected error: {str(e)}. Please try again.", "Cautious", []
 
     reason = " ".join(reason_parts)
