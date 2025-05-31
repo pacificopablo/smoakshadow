@@ -139,7 +139,7 @@ def build_big_eye_boy(big_road_grid, num_cols):
 def build_cockroach_pig(big_road_grid, num_cols):
     if num_cols < 4:
         return [['' for _ in range(50)] for _ in range(6)], 0
-    max_rows = 6
+    max_rows = 5
     max_cols = 50
     grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
     col = 0
@@ -888,7 +888,7 @@ def main():
                 elif undo_clicked:
                     st.session_state.history.pop()
                     if st.session_state.money_management_strategy == "T3":
-itudine                        st.session_state.t3_results = []
+                        st.session_state.t3_results = []
                         st.session_state.t3_level = 1
                     st.rerun()
 
@@ -961,7 +961,7 @@ itudine                        st.session_state.t3_results = []
                             if outcome == 'R':
                                 row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #000000;"></div>')
                             elif outcome == 'B':
-                                row_display.append f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000000;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000000;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
                         st.markdown(''.join(row_display), unsafe_allow_html=True)
@@ -1090,7 +1090,7 @@ itudine                        st.session_state.t3_results = []
                 st.plotly_chart(fig, use_container_width=True)
 
                 # Display vote details in a table
-                st.markdown("**Vote Details**:")
+                st.markdown("### Vote Details")
                 for data in vote_data:
                     st.markdown(f"- **{data['Bet']}**: {data['Votes']} votes ({data['Weight']:.1f} weight) from {data['Patterns']}")
             
