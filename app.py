@@ -6,12 +6,12 @@ import plotly.graph_objects as go
 import math
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # Initialize pattern weights
 if 'PATTERN_WEIGHTS' not in st.session_state:
     st.session_state.PATTERN_WEIGHTS = {
-        'streak': 1.2, 'alternating': 1.0, 'zigzag': 0.8, 'trend': 0.9,
+        'streak': 1.2, 'alternating': 1.0, 'trend': 0.9,
         'big_road': 0.7, 'big_eye': 0.6, 'cockroach': 0.5
     }
 
@@ -22,7 +22,7 @@ def adjust_pattern_weights(performance_history):
     min_predictions = 5
     min_weight, max_weight = 0.5, 2.0
     default_weights = {
-        'streak': 1.2, 'alternating': 1.0, 'zigzag': 0.8, 'trend': 0.9,
+        'streak': 1.2, 'alternating': 1.0, 'trend': 0.9,
         'big_road': 0.7, 'big_eye': 0.6, 'cockroach': 0.5
     }
     start_time = time.time()
@@ -65,11 +65,6 @@ def is_alternating(s, min_length=4):
         return False
     return all(s[i] != s[i + 1] for i in range(len(s) - 1))
 
-def is_zigzag(s):
-    if len(s) < 3:
-        return False
-    return any(s[i] == s[i + 2] and s[i] != s[i + 1] for i in range(len(s) - 2))
-
 def tie_streak(s):
     if not s:
         return 0
@@ -97,11 +92,11 @@ def frequency_count(s):
 @st.cache_data
 def build_big_road(_s):
     s = list(_s)
-    max_rows, max_cols = 6, 6  # Reduced cols for speed
+    max_rows, max_cols = 6, 6
     grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
     col = row = 0
     last_outcome = None
-    for result in s[-18:]:  # Limit to recent hands
+    for result in s[-18:]:
         mapped = 'P' if result == 'Player' else 'B' if result == 'Banker' else 'T'
         if mapped == 'T':
             if col < max_cols and row < max_rows and grid[row][col] == '':
@@ -184,7 +179,7 @@ def shoe_position_factor(shoe_position):
 
 def dynamic_confidence_threshold(bankroll, initial_bankroll, entropy, mode):
     base_threshold = 65 if mode == 'Conservative' else 45
-    if bankroll / initial_bankroll < 0.5 or entropy > 1.5:
+    if bankroll / initial_bankroll < 0.5 or entropy > 1.4:
         base_threshold += 5
     return min(base_threshold, 90)
 
@@ -212,16 +207,6 @@ def score_alternating(recent, scores, reason_parts, pattern_insights, pattern_co
         scores[alternate_bet] += 30 * position_factor * st.session_state.PATTERN_WEIGHTS['alternating']
         reason_parts.append("Alternating pattern in last 4 hands.")
         pattern_insights.append("Ping Pong: Alternating")
-        pattern_count += 1
-    return pattern_count
-
-def score_zigzag(recent, scores, reason_parts, pattern_insights, pattern_count, position_factor):
-    if is_zigzag(recent[-6:]):
-        last = recent[-1]
-        zigzag_bet = 'Player' if last == 'Banker' else 'Banker'
-        scores[zigzag_bet] += 25 * position_factor * st.session_state.PATTERN_WEIGHTS['zigzag']
-        reason_parts.append("Zigzag pattern detected.")
-        pattern_insights.append("Zigzag: P-B-P/B-P-B")
         pattern_count += 1
     return pattern_count
 
@@ -294,7 +279,6 @@ def update_pattern_performance(history, pattern_insights, bet, actual_result, pe
         performance_tracker[pattern]['total'] += 1
         if bet == actual_result:
             performance_tracker[pattern]['correct'] += 1
-    # Clean up old patterns
     active_patterns = {insight.split(':')[0].lower() for insight in pattern_insights}
     for pattern in list(performance_tracker.keys()):
         if pattern not in active_patterns:
@@ -326,13 +310,25 @@ def advanced_bet_selection(_history, mode='Conservative'):
     if tie_streak(recent) >= 2:
         return 'Pass', 0, "Recent Ties; unstable.", "Cautious", []
 
-    tracker = calculate_bankroll(tuple(recent), st.session_state.get('base_bet', 10.0), st.session_state.get('money_management', 'Flat Betting'))[1]
-    if len(tracker) >= 3 and all(t == 'Loss' for t in tracker[-3:])):
+    # Compute win/loss tracker
+    tracker = []
+    base_bet = st.session_state.get('base_bet', 10.0)
+    strategy = st.session_state.get('money_management_strategy', 'Flat Betting')
+    for i in range(1, len(recent)):
+        prev_rounds = recent[:i]
+        prev_bet, _ = advanced_bet_selection(tuple(prev_rounds), mode)
+        actual_result = recent[i]
+        if prev_bet in ('Pass', 'Tie', None) or actual_result == 'Tie':
+            tracker.append('S')
+        elif prev_bet == actual_result:
+            tracker.append('W')
+        else:
+            tracker.append('L')
+    if len(tracker) >= 3 and all(t == 'L' for t in tracker[-3:]):
         return 'Pass', 0, "Three losses; skip until win.", "Cautious", []
 
     pattern_count = score_streaks(recent, scores, reason_parts, pattern_insights, pattern_count, mode, position_factor)
     pattern_count = score_alternating(recent, scores, reason_parts, pattern_insights, pattern_count, position_factor)
-    pattern_count = score_zigzag(recent, scores, reason_parts, pattern_insights, pattern_count, position_factor)
     pattern_count = score_trend(recent, scores, reason_parts, pattern_insights, pattern_count, position_factor, shoe_position)
     pattern_count = score_big_road(recent, scores, reason_parts, pattern_insights, pattern_count, road_cache, position_factor)
     pattern_count = score_big_eye(recent, scores, reason_parts, pattern_insights, pattern_count, road_cache, position_factor)
@@ -344,7 +340,7 @@ def advanced_bet_selection(_history, mode='Conservative'):
         tie_ratio = freq['Tie'] / total
         scores['Banker'] += banker_ratio * 15
         scores['Player'] += player_ratio * 15
-        scores['Tie'] += (tie_ratio * 3) if tie_ratio > 0.25 else 0
+        scores['Tie'] += tie_ratio * 10 if tie_ratio > 0.25 else 0
         reason_parts.append(f"B:{freq['Banker']} P:{freq['Player']} T:{freq['Tie']}")
         pattern_insights.append(f"Frequency: B:{freq['Banker']} P:{freq['Player']}")
 
@@ -368,13 +364,13 @@ def advanced_bet_selection(_history, mode='Conservative'):
             emotional_tone = "Skeptical"
 
     bet_choice = max(scores, key=scores.get)
-    confidence = min(round(max(scores.values(), default=0) * 2, 95))
-    confidence_threshold = dynamic_confidence_threshold(current_bankroll, st.session_state.get('initial_bankroll', 1000), entropy, mode)
+    confidence = min(round(max(scores.values(), default=0) * 2), 95)
+    confidence_threshold = dynamic_confidence_threshold(current_bankroll, st.session_state.get('initial_bankroll', 1000.0), entropy, mode)
 
     if confidence < confidence_threshold:
         bet_choice = 'Pass'
         emotional_tone = "Hesitant"
-        reason_parts.append(f"Low confidence ({confidence:.2f}%).")
+        reason_parts.append(f"Low confidence ({confidence}%).")
     elif mode == 'Conservative' and confidence < 70:
         emotional_tone = "Cautious"
 
@@ -386,17 +382,17 @@ def advanced_bet_selection(_history, mode='Conservative'):
         emotional_tone = "Cautious"
 
     reason = ' '.join(reason_parts)
-    logging.info(f"Advanced_bet_selection took {time.time() - start_time:.2f} seconds")
-    return bet_choice, confidence
+    logging.info(f"advanced_bet_selection took {time.time() - start_time:.2f} seconds")
+    return bet_choice, confidence, reason, emotional_tone, pattern_insights
 
 @st.cache_data
-def money_management(bankroll, base_bet, strategy, bet_size = max(min_bet, min(bet_size, max_bet)))
+def money_management(bankroll, base_bet, strategy):
     min_bet = max(1.0, base_bet)
     max_bet = bankroll
     if bankroll < min_bet:
         return 0.0
-    if strategy == 'Bet':
-        calculated_bet = base_bet * st.session_state.get('bet_level', 1)
+    if strategy == 'T3':
+        calculated_bet = base_bet * st.session_state.get('t3_level', 1)
     else:
         calculated_bet = base_bet
     return round(max(min_bet, min(calculated_bet, max_bet)), 2)
@@ -410,14 +406,15 @@ def calculate_bankroll(_history, base_bet, strategy, max_window=20):
     current_bankroll = bankroll
     bankroll_progress = []
     bet_sizes = []
-    st.session_state.bet_level = 1
+    st.session_state.t3_level = 1
+    st.session_state.t3_results = []
     for i in range(len(history)):
         current_rounds = history[:i + 1]
-        bet, confidence = advanced_bet_selection(tuple(current_rounds[:-1]), st.session_state.get('ai_mode', 'Bet')))
+        bet, confidence, _, _, pattern_insights = advanced_bet_selection(tuple(current_rounds[:-1]), st.session_state.get('ai_mode', 'Conservative')) if i != 0 else ('Pass', 0, '', 'Neutral', [])
         actual_result = history[i]
-        if bet in ('Bet', 'Tie', None):
+        if bet in ('Pass', 'Tie', None):
             bankroll_progress.append(current_bankroll)
-            bet_sizes.append(0.0))
+            bet_sizes.append(0.0)
             continue
         bet_size = money_management(current_bankroll, base_bet, strategy)
         if bet_size == 0:
@@ -427,10 +424,24 @@ def calculate_bankroll(_history, base_bet, strategy, max_window=20):
         bet_sizes.append(bet_size)
         if actual_result == bet:
             current_bankroll += bet_size * (0.95 if bet == 'Banker' else 1.0)
+            if strategy == 'T3':
+                st.session_state.t3_results = st.session_state.get('t3_results', []) + ['W']
+                if len(st.session_state.t3_results) == 3:
+                    wins = st.session_state.t3_results.count('W')
+                    st.session_state.t3_level = max(1, st.session_state.t3_level - 1) if wins > 1 else st.session_state.t3_level + 1
+                    st.session_state.t3_results = []
+            update_pattern_performance(current_rounds, pattern_insights, bet, actual_result, st.session_state.get('pattern_performance', {}))
         elif actual_result == 'Tie':
             continue
         else:
             current_bankroll -= bet_size
+            if strategy == 'T3':
+                st.session_state.t3_results = st.session_state.get('t3_results', []) + ['L']
+                if len(st.session_state.t3_results) == 3:
+                    losses = st.session_state.t3_results.count('L')
+                    st.session_state.t3_level = st.session_state.t3_level + 1 if losses > 1 else max(1, st.session_state.t3_level - 1)
+                    st.session_state.t3_results = []
+            update_pattern_performance(current_rounds, pattern_insights, bet, actual_result, st.session_state.get('pattern_performance', {}))
         bankroll_progress.append(current_bankroll)
     st.session_state.current_bankroll = current_bankroll
     logging.info(f"Bankroll calc took {time.time() - start_time:.2f} seconds")
@@ -444,6 +455,9 @@ def add_result(result):
 def undo_result():
     if st.session_state.history:
         st.session_state.history.pop()
+    if st.session_state.get('money_management_strategy') == 'T3':
+        st.session_state.t3_results = []
+        st.session_state.t3_level = 1
 
 def update_settings(initial_bankroll, base_bet, strategy, ai_mode):
     st.session_state.initial_bankroll = initial_bankroll
@@ -451,6 +465,9 @@ def update_settings(initial_bankroll, base_bet, strategy, ai_mode):
     st.session_state.money_management_strategy = strategy
     st.session_state.ai_mode = ai_mode
     st.session_state.current_bankroll = initial_bankroll
+    if strategy == 'T3':
+        st.session_state.t3_level = 1
+        st.session_state.t3_results = []
 
 def main():
     start_time = time.time()
@@ -473,12 +490,14 @@ def main():
             st.session_state.ai_mode = 'Conservative'
         if 'selected_patterns' not in st.session_state:
             st.session_state.selected_patterns = ['Win/Loss']
-        if 'bet_level' not in st.session_state:
-            st.session_state.bet_level = 1
+        if 't3_level' not in st.session_state:
+            st.session_state.t3_level = 1
+        if 't3_results' not in st.session_state:
+            st.session_state.t3_results = []
         if 'pattern_performance' not in st.session_state:
             st.session_state.pattern_performance = {}
 
-        if len(st.session_state.history) >= 10 or (len(st.session_state.history) >= 3 and calculate_bankroll(tuple(st.session_state.history), st.session_state.base_bet, st.session_state.money_management_strategy)[1][-3:] == ['Loss', 'Loss', 'Loss']):
+        if len(st.session_state.history) >= 10 or (len(st.session_state.history) >= 3 and calculate_bankroll(tuple(st.session_state.history), st.session_state.base_bet, st.session_state.money_management_strategy)[1][-3:] == ['L', 'L', 'L']):
             adjust_pattern_weights(st.session_state.pattern_performance)
 
         # CSS for minimal styling
@@ -489,7 +508,7 @@ def main():
         .pattern-circle { width: 16px; height: 16px; display: inline-block; margin: 1px; }
         @media (max-width: 768px) {
             .pattern-circle { width: 12px; height: 12px; }
-            .stButton > button { font-size: 8px; padding: 4px; }
+            .stButton > button { font-size: 0.8rem; padding: 4px; }
         }
         </style>
         """, unsafe_allow_html=True)
@@ -499,13 +518,13 @@ def main():
             st.markdown("### Settings")
             cols = st.columns(4)
             with cols[0]:
-                initial_bankroll = st.number_input("Bankroll", min_value=1.0, value=st.session_state.initial_bankroll, step=0.1, format="%.2f")
+                initial_bankroll = st.number_input("Bankroll", min_value=1.0, value=st.session_state.initial_bankroll, step=10.0, format="%.2f")
             with cols[1]:
-                base_bet = st.number_input("Base Bet", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=0.1, format="%.2f")
+                base_bet = st.number_input("Base Bet", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=1.0, format="%.2f")
             with cols[2]:
-                strategy = st.selectbox("Strategy", ["Flat Betting", "Bet"], index=["Flat Betting", "Bet"].index(st.session_state.money_management_strategy))
+                strategy = st.selectbox("Strategy", ["Flat Betting", "T3"], index=["Flat Betting", "T3"].index(st.session_state.money_management_strategy))
             with cols[3]:
-                ai_mode = st.selectbox("Mode", ["Conservative", "Aggressive"], index=["Conservative", "Aggressive"].index(st.session_state.ai_mode]))
+                ai_mode = st.selectbox("Mode", ["Conservative", "Aggressive"], index=["Conservative", "Aggressive"].index(st.session_state.ai_mode))
             if st.form_submit_button("Apply"):
                 update_settings(initial_bankroll, base_bet, strategy, ai_mode)
 
@@ -523,7 +542,7 @@ def main():
 
         # Patterns
         with st.expander("Patterns", expanded=False):
-            selected_patterns = st.selectbox("Pattern", ["Win/Loss", "Big Road"], default=st.session_state.selected_patterns[0] if st.session_state.selected_patterns else "Win/Loss")
+            selected_patterns = st.selectbox("Pattern", ["Win/Loss", "Big Road"], index=["Win/Loss", "Big Road"].index(st.session_state.selected_patterns[0] if st.session_state.selected_patterns else "Win/Loss"))
             st.session_state.selected_patterns = [selected_patterns]
             max_display_cols = 6
 
@@ -533,33 +552,43 @@ def main():
                     st.markdown('<div class="pattern-scroll">', unsafe_allow_html=True)
                     for row in range(6):
                         row_display = []
-                        for col in range(max_display_cols)):
+                        for col in range(min(num_cols, max_display_cols)):
                             outcome = big_road_grid[row][col]
                             row_display.append('P' if outcome == 'P' else 'B' if outcome == 'B' else 'T' if outcome == 'T' else '.')
                         st.write(''.join(row_display))
                     st.markdown('</div>', unsafe_allow_html=True)
 
             if selected_patterns == "Win/Loss":
-                st.write("Win/Loss: 🟢 Win, 🟥 Loss")
+                st.write("Win/Loss: W=Win, L=Loss, S=Skip/Tie")
                 bankroll_progress, bet_sizes = calculate_bankroll(tuple(st.session_state.history), st.session_state.base_bet, st.session_state.money_management_strategy)
-                row_display = ['W' if bet_size > 0 and i < len(bankroll_progress) - 1 and bankroll_progress[i] < bankroll_progress[i+1] else 'L' if bet_size > 0 else 'S' for i, bet_size in enumerate(bet_sizes[-max_display_cols:])]
+                row_display = []
+                for i, bet_size in enumerate(bet_sizes[-max_display_cols:]):
+                    if i >= len(bankroll_progress) - 1:
+                        continue
+                    if bet_size == 0:
+                        row_display.append('S')
+                    elif bankroll_progress[i + 1] > bankroll_progress[i]:
+                        row_display.append('W')
+                    else:
+                        row_display.append('L')
                 st.write(' '.join(row_display))
 
         # Prediction
         with st.container():
-            bet, confidence = advanced_bet_selection(tuple(st.session_state.history)), st.session_state.ai_mode)
+            bet, confidence, reason, _, _ = advanced_bet_selection(tuple(st.session_state.history), st.session_state.ai_mode)
             current_bankroll = st.session_state.current_bankroll
             bet_size = money_management(current_bankroll, st.session_state.base_bet, st.session_state.money_management_strategy)
-            st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Bet Size**: ${bet_size:.2f}")
             if bet == 'Pass':
-                st.write("**No Bet**: Low confidence or three losses.")
+                st.markdown(f"**No Bet**: {reason}")
+            else:
+                st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Size**: ${bet_size:.2f} | **Reason**: {reason}")
 
         # Bankroll Progress
         with st.container():
             bankroll_progress, _ = calculate_bankroll(tuple(st.session_state.history), st.session_state.base_bet, st.session_state.money_management_strategy)
             bankroll_progress = bankroll_progress[-20:] if len(bankroll_progress) > 20 else bankroll_progress
             if bankroll_progress:
-                st.markdown(f"Bankroll: ${bankroll_progress[-max():.2f}")
+                st.markdown(f"**Bankroll**: ${bankroll_progress[-1]:.2f}")
                 fig = go.Figure(go.Scatter(x=list(range(len(bankroll_progress))), y=bankroll_progress, mode='lines', line=dict(color='#38a169')))
                 fig.update_layout(height=200, margin=dict(l=20, r=20, t=20, b=20))
                 st.plotly_chart(fig, use_container_width=True)
@@ -569,7 +598,8 @@ def main():
             if st.button("Reset"):
                 st.session_state.history = []
                 st.session_state.current_bankroll = st.session_state.initial_bankroll
-                st.session_state.bet_level = 1
+                st.session_state.t3_level = 1
+                st.session_state.t3_results = []
                 st.session_state.pattern_performance = {}
                 st.rerun()
 
