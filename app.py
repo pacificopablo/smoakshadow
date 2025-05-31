@@ -106,6 +106,7 @@ def build_big_road(s):
 
     for result in s:
         if result not in ['Banker', 'Player', 'Tie']:
+            logging.debug(f"Skipping invalid result: {result}")
             continue
         mapped = 'P' if result == 'Player' else 'B' if result == 'Banker' else 'T'
         if mapped == 'T':
@@ -156,8 +157,8 @@ def build_big_eye_boy(big_road_grid, num_cols):
             else:
                 col += 1
                 row = 0
-        except IndexError:
-            logging.debug(f"IndexError in build_big_eye_boy at column {c}")
+        except IndexError as e:
+            logging.debug(f"IndexError in build_big_eye_boy at column {c}: {str(e)}")
             col += 1
             row = 0
     return grid, col + 1 if row > 0 else col
@@ -192,8 +193,8 @@ def build_cockroach_pig(big_road_grid, num_cols):
             else:
                 col += 1
                 row = 0
-        except IndexError:
-            logging.debug(f"IndexError in build_cockroach_pig at column {c}")
+        except IndexError as e:
+            logging.debug(f"IndexError in build_cockroach_pig at column {c}: {str(e)}")
             col += 1
             row = 0
     return grid, col + 1 if row > 0 else col
@@ -228,8 +229,8 @@ def build_small_road(big_road_grid, num_cols):
             else:
                 col += 1
                 row = 0
-        except IndexError:
-            logging.debug(f"IndexError in build_small_road at column {c}")
+        except IndexError as e:
+            logging.debug(f"IndexError in build_small_road at column {c}: {str(e)}")
             col += 1
             row = 0
     return grid, col + 1 if row > 0 else col
@@ -238,9 +239,11 @@ def advanced_bet_selection(s, mode='Conservative'):
     logging.debug(f"Entering advanced_bet_selection with history: {s}, mode: {mode}")
     max_recent_count = 40
     recent = s[-max_recent_count:] if len(s) >= max_recent_count else s
+
+    # Validate history
     if not recent or len(recent) < 3 or not all(r in ['Banker', 'Player', 'Tie'] for r in recent):
-        logging.info("Invalid or insufficient history for prediction")
-        return 'Pass', 0, "Not enough valid results to make a prediction. Please add more hands.", "Cautious", []
+        logging.info(f"Invalid or insufficient history: {recent}")
+        return 'Pass', 0, "Not enough valid results (minimum 3 hands required). Please add more hands.", "Cautious", []
 
     scores = {'Banker': 0, 'Player': 0, 'Tie': 0}
     reason_parts = []
@@ -256,12 +259,12 @@ def advanced_bet_selection(s, mode='Conservative'):
     })
 
     def decay_weight(index, total_length, half_life=20):
-        return 0.5 ** ((total_length - index - 1) / half_life)
+        return 0.5 ** ((total_length - index - 1) / half_life) if total_length > 0 else 0
 
     try:
         # Streak Detection
         streak_value, streak_length = detect_streak(recent)
-        if streak_length >= 3 and streak_value != "Tie":
+        if streak_length >= 3 and streak_value in ['Banker', 'Player']:
             streak_score = min((streak_length - 2) * 12, 60) * (1.2 if pattern_accuracy['streak'] > 0.7 else 1.0)
             if streak_length >= 6:
                 streak_score += 15
@@ -311,7 +314,8 @@ def advanced_bet_selection(s, mode='Conservative'):
 
         # Big Road
         big_road_grid, num_cols = build_big_road(recent)
-        if num_cols > 0:
+        logging.debug(f"Big Road: num_cols={num_cols}")
+        if num_cols >= 2:
             last_col = [big_road_grid[row][num_cols - 1] for row in range(6)]
             col_length = sum(1 for x in last_col if x in ['P', 'B'])
             if col_length >= 3:
@@ -324,21 +328,22 @@ def advanced_bet_selection(s, mode='Conservative'):
 
         # Big Eye Boy
         big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
-        if big_eye_cols > 1 and num_cols > 1:
-            last_two_cols = []
-            for c in range(max(0, big_eye_cols - 2), big_eye_cols):
-                col = [big_eye_grid[row][c] for row in range(6) if c < big_eye_cols]
-                if col:
-                    last_two_cols.append(col)
-            if last_two_cols:
-                last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-                if num_cols > 1 and all(s == 'R' for s in last_signals if s):
+        logging.debug(f"Big Eye Boy: num_cols={big_eye_cols}")
+        if big_eye_cols >= 2 and num_cols >= 3:
+            last_signals = []
+            for c in range(big_eye_cols - 1, big_eye_cols):
+                if c < big_eye_cols and c >= 0:
+                    col = [big_eye_grid[row][c] for row in range(6) if big_eye_grid[row][c] in ['R', 'B']]
+                    if col:
+                        last_signals.append(col[-1])
+            if last_signals and num_cols >= 3:
+                if all(s == 'R' for s in last_signals):
                     last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
                     scores[last_side] += 18 * (1.2 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
                     reason_parts.append("Big Eye Boy shows consistent repeat pattern (+18).")
                     pattern_insights.append("Big Eye Boy: Consistent repeat")
                     pattern_count += 1
-                elif num_cols > 1 and all(s == 'B' for s in last_signals if s):
+                elif all(s == 'B' for s in last_signals):
                     opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
                     scores[opposite_side] += 12 * (1.2 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
                     reason_parts.append("Big Eye Boy shows consistent break pattern (+12).")
@@ -347,21 +352,22 @@ def advanced_bet_selection(s, mode='Conservative'):
 
         # Cockroach Pig
         cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
-        if cockroach_cols > 1 and num_cols > 1:
-            last_two_cols = []
-            for c in range(max(0, cockroach_cols - 2), cockroach_cols):
-                col = [cockroach_grid[row][c] for row in range(6) if c < cockroach_cols]
-                if col:
-                    last_two_cols.append(col)
-            if last_two_cols:
-                last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-                if num_cols > 1 and all(s == 'R' for s in last_signals if s):
+        logging.debug(f"Cockroach Pig: num_cols={cockroach_cols}")
+        if cockroach_cols >= 2 and num_cols >= 4:
+            last_signals = []
+            for c in range(cockroach_cols - 1, cockroach_cols):
+                if c < cockroach_cols and c >= 0:
+                    col = [cockroach_grid[row][c] for row in range(6) if cockroach_grid[row][c] in ['R', 'B']]
+                    if col:
+                        last_signals.append(col[-1])
+            if last_signals and num_cols >= 4:
+                if all(s == 'R' for s in last_signals):
                     last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
                     scores[last_side] += 15 * (1.2 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
                     reason_parts.append("Cockroach Pig shows consistent repeat pattern (+15).")
                     pattern_insights.append("Cockroach Pig: Consistent repeat")
                     pattern_count += 1
-                elif num_cols > 1 and all(s == 'B' for s in last_signals if s):
+                elif all(s == 'B' for s in last_signals):
                     opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
                     scores[opposite_side] += 10 * (1.2 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
                     reason_parts.append("Cockroach Pig shows consistent break pattern (+10).")
@@ -370,21 +376,22 @@ def advanced_bet_selection(s, mode='Conservative'):
 
         # Small Road
         small_road_grid, small_road_cols = build_small_road(big_road_grid, num_cols)
-        if small_road_cols > 1 and num_cols > 1:
-            last_two_cols = []
-            for c in range(max(0, small_road_cols - 2), small_road_cols):
-                col = [small_road_grid[row][c] for row in range(6) if c < small_road_cols]
-                if col:
-                    last_two_cols.append(col)
-            if last_two_cols:
-                last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-                if num_cols > 1 and all(s == 'R' for s in last_signals if s):
+        logging.debug(f"Small Road: num_cols={small_road_cols}")
+        if small_road_cols >= 2 and num_cols >= 2:
+            last_signals = []
+            for c in range(small_road_cols - 1, small_road_cols):
+                if c < small_road_cols and c >= 0:
+                    col = [small_road_grid[row][c] for row in range(6) if small_road_grid[row][c] in ['R', 'B']]
+                    if col:
+                        last_signals.append(col[-1])
+            if last_signals and num_cols >= 2:
+                if all(s == 'R' for s in last_signals):
                     last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
                     scores[last_side] += 18 * (1.2 if pattern_accuracy['small_road'] > 0.7 else 1.0)
                     reason_parts.append("Small Road shows consistent repeat pattern (+18).")
                     pattern_insights.append("Small Road: Consistent repeat")
                     pattern_count += 1
-                elif num_cols > 1 and all(s == 'B' for s in last_signals if s):
+                elif all(s == 'B' for s in last_signals):
                     opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
                     scores[opposite_side] += 12 * (1.2 if pattern_accuracy['small_road'] > 0.7 else 1.0)
                     reason_parts.append("Small Road shows consistent break pattern (+12).")
@@ -521,7 +528,7 @@ def advanced_bet_selection(s, mode='Conservative'):
             st.session_state.prediction_history.append({
                 'bet': bet_choice,
                 'patterns': pattern_insights,
-                'actual': None  # To be updated after actual result
+                'actual': None
             })
 
     except IndexError as e:
@@ -557,7 +564,7 @@ def money_management(bankroll, base_bet, strategy, bet_outcome=None):
             if wins > losses:
                 st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
             elif losses > wins:
-                st.session_state.t3_level = min(5, st.session_state.t3_level + 1)  # Cap at 5
+                st.session_state.t3_level = min(5, st.session_state.t3_level + 1)
             st.session_state.t3_results = []
 
         calculated_bet = base_bet * st.session_state.t3_level
@@ -634,6 +641,7 @@ def main():
         st.set_page_config(page_title="Mang Baccarat Predictor", page_icon="🎲", layout="wide")
         st.title("Mang Baccarat Predictor")
 
+        # Initialize session state
         if 'history' not in st.session_state:
             st.session_state.history = []
         if 'initial_bankroll' not in st.session_state:
@@ -660,6 +668,12 @@ def main():
             }
         if 'prediction_history' not in st.session_state:
             st.session_state.prediction_history = []
+        if 'processing_action' not in st.session_state:
+            st.session_state.processing_action = False
+
+        # Sanitize history
+        st.session_state.history = [h for h in st.session_state.history if h in ['Banker', 'Player', 'Tie']]
+        logging.debug(f"Sanitized history: {st.session_state.history}")
 
         st.markdown("""
             <script>
@@ -804,26 +818,34 @@ def main():
         with st.expander("Input Game Results", expanded=True):
             cols = st.columns(4)
             with cols[0]:
-                if st.button("Player"):
+                if st.button("Player", disabled=st.session_state.processing_action):
+                    st.session_state.processing_action = True
                     st.session_state.history.append("Player")
+                    st.session_state.processing_action = False
                     st.rerun()
             with cols[1]:
-                if st.button("Banker"):
+                if st.button("Banker", disabled=st.session_state.processing_action):
+                    st.session_state.processing_action = True
                     st.session_state.history.append("Banker")
+                    st.session_state.processing_action = False
                     st.rerun()
             with cols[2]:
-                if st.button("Tie"):
+                if st.button("Tie", disabled=st.session_state.processing_action):
+                    st.session_state.processing_action = True
                     st.session_state.history.append("Tie")
+                    st.session_state.processing_action = False
                     st.rerun()
             with cols[3]:
-                undo_clicked = st.button("Undo", disabled=len(st.session_state.history) == 0)
+                undo_clicked = st.button("Undo", disabled=len(st.session_state.history) == 0 or st.session_state.processing_action)
                 if undo_clicked and len(st.session_state.history) == 0:
                     st.warning("No results to undo!")
                 elif undo_clicked:
+                    st.session_state.processing_action = True
                     st.session_state.history.pop()
                     if st.session_state.money_management_strategy == "T3":
                         st.session_state.t3_results = []
                         st.session_state.t3_level = 1
+                    st.session_state.processing_action = False
                     st.rerun()
 
         with st.expander("Shoe Patterns", expanded=False):
@@ -1030,7 +1052,8 @@ def main():
                 st.markdown("No bankroll history yet. Enter results below.")
 
         with st.expander("Reset", expanded=False):
-            if st.button("New Game"):
+            if st.button("New Game", disabled=st.session_state.processing_action):
+                st.session_state.processing_action = True
                 final_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else st.session_state.initial_bankroll
                 st.session_state.history = []
                 st.session_state.initial_bankroll = max(1.0, final_bankroll)
@@ -1046,13 +1069,14 @@ def main():
                     'bead_plate': 0.5, 'double_streak': 0.5, 'chop': 0.5
                 }
                 st.session_state.prediction_history = []
+                st.session_state.processing_action = False
                 st.rerun()
 
     except (KeyError, ValueError, IndexError) as e:
-        logging.error(f"Error in main: {str(e)}")
-        st.error(f"Error occurred: {str(e)}. Please try refreshing the page or resetting the game.")
+        logging.error(f"Error in main: {str(e)}, history: {st.session_state.history}")
+        st.error(f"Error occurred: {str(e)}. Please try resetting the game or refreshing the page.")
     except Exception as e:
-        logging.error(f"Unexpected error in main: {str(e)}")
+        logging.error(f"Unexpected error in main: {str(e)}, history: {st.session_state.history}")
         st.error(f"Unexpected error: {str(e)}. Contact support if this persists.")
 
 if __name__ == "__main__":
