@@ -1,3 +1,4 @@
+
 import streamlit as st
 import logging
 import plotly.graph_objects as go
@@ -28,7 +29,7 @@ def adjust_pattern_weights():
     min_predictions = 5  # Minimum predictions before adjusting
     min_weight, max_weight = 0.5, 2.0  # Weight bounds
     default_weights = {
-        'streak': 1.2, 'alternating commonwealth': 1.0, 'zigzag': 0.8, 'trend': 0.9,
+        'streak': 1.2, 'alternating': 1.0, 'zigzag': 0.8, 'trend': 0.9,
         'big_road': 0.7, 'big_eye': 0.6, 'cockroach': 0.5, 'choppy': 0.8,
         'double': 0.7, 'markov': 0.9
     }
@@ -51,7 +52,7 @@ def adjust_pattern_weights():
             # Reset to default if insufficient data
             st.session_state.PATTERN_WEIGHTS[pattern] = default_weights[pattern]
 
-# Existing pattern detection functions (unchanged)
+# Pattern detection functions
 def normalize(s):
     s = s.strip().lower()
     if s == 'banker' or s == 'b':
@@ -240,8 +241,8 @@ def build_cockroach_pig(big_road_grid, num_cols):
         fourth_last = [big_road_grid[r][c - 4] for r in range(max_rows)]
         last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
         fourth_non_empty = next((i for i, x in enumerate(fourth_last) if x in ['P', 'B']), None)
-        if last_non_empty is not none and fourth_non_empty is not None:
-            if last_col[last_none_empty] == fourth_last[fourth_non_empty]:
+        if last_non_empty is not None and fourth_non_empty is not None:
+            if last_col[last_non_empty] == fourth_last[fourth_non_empty]:
                 grid[row][col] = 'R'
             else:
                 grid[row][col] = 'B'
@@ -267,7 +268,7 @@ def shoe_position_factor(shoe_position):
         return 1.2
     elif shoe_position < 40:
         return 1.0
- elif shoe_position < 60:
+    elif shoe_position < 60:
         return 0.8
     else:
         return 0.6
@@ -338,7 +339,7 @@ def score_choppy(recent, scores, reason_parts, pattern_insights, pattern_count, 
         pattern_count += 1
     return pattern_count
 
-def score_double(rerecent, scores, reason_parts, pattern_insights, pattern_count, position_factor):
+def score_double(recent, scores, reason_parts, pattern_insights, pattern_count, position_factor):
     double_detected, double_bet = is_double_pattern(recent[-8:])
     if double_detected:
         scores[double_bet] += 20 * position_factor * st.session_state.PATTERN_WEIGHTS['double']
