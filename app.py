@@ -333,7 +333,7 @@ def advanced_bet_selection(s, mode='Conservative'):
 
         # Big Road
         big_road_grid, num_cols = build_big_road(recent)
-        logging.debug(f"Big Road: num_cols={num_cols}")
+        logging.debug(f"Big Road: num_cols={num_cols}, grid_size={len(big_road_grid)}x{len(big_road_grid[0])}")
         if num_cols >= 2:
             last_col = [big_road_grid[row][num_cols - 1] for row in range(6)]
             col_length = sum(1 for x in last_col if x in ['P', 'B'])
@@ -352,24 +352,27 @@ def advanced_bet_selection(s, mode='Conservative'):
         if big_eye_cols >= 2 and num_cols >= 3:
             last_signals = []
             for c in range(max(0, big_eye_cols - 2), big_eye_cols):
-                col = [big_eye_grid[row][c] for row in range(6) if big_eye_grid[row][c] in ['R', 'B']]
-                if col:
-                    last_signals.append(col[-1])
-            if last_signals and num_cols >= 3:
-                last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-                opposite_side = 'Player' if last_side == 'Banker' else 'Banker'
-                if all(s == 'R' for s in last_signals[-2:]):
-                    scores[last_side] += 25 * (1.3 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
-                    reason_parts.append("Big Eye Boy shows consistent repeat pattern (+25).")
-                    pattern_insights.append("Big Eye Boy: Consistent repeat")
-                    pattern_votes[last_side].append(('big_eye', 25))
-                    pattern_count += 1
-                elif all(s == 'B' for s in last_signals[-2:]):
-                    scores[opposite_side] += 20 * (1.3 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
-                    reason_parts.append("Big Eye Boy shows consistent break pattern (+20).")
-                    pattern_insights.append("Big Eye Boy: Consistent break")
-                    pattern_votes[opposite_side].append(('big_eye', 20))
-                    pattern_count += 1
+                if 0 <= c < big_eye_cols:
+                    col = [big_eye_grid[row][c] for row in range(6) if big_eye_grid[row][c] in ['R', 'B']]
+                    if col:
+                        last_signals.append(col[-1])
+            logging.debug(f"Big Eye Boy signals: {last_signals}")
+            if last_signals and num_cols >= 3 and num_cols - 1 < len(big_road_grid[0]):
+                last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker' if big_road_grid[0][num_cols - 1] == 'B' else None
+                if last_side:
+                    opposite_side = 'Player' if last_side == 'Banker' else 'Banker'
+                    if len(last_signals) >= 2 and all(s == 'R' for s in last_signals[-2:]):
+                        scores[last_side] += 25 * (1.3 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
+                        reason_parts.append("Big Eye Boy shows consistent repeat pattern (+25).")
+                        pattern_insights.append("Big Eye Boy: Consistent repeat")
+                        pattern_votes[last_side].append(('big_eye', 25))
+                        pattern_count += 1
+                    elif len(last_signals) >= 2 and all(s == 'B' for s in last_signals[-2:]):
+                        scores[opposite_side] += 20 * (1.3 if pattern_accuracy['big_eye'] > 0.7 else 1.0)
+                        reason_parts.append("Big Eye Boy shows consistent break pattern (+20).")
+                        pattern_insights.append("Big Eye Boy: Consistent break")
+                        pattern_votes[opposite_side].append(('big_eye', 20))
+                        pattern_count += 1
 
         # Cockroach Pig
         cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
@@ -377,24 +380,27 @@ def advanced_bet_selection(s, mode='Conservative'):
         if cockroach_cols >= 2 and num_cols >= 4:
             last_signals = []
             for c in range(max(0, cockroach_cols - 2), cockroach_cols):
-                col = [cockroach_grid[row][c] for row in range(6) if cockroach_grid[row][c] in ['R', 'B']]
-                if col:
-                    last_signals.append(col[-1])
-            if last_signals and num_cols >= 4:
-                last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-                opposite_side = 'Player' if last_side == 'Banker' else 'Banker'
-                if all(s == 'R' for s in last_signals[-2:]):
-                    scores[last_side] += 20 * (1.3 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
-                    reason_parts.append("Cockroach Pig shows consistent repeat pattern (+20).")
-                    pattern_insights.append("Cockroach Pig: Consistent repeat")
-                    pattern_votes[last_side].append(('cockroach', 20))
-                    pattern_count += 1
-                elif all(s == 'B' for s in last_signals[-2:]):
-                    scores[opposite_side] += 15 * (1.3 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
-                    reason_parts.append("Cockroach Pig shows consistent break pattern (+15).")
-                    pattern_insights.append("Cockroach Pig: Consistent break")
-                    pattern_votes[opposite_side].append(('cockroach', 15))
-                    pattern_count += 1
+                if 0 <= c < cockroach_cols:
+                    col = [cockroach_grid[row][c] for row in range(6) if cockroach_grid[row][c] in ['R', 'B']]
+                    if col:
+                        last_signals.append(col[-1])
+            logging.debug(f"Cockroach Pig signals: {last_signals}")
+            if last_signals and num_cols >= 4 and num_cols - 1 < len(big_road_grid[0]):
+                last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker' if big_road_grid[0][num_cols - 1] == 'B' else None
+                if last_side:
+                    opposite_side = 'Player' if last_side == 'Banker' else 'Banker'
+                    if len(last_signals) >= 2 and all(s == 'R' for s in last_signals[-2:]):
+                        scores[last_side] += 20 * (1.3 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
+                        reason_parts.append("Cockroach Pig shows consistent repeat pattern (+20).")
+                        pattern_insights.append("Cockroach Pig: Consistent repeat")
+                        pattern_votes[last_side].append(('cockroach', 20))
+                        pattern_count += 1
+                    elif len(last_signals) >= 2 and all(s == 'B' for s in last_signals[-2:]):
+                        scores[opposite_side] += 15 * (1.3 if pattern_accuracy['cockroach'] > 0.7 else 1.0)
+                        reason_parts.append("Cockroach Pig shows consistent break pattern (+15).")
+                        pattern_insights.append("Cockroach Pig: Consistent break")
+                        pattern_votes[opposite_side].append(('cockroach', 15))
+                        pattern_count += 1
 
         # Small Road
         small_road_grid, small_road_cols = build_small_road(big_road_grid, num_cols)
@@ -402,24 +408,27 @@ def advanced_bet_selection(s, mode='Conservative'):
         if small_road_cols >= 2 and num_cols >= 2:
             last_signals = []
             for c in range(max(0, small_road_cols - 2), small_road_cols):
-                col = [small_road_grid[row][c] for row in range(6) if small_road_grid[row][c] in ['R', 'B']]
-                if col:
-                    last_signals.append(col[-1])
-            if last_signals and num_cols >= 2:
-                last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-                opposite_side = 'Player' if last_side == 'Banker' else 'Banker'
-                if all(s == 'R' for s in last_signals[-2:]):
-                    scores[last_side] += 25 * (1.3 if pattern_accuracy['small_road'] > 0.7 else 1.0)
-                    reason_parts.append("Small Road shows consistent repeat pattern (+25).")
-                    pattern_insights.append("Small Road: Consistent repeat")
-                    pattern_votes[last_side].append(('small_road', 25))
-                    pattern_count += 1
-                elif all(s == 'B' for s in last_signals[-2:]):
-                    scores[opposite_side] += 20 * (1.3 if pattern_accuracy['small_road'] > 0.7 else 1.0)
-                    reason_parts.append("Small Road shows consistent break pattern (+20).")
-                    pattern_insights.append("Small Road: Consistent break")
-                    pattern_votes[opposite_side].append(('small_road', 20))
-                    pattern_count += 1
+                if 0 <= c < small_road_cols:
+                    col = [small_road_grid[row][c] for row in range(6) if small_road_grid[row][c] in ['R', 'B']]
+                    if col:
+                        last_signals.append(col[-1])
+            logging.debug(f"Small Road signals: {last_signals}")
+            if last_signals and num_cols >= 2 and num_cols - 1 < len(big_road_grid[0]):
+                last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker' if big_road_grid[0][num_cols - 1] == 'B' else None
+                if last_side:
+                    opposite_side = 'Player' if last_side == 'Banker' else 'Banker'
+                    if len(last_signals) >= 2 and all(s == 'R' for s in last_signals[-2:]):
+                        scores[last_side] += 25 * (1.3 if pattern_accuracy['small_road'] > 0.7 else 1.0)
+                        reason_parts.append("Small Road shows consistent repeat pattern (+25).")
+                        pattern_insights.append("Small Road: Consistent repeat")
+                        pattern_votes['last_side'].append(('small_road', 25))
+                        pattern_count += '1'
+                    elif len(last_signals) >= 2 and all(s == 'B' for s in last_signals[-2:]):
+                        scores[opposite_side] += 20 * (1.3 if pattern_accuracy['small_road'] > 0.7 else 1.0)
+                        reason_parts.append("Small Road shows consistent break pattern (+20).")
+                        pattern_insights.append("Small Road: Consistent break")
+                        pattern_votes[opposite_side].append(('small_road', 20))
+                        pattern_count += '1'
 
         # Bead Plate Dominance
         bead_sequence = ['P' if r == 'Player' else 'B' if r == 'Banker' else 'T' for r in recent[-10:]]
@@ -578,7 +587,7 @@ def advanced_bet_selection(s, mode='Conservative'):
                         update_pattern_accuracy(pattern_key, recent[-1], last_pred['bet'], pattern_accuracy)
 
     except IndexError as e:
-        logging.error(f"Index error in advanced_bet_selection: {str(e)}, history: {recent}")
+        logging.error(f"Index error in advanced_bet_selection: {str(e)}, history: {recent}, num_cols: {num_cols}")
         return 'Pass', 0, f"Error processing patterns: {str(e)}. Please add more valid results.", "Cautious", []
     except Exception as e:
         logging.error(f"Unexpected error in advanced_bet_selection: {str(e)}, history: {recent}")
