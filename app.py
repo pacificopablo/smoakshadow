@@ -30,7 +30,7 @@ def detect_streak(s):
             break
     return last, count
 
-def is_alternating(s, min_length=4):
+def is_alpermissionsating(s, min_length=4):
     if len(s) < min_length:
         return False
     for i in range(len(s) - 1):
@@ -46,7 +46,29 @@ def is_zigzag(s):
             return True
     return False
 
-def recent_trend(s, window=10):
+def detect_double_streak(s, min_length=3):
+    streaks = []
+    current_streak = [s[0]] if s else []
+    for i in range(1, len(s)):
+        if s[i] == current_streak[-1] and s[i] in ['Banker', 'Player']:
+            current_streak.append(s[i])
+        else:
+            if len(current_streak) >= min_length:
+                streaks.append((current_streak[0], len(current_streak)))
+            current_streak = [s[i]] if s[i] in ['Banker', 'Player'] else []
+    if len(current_streak) >= min_length:
+        streaks.append((current_streak[0], len(current_streak)))
+    return streaks[-2:] if len(streaks) >= 2 else []
+
+def is_choppy(s, min_length=8):
+    if len(s) < min_length:
+        return False
+    for i in range(len(s) - 2):
+        if s[i] == s[i + 1] == s[i + 2] and s[i] in ['Banker', 'Player']:
+            return False
+    return True
+
+def recent_trend(s, window=12):
     recent = s[-window:] if len(s) >= window else s
     if not recent:
         return None, 0
@@ -326,7 +348,7 @@ def advanced_bet_selection(s, mode='Conservative'):
         last_col = bead_sequence[-6:]
         banker_count = last_col.count('B')
         player_count = last_col.count('P')
-        if banker_count >= 4:
+        if banker_count >= 4:  # ≥70% dominance
             scores['Banker'] += 25 * (1.2 if pattern_accuracy['bead_plate'] > 0.7 else 1.0)
             reason_parts.append("Bead Plate last column shows Banker dominance (+25).")
             pattern_insights.append("Bead Plate: Banker dominance")
@@ -338,20 +360,6 @@ def advanced_bet_selection(s, mode='Conservative'):
             pattern_count += 1
 
     # Double Streak Detection
-    def detect_double_streak(s, min_length=3):
-        streaks = []
-        current_streak = [s[0]] if s else []
-        for i in range(1, len(s)):
-            if s[i] == current_streak[-1] and s[i] in ['Banker', 'Player']:
-                current_streak.append(s[i])
-            else:
-                if len(current_streak) >= min_length:
-                    streaks.append((current_streak[0], len(current_streak)))
-                current_streak = [s[i]] if s[i] in ['Banker', 'Player'] else []
-        if len(current_streak) >= min_length:
-            streaks.append((current_streak[0], len(current_streak)))
-        return streaks[-2:] if len(streaks) >= 2 else []
-    
     double_streaks = detect_double_streak(recent[-12:], min_length=3)
     if len(double_streaks) == 2 and double_streaks[0][0] == double_streaks[1][0]:
         bet_side = double_streaks[1][0]
@@ -362,14 +370,6 @@ def advanced_bet_selection(s, mode='Conservative'):
         emotional_tone = "Confident"
 
     # Chop Pattern
-    def is_choppy(s, min_length=8):
-        if len(s) < min_length:
-            return False
-        for i in range(len(s) - 2):
-            if s[i] == s[i + 1] == s[i + 2] and s[i] in ['Banker', 'Player']:
-                return False
-        return True
-
     if len(recent) >= 8 and is_choppy(recent[-8:], min_length=8):
         last = recent[-1]
         chop_bet = 'Player' if last == 'Banker' else 'Banker'
@@ -465,6 +465,16 @@ def advanced_bet_selection(s, mode='Conservative'):
         reason_parts.append("Late in shoe; increasing caution.")
         emotional_tone = "Cautious"
 
+    # Update Pattern Accuracy (Simplified for Demo)
+    if 'prediction_history' not in st.session_state:
+        st.session_state.prediction_history = []
+    if bet_choice != 'Pass' and recent:
+        st.session_state.prediction_history.append({
+            'bet': bet_choice,
+            'patterns': pattern_insights,
+            'actual': None  # To be updated after actual result
+        })
+
     reason = " ".join(reason_parts)
     return bet_choice, confidence, reason, emotional_tone, pattern_insights
 
@@ -490,7 +500,7 @@ def money_management(bankroll, base_bet, strategy, bet_outcome=None):
             if wins > losses:
                 st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
             elif losses > wins:
-                st.session_state.t3_level += 1
+                st.session_state.t3_level = min(5, st.session_state.t3_level + 1)  # Cap at 5
             st.session_state.t3_results = []
 
         calculated_bet = base_bet * st.session_state.t3_level
@@ -591,6 +601,8 @@ def main():
                 'big_road': 0.5, 'big_eye': 0.5, 'cockroach': 0.5, 'small_road': 0.5,
                 'bead_plate': 0.5, 'double_streak': 0.5, 'chop': 0.5
             }
+        if 'prediction_history' not in st.session_state:
+            st.session_state.prediction_history = []
 
         st.markdown("""
             <script>
@@ -721,7 +733,7 @@ def main():
             with cols[2]:
                 strategy_options = ["Flat Betting", "T3"]
                 money_management_strategy = st.selectbox("Money Management Strategy", strategy_options, index=strategy_options.index(st.session_state.money_management_strategy))
-                st.markdown("*Flat Betting: Fixed bet size. T3: Adjusts bet level based on the last three bet outcomes (increase if more losses, decrease if more wins or first-step win).*")
+                st.markdown("*Flat Betting: Fixed bet size. T3: Adjusts bet level based on the last three bet outcomes (increase if more losses, decrease if more wins or first-step win, capped at 5x).*")
             with cols[3]:
                 ai_mode = st.selectbox("AI Mode", ["Conservative", "Aggressive"], index=["Conservative", "Aggressive"].index(st.session_state.ai_mode))
 
@@ -976,6 +988,7 @@ def main():
                     'big_road': 0.5, 'big_eye': 0.5, 'cockroach': 0.5, 'small_road': 0.5,
                     'bead_plate': 0.5, 'double_streak': 0.5, 'chop': 0.5
                 }
+                st.session_state.prediction_history = []
                 st.rerun()
 
     except (KeyError, ValueError, IndexError) as e:
