@@ -142,9 +142,9 @@ def advanced_bet_selection(s, mode='Conservative'):
     emotional_tone = "Neutral"
     shoe_position = len(s)
     pattern_count = 0
-    derived_road_predictions = {}  # Store predictions: {'Big Eye Boy': 'R', 'Small Road': 'B', 'Cockroach Pig': 'R'}
+    derived_road_predictions = {}  # Store predictions: {'Big Eye Boy': 'R', 'Cockroach Pig': 'R'}
 
-    # Build Big Road for Derived Roads
+    # Build Big Road for Derived Roads and Big Road analysis
     big_road_grid, num_cols = build_big_road(recent)
     last_big_road = big_road_grid[0][num_cols - 1] if num_cols > 0 else None
 
@@ -191,20 +191,7 @@ def advanced_bet_selection(s, mode='Conservative'):
                 derived_road_predictions['Big Eye Boy'] = big_eye_signal
                 pattern_count += 1
 
-    # 2. Small Road Analysis and Prediction
-    small_road_grid, small_road_cols = build_small_road(big_road_grid, num_cols)
-    if small_road_cols > 1:
-        small_road_signal = predict_derived_road(small_road_grid, small_road_cols)
-        if small_road_signal:
-            small_road_bet = map_signal_to_bet(small_road_signal, last_big_road)
-            if small_road_bet:
-                signal_type = "repeat" if small_road_signal == 'R' else "break"
-                votes.append((small_road_bet, 18, 0.87, f"Small Road predicts {signal_type} pattern ({small_road_signal})", f"Small Road: {signal_type.capitalize()} ({small_road_signal})"))
-                pattern_insights.append(f"Small Road: {signal_type.capitalize()} ({small_road_signal})")
-                derived_road_predictions['Small Road'] = small_road_signal
-                pattern_count += 1
-
-    # 3. Cockroach Pig Analysis and Prediction
+    # 2. Cockroach Pig Analysis and Prediction
     cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
     if cockroach_cols > 1:
         cockroach_signal = predict_derived_road(cockroach_grid, cockroach_cols)
@@ -215,6 +202,37 @@ def advanced_bet_selection(s, mode='Conservative'):
                 votes.append((cockroach_bet, 15, 0.85, f"Cockroach Pig predicts {signal_type} pattern ({cockroach_signal})", f"Cockroach Pig: {signal_type.capitalize()} ({cockroach_signal})"))
                 pattern_insights.append(f"Cockroach Pig: {signal_type.capitalize()} ({cockroach_signal})")
                 derived_road_predictions['Cockroach Pig'] = cockroach_signal
+                pattern_count += 1
+
+    # 3. Big Road Analysis
+    if num_cols > 0:
+        last_col = [big_road_grid[row][num_cols - 1] for row in range(6)]
+        col_length = sum(1 for x in last_col if x in ['P', 'B'])
+        if col_length >= 2:  # Require at least 2 outcomes for a pattern
+            bet_side = 'Player' if last_col[0] == 'P' else 'Banker'
+            col_score = 25 if col_length == 2 else 30 if col_length == 3 else 35
+            votes.append((bet_side, col_score, 1.0, f"Big Road column of {col_length} {bet_side}", f"Big Road: {col_length} {bet_side}"))
+            pattern_insights.append(f"Big Road: {col_length} {bet_side}")
+            pattern_count += 1
+
+    # 4. Bead Plate Analysis (frequency in recent 12 hands)
+    bead_window = recent[-12:] if len(recent) >= 12 else recent
+    if bead_window:
+        freq = {'Banker': 0, 'Player': 0, 'Tie': 0}
+        for r in bead_window:
+            if r in freq:
+                freq[r] += 1
+        total = len(bead_window)
+        if total > 0:
+            banker_ratio = freq['Banker'] / total
+            player_ratio = freq['Player'] / total
+            if banker_ratio >= 0.6:  # Strong Banker dominance
+                votes.append(('Banker', banker_ratio * 25, 0.9, f"Bead Plate shows {freq['Banker']}/{total} Bankers", f"Bead Plate: Banker {freq['Banker']}/{total}"))
+                pattern_insights.append(f"Bead Plate: Banker {freq['Banker']}/{total}")
+                pattern_count += 1
+            elif player_ratio >= 0.6:  # Strong Player dominance
+                votes.append(('Player', player_ratio * 25, 0.9, f"Bead Plate shows {freq['Player']}/{total} Players", f"Bead Plate: Player {freq['Player']}/{total}"))
+                pattern_insights.append(f"Bead Plate: Player {freq['Player']}/{total}")
                 pattern_count += 1
 
     # Voting System: Aggregate scores
@@ -237,11 +255,11 @@ def advanced_bet_selection(s, mode='Conservative'):
     if not votes:
         bet_choice = 'Pass'
         confidence = 0
-        reason_parts.append("No Derived Road signals available. Recommending to pass.")
+        reason_parts.append("No patterns detected from Big Eye Boy, Cockroach Pig, Big Road, or Bead Plate. Recommending to pass.")
         emotional_tone = "Cautious"
     else:
         bet_choice = max(final_scores, key=final_scores.get)
-        confidence = min(round(max(final_scores.values(), default=0) * 2.0), 90)  # Adjusted multiplier for fewer voters
+        confidence = min(round(max(final_scores.values(), default=0) * 1.5), 90)  # Multiplier for 4 voters
         vote_summary = f"Voting results: {sum(1 for v in votes if v[0] == 'Banker')} votes for Banker, {sum(1 for v in votes if v[0] == 'Player')} votes for Player."
         reason_parts.insert(0, vote_summary)
 
@@ -251,12 +269,12 @@ def advanced_bet_selection(s, mode='Conservative'):
             bet_choice = 'Pass'
             emotional_tone = "Hesitant"
             reason_parts.append(f"Confidence too low ({confidence}% < {confidence_threshold}%). Recommending to pass.")
-        elif pattern_count >= 2:
+        elif pattern_count >= 3:
             emotional_tone = "Confident"
-            reason_parts.append(f"Multiple Derived Roads ({pattern_count}) align on {bet_choice}.")
+            reason_parts.append(f"Multiple patterns ({pattern_count}) align on {bet_choice}.")
         else:
             emotional_tone = "Cautious"
-            reason_parts.append("Limited Derived Road signals; proceeding cautiously.")
+            reason_parts.append("Limited patterns detected; proceeding cautiously.")
 
     # Late Shoe Adjustment
     if shoe_position > 60:
@@ -703,7 +721,7 @@ def main():
             
             if vote_details:
                 st.markdown("### Voting Breakdown")
-                st.markdown("The following Derived Road patterns contributed to the prediction:")
+                st.markdown("The following patterns contributed to the prediction:")
                 vote_table = "| Pattern | Vote | Score | Weight | Weighted Score | Reason |\n"
                 vote_table += "|---------|------|-------|--------|---------------|--------|\n"
                 for vote in vote_details:
@@ -712,7 +730,7 @@ def main():
             
             if pattern_insights:
                 st.markdown("### Detected Patterns")
-                st.markdown("Key Derived Road patterns influencing the decision:")
+                st.markdown("Key patterns influencing the decision:")
                 for insight in pattern_insights:
                     st.markdown(f"- {insight}")
 
