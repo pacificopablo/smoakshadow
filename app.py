@@ -571,13 +571,13 @@ def calculate_bankroll(history, base_bet, strategy):
                 current_bankroll += win_amount
                 main_fund += win_amount
                 accel_fund += win_amount * 0.1
-                st.session_state.win_streak = st.session_state.get('win_streak', 0) + 1  # Fixed line
+                st.session_state.win_streak = st.session_state.get('win_streak', 0) + 1
                 st.session_state.last_bet_outcome = 'win'
             else:
                 current_bankroll += bet_size
                 main_fund += bet_size
                 accel_fund += bet_size * 0.1
-                st.session_state.win_streak = st.session_state.get('win_streak', 0) + 1  # Fixed line
+                st.session_state.win_streak = st.session_state.get('win_streak', 0) + 1
                 st.session_state.last_bet_outcome = 'win'
             if strategy in ["T3", "1-3-2-1"]:
                 money_management(use_fund, base_bet, strategy, bet_outcome='win')
@@ -804,7 +804,7 @@ def main():
                     st.rerun()
 
         # Shoe Patterns
-        with st.expander("Shoe Patterns", expanded=False):
+        with st.expander("Shoe Patterns", expanded=True):
             pattern_options = ["Bead Bin", "Big Road", "Big Eye", "Small Road", "Cockroach", "Double Repeat", "Triple Repeat", "Chop", "Mirrored Pair", "Win/Loss"]
             selected_patterns = st.multiselect("Select Patterns", pattern_options, default=st.session_state.selected_patterns)
             st.session_state.selected_patterns = selected_patterns
@@ -813,6 +813,7 @@ def main():
 
             if "Bead Bin" in selected_patterns:
                 st.markdown("### Bead Bin")
+                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🔵: Player, 🔴: Banker, 🟢: Tie</p>", unsafe_allow_html=True)
                 sequence = st.session_state.history[-48:]
                 sequence = ['P' if r == 'Player' else 'B' if r == 'Banker' else 'T' for r in sequence]
                 grid = [['' for _ in range(max_display_cols)] for _ in range(6)]
@@ -820,7 +821,7 @@ def main():
                     col = i // 6
                     row = i % 6
                     if col < max_display_cols:
-                        color = '#ff0000' if result == 'P' else '#0000ff' if result == 'B' else '#00cc00'
+                        color = '#0000ff' if result == 'P' else '#ff0000' if result == 'B' else '#00cc00'
                         grid[row][col] = f'<div class="pattern-circle" style="background-color: {color};"></div>'
                 st.markdown('<div id="bead-bin-scroll" class="pattern-scroll">', unsafe_allow_html=True)
                 for row in grid:
@@ -828,7 +829,8 @@ def main():
                 st.markdown('</div>', unsafe_allow_html=True)
 
             if "Big Road" in selected_patterns:
-                st.markdown("### Big Road Marker")
+                st.markdown("### Big Road")
+                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🔵: Player, 🔴: Banker, 🟢 outline: Tie</p>", unsafe_allow_html=True)
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 if num_cols > 0:
                     display_cols = min(num_cols, max_display_cols)
@@ -838,9 +840,9 @@ def main():
                         for col in range(display_cols):
                             outcome = big_road_grid[row][col]
                             if outcome == 'P':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #ff0000;"></div>')
-                            elif outcome == 'B':
                                 row_display.append(f'<div class="pattern-circle" style="background-color: #0000ff;"></div>')
+                            elif outcome == 'B':
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #ff0000;"></div>')
                             elif outcome == 'T':
                                 row_display.append(f'<div class="pattern-circle" style="border: 2px solid #00cc00;"></div>')
                             else:
