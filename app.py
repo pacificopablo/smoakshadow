@@ -124,7 +124,7 @@ def build_big_eye_boy(big_road_grid, num_cols):
             row = 0
     return grid, col + 1 if row > 0 else col
 
-def build_cockroach_pig(big_road_grid, num_cols):
+def build_small_road(big_road_grid, num_cols):
     max_rows = 6
     max_cols = 50
     grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
@@ -152,11 +152,39 @@ def build_cockroach_pig(big_road_grid, num_cols):
             row = 0
     return grid, col + 1 if row > 0 else col
 
+def build_cockroach_pig(big_road_grid, num_cols):
+    max_rows = 6
+    max_cols = 50
+    grid = [['' for _ in range(max_cols)] for _ in range(max_rows)]
+    col = 0
+    row = 0
+
+    for c in range(5, num_cols):
+        if col >= max_cols:
+            break
+        last_col = [big_road_grid[r][c - 1] for r in range(max_rows)]
+        fifth_last = [big_road_grid[r][c - 5] for r in range(max_rows)]
+        last_non_empty = next((i for i, x in enumerate(last_col) if x in ['P', 'B']), None)
+        fifth_non_empty = next((i for i, x in enumerate(fifth_last) if x in ['P', 'B']), None)
+        if last_non_empty is not None and fifth_non_empty is not None:
+            if last_col[last_non_empty] == fifth_last[fifth_non_empty]:
+                grid[row][col] = 'R'
+            else:
+                grid[row][col] = 'B'
+            row += 1
+            if row >= max_rows:
+                col += 1
+                row = 0
+        else:
+            col += 1
+            row = 0
+    return grid, col + 1 if row > 0 else col
+
 def advanced_bet_selection(s, mode='Conservative'):
     max_recent_count = 40
     recent = s[-max_recent_count:] if len(s) >= max_recent_count else s
     if not recent:
-        return 'Pass', 0, "No results yet. Waiting for shoe to develop.", "Cautious", [], []
+        return 'Pass', 0, "No results yet. Waiting for shoe to develop.", "Cautious", [], [], {}
 
     # Initialize voting system
     votes = []  # List of (bet, score, weight, reason, pattern) tuples
@@ -165,6 +193,7 @@ def advanced_bet_selection(s, mode='Conservative'):
     emotional_tone = "Neutral"
     shoe_position = len(s)
     pattern_count = 0
+    derived_road_predictions = {}  # Store predictions: {'Big Eye Boy': 'R', 'Small Road': 'B', 'Cockroach Pig': 'R'}
 
     def decay_weight(index, total_length, half_life=20):
         return 0.5 ** ((total_length - index - 1) / half_life)
@@ -227,39 +256,79 @@ def advanced_bet_selection(s, mode='Conservative'):
             pattern_insights.append(f"Big Road: {col_length} {bet_side}")
             pattern_count += 1
 
-    # 6. Big Eye Boy Analysis
+    # Helper function to predict next Derived Road signal
+    def predict_derived_road(grid, num_cols, lookback=3):
+        if num_cols <= 1:
+            return None
+        last_signals = []
+        for c in range(max(0, num_cols - lookback), num_cols):
+            col = [grid[row][c] for row in range(6)]
+            signal = next((x for x in col if x in ['R', 'B']), None)
+            if signal:
+                last_signals.append(signal)
+        if not last_signals:
+            return None
+        # Predict based on majority or last signal
+        red_count = last_signals.count('R')
+        blue_count = last_signals.count('B')
+        if red_count > blue_count:
+            return 'R'
+        elif blue_count > red_count:
+            return 'B'
+        return last_signals[-1]  # Default to last signal if tied
+
+    # Map Derived Road signal to bet
+    def map_signal_to_bet(signal, last_big_road):
+        if not signal or last_big_road not in ['P', 'B']:
+            return None
+        if signal == 'R':  # Repeat: Same as last Big Road outcome
+            return 'Player' if last_big_road == 'P' else 'Banker'
+        else:  # Break: Opposite of last Big Road outcome
+            return 'Player' if last_big_road == 'B' else 'Banker'
+
+    # 6. Big Eye Boy Analysis and Prediction
     big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
     if big_eye_cols > 1:
-        last_two_cols = [[big_eye_grid[row][c] for row in range(6)] for c in range(big_eye_cols - 2, big_eye_cols)]
-        last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-        if all(s == 'R' for s in last_signals if s):
-            last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-            votes.append((last_side, 20, 0.9, "Big Eye Boy shows consistent repeat pattern", "Big Eye Boy: Consistent repeat"))
-            pattern_insights.append("Big Eye Boy: Consistent repeat")
-            pattern_count += 1
-        elif all(s == 'B' for s in last_signals if s):
-            opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-            votes.append((opposite_side, 15, 0.9, "Big Eye Boy shows consistent break pattern", "Big Eye Boy: Consistent break"))
-            pattern_insights.append("Big Eye Boy: Consistent break")
-            pattern_count += 1
+        big_eye_signal = predict_derived_road(big_eye_grid, big_eye_cols)
+        if big_eye_signal:
+            last_big_road = big_road_grid[0][num_cols - 1] if num_cols > 0 else None
+            big_eye_bet = map_signal_to_bet(big_eye_signal, last_big_road)
+            if big_eye_bet:
+                signal_type = "repeat" if big_eye_signal == 'R' else "break"
+                votes.append((big_eye_bet, 20, 0.9, f"Big Eye Boy predicts {signal_type} pattern ({big_eye_signal})", f"Big Eye Boy: {signal_type.capitalize()} ({big_eye_signal})"))
+                pattern_insights.append(f"Big Eye Boy: {signal_type.capitalize()} ({big_eye_signal})")
+                derived_road_predictions['Big Eye Boy'] = big_eye_signal
+                pattern_count += 1
 
-    # 7. Cockroach Pig Analysis
+    # 7. Small Road Analysis and Prediction
+    small_road_grid, small_road_cols = build_small_road(big_road_grid, num_cols)
+    if small_road_cols > 1:
+        small_road_signal = predict_derived_road(small_road_grid, small_road_cols)
+        if small_road_signal:
+            last_big_road = big_road_grid[0][num_cols - 1] if num_cols > 0 else None
+            small_road_bet = map_signal_to_bet(small_road_signal, last_big_road)
+            if small_road_bet:
+                signal_type = "repeat" if small_road_signal == 'R' else "break"
+                votes.append((small_road_bet, 18, 0.87, f"Small Road predicts {signal_type} pattern ({small_road_signal})", f"Small Road: {signal_type.capitalize()} ({small_road_signal})"))
+                pattern_insights.append(f"Small Road: {signal_type.capitalize()} ({small_road_signal})")
+                derived_road_predictions['Small Road'] = small_road_signal
+                pattern_count += 1
+
+    # 8. Cockroach Pig Analysis and Prediction
     cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
     if cockroach_cols > 1:
-        last_two_cols = [[cockroach_grid[row][c] for row in range(6)] for c in range(cockroach_cols - 2, cockroach_cols)]
-        last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-        if all(s == 'R' for s in last_signals if s):
-            last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-            votes.append((last_side, 15, 0.85, "Cockroach Pig shows consistent repeat pattern", "Cockroach Pig: Consistent repeat"))
-            pattern_insights.append("Cockroach Pig: Consistent repeat")
-            pattern_count += 1
-        elif all(s == 'B' for s in last_signals if s):
-            opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-            votes.append((opposite_side, 12, 0.85, "Cockroach Pig shows consistent break pattern", "Cockroach Pig: Consistent break"))
-            pattern_insights.append("Cockroach Pig: Consistent break")
-            pattern_count += 1
+        cockroach_signal = predict_derived_road(cockroach_grid, cockroach_cols)
+        if cockroach_signal:
+            last_big_road = big_road_grid[0][num_cols - 1] if num_cols > 0 else None
+            cockroach_bet = map_signal_to_bet(cockroach_signal, last_big_road)
+            if cockroach_bet:
+                signal_type = "repeat" if cockroach_signal == 'R' else "break"
+                votes.append((cockroach_bet, 15, 0.85, f"Cockroach Pig predicts {signal_type} pattern ({cockroach_signal})", f"Cockroach Pig: {signal_type.capitalize()} ({cockroach_signal})"))
+                pattern_insights.append(f"Cockroach Pig: {signal_type.capitalize()} ({cockroach_signal})")
+                derived_road_predictions['Cockroach Pig'] = cockroach_signal
+                pattern_count += 1
 
-    # 8. Frequency and Entropy Analysis
+    # 9. Frequency and Entropy Analysis
     freq = frequency_count(recent)
     total = len(recent)
     entropy = -sum((count / total) * math.log2(count / total) for count in freq.values() if count > 0) if total > 0 else 0
@@ -279,7 +348,7 @@ def advanced_bet_selection(s, mode='Conservative'):
             pattern_insights.append("Randomness: High entropy")
             emotional_tone = "Cautious"
 
-    # 9. Recent Momentum
+    # 10. Recent Momentum
     recent_wins = recent[-6:] if len(recent) >= 6 else recent
     for i, result in enumerate(recent_wins):
         if result in ['Banker', 'Player']:
@@ -352,7 +421,7 @@ def advanced_bet_selection(s, mode='Conservative'):
     reason_parts.insert(0, vote_summary)
     reason = " ".join(reason_parts)
 
-    return bet_choice, confidence, reason, emotional_tone, pattern_insights, vote_details
+    return bet_choice, confidence, reason, emotional_tone, pattern_insights, vote_details, derived_road_predictions
 
 def money_management(bankroll, base_bet, strategy, bet_outcome=None):
     min_bet = max(1.0, base_bet)
@@ -396,7 +465,7 @@ def calculate_bankroll(history, base_bet, strategy):
     st.session_state.t3_results = []
     for i in range(len(history)):
         current_rounds = history[:i + 1]
-        bet, confidence, _, _, _, _ = advanced_bet_selection(current_rounds[:-1], st.session_state.ai_mode) if i != 0 else ('Pass', 0, '', 'Neutral', [], [])
+        bet, confidence, _, _, _, _, _ = advanced_bet_selection(current_rounds[:-1], st.session_state.ai_mode) if i != 0 else ('Pass', 0, '', 'Neutral', [], [], {})
         actual_result = history[i]
         if bet in (None, 'Pass', 'Tie'):
             bankroll_progress.append(current_bankroll)
@@ -432,7 +501,7 @@ def calculate_win_loss_tracker(history, base_bet, strategy, ai_mode):
     st.session_state.t3_results = []
     for i in range(len(history)):
         current_rounds = history[:i + 1]
-        bet, _, _, _, _, _ = advanced_bet_selection(current_rounds[:-1], ai_mode) if i != 0 else ('Pass', 0, '', 'Neutral', [], [])
+        bet, _, _, _, _, _, _ = advanced_bet_selection(current_rounds[:-1], ai_mode) if i != 0 else ('Pass', 0, '', 'Neutral', [], [], {})
         actual_result = history[i]
         if actual_result == 'Tie':
             tracker.append('T')
@@ -754,7 +823,7 @@ def main():
                     st.markdown("No results yet. Enter results below.")
 
         with st.expander("Prediction", expanded=True):
-            bet, confidence, reason, emotional_tone, pattern_insights, vote_details = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
+            bet, confidence, reason, emotional_tone, pattern_insights, vote_details, derived_road_predictions = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
             st.markdown("### Prediction")
             current_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else st.session_state.initial_bankroll
             recommended_bet_size = money_management(current_bankroll, st.session_state.base_bet, st.session_state.money_management_strategy)
@@ -765,6 +834,7 @@ def main():
                 confidence = 0
                 reason = "Bankroll too low to continue betting."
                 emotional_tone = "Cautious"
+                derived_road_predictions = {}
             
             if bet == 'Pass':
                 st.markdown("**No Bet**: Insufficient confidence or bankroll to place a bet.")
@@ -773,6 +843,13 @@ def main():
             
             st.markdown("### Reasoning")
             st.markdown(f"{reason}")
+            
+            if derived_road_predictions:
+                st.markdown("### Derived Road Predictions")
+                st.markdown("Predicted next signals for Derived Roads (R = Repeat, B = Break):")
+                for road, signal in derived_road_predictions.items():
+                    color = "Red" if signal == 'R' else "Blue"
+                    st.markdown(f"- **{road}**: {color} ({signal})")
             
             if vote_details:
                 st.markdown("### Voting Breakdown")
