@@ -7,18 +7,18 @@ import uuid
 # Set up basic logging
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Pattern weights (configurable by user)
+# Pattern weights (default values optimized for conservative strategy)
 PATTERN_WEIGHTS = {
-    'streak': 1.0,
-    'alternating': 0.9,
+    'streak': 1.2,
+    'alternating': 1.0,
     'zigzag': 0.8,
-    'trend': 0.7,
-    'big_road': 0.6,
-    'big_eye': 0.5,
-    'cockroach': 0.4,
-    'choppy': 0.6,
-    'double': 0.5,
-    'markov': 0.7
+    'trend': 0.9,
+    'big_road': 0.7,
+    'big_eye': 0.6,
+    'cockroach': 0.5,
+    'choppy': 0.8,
+    'double': 0.7,
+    'markov': 0.9
 }
 
 # Normalize input
@@ -788,8 +788,22 @@ def main():
 
         # Pattern Weights
         with st.expander("Pattern Weights", expanded=False):
-            for pattern, default_weight in PATTERN_WEIGHTS.items():
-                PATTERN_WEIGHTS[pattern] = st.slider(f"{pattern.capitalize()} Weight", 0.0, 2.0, default_weight, step=0.1)
+            for pattern, weight in PATTERN_WEIGHTS.items():
+                PATTERN_WEIGHTS[pattern] = st.slider(f"{pattern.capitalize()} Weight", 0.0, 2.0, weight, step=0.1)
+            if st.button("Reset to Default Weights"):
+                PATTERN_WEIGHTS.update({
+                    'streak': 1.2,
+                    'alternating': 1.0,
+                    'zigzag': 0.8,
+                    'trend': 0.9,
+                    'big_road': 0.7,
+                    'big_eye': 0.6,
+                    'cockroach': 0.5,
+                    'choppy': 0.8,
+                    'double': 0.7,
+                    'markov': 0.9
+                })
+                st.rerun()
 
         # Input Game Results
         with st.expander("Input Game Results", expanded=True):
