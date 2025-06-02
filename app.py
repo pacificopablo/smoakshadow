@@ -108,7 +108,7 @@ def process_result(outcome):
                 st.session_state.bankroll += bet_amount * 0.95  # Banker win with 5% commission
             else:
                 st.session_state.bankroll += bet_amount  # Player win
-            st.session_state.current_position = 0  # Reset to start of sequenceThe 
+            st.session_state.current_position = 0  # Reset to start of sequence
             if st.session_state.current_position == 0 and len(st.session_state.t3_results) == 0:
                 st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
             st.session_state.t3_results.append('W')
@@ -204,9 +204,26 @@ def generate_prediction_display():
     """
     return html
 
+def generate_profit_display():
+    profit = st.session_state.bankroll - st.session_state.initial_bankroll
+    color = "green" if profit > 0 else "red" if profit < 0 else "black"
+    html = f"""
+    <style>
+        .profit {{
+            color: {color};
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            margin: 10px 0;
+        }}
+    </style>
+    <div class="profit">${profit:.2f}</div>
+    """
+    return html
+
 def quit_game():
     win_rate = (st.session_state.wins / st.session_state.total_bets * 100) if st.session_state.total_bets > 0 else 0
-    st.info(f"Game Over\nTotal Bets: {st.session_state.total_bets}\nWins: {st.session_state.wins}\nLosses: {st.session_state.losses}\nWin Rate: {win_rate:.2f}%\nFinal Bankroll: ${st.session_state.bankroll:.2f}")
+    st.info(f"Game Over\nTotal Bets: {st.session_state.total_bets}\nWins: {st.session_state.wins}\nLosses: {st.session_state.losses}\nWin Rate: {win_rate:.2f}%\nFinal Bankroll: ${st.session_state.bankroll:.2f}\nTotal Profit: ${st.session_state.bankroll - st.session_state.initial_bankroll:.2f}")
     st.session_state.session_active = False
     initialize_session_state()
 
@@ -250,6 +267,9 @@ def main():
     st.markdown(f"**Bankroll:** ${st.session_state.bankroll:.2f}")
     st.markdown(f"**Base Bet:** ${st.session_state.base_bet:.2f}")
     st.markdown(f"**T3 Status:** Level {st.session_state.t3_level}, Results: {st.session_state.t3_results}")
+    
+    st.markdown("**Total Profit:**")
+    st.markdown(generate_profit_display(), unsafe_allow_html=True)
     
     st.markdown("**Next Predicted Bet:**")
     st.markdown(generate_prediction_display(), unsafe_allow_html=True)
