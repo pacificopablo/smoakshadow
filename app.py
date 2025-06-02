@@ -445,7 +445,7 @@ def main():
             window.onresize = updateScreenWidth;
             </script>
             <input type="hidden" id="screen-width-input">
-        """, unsafe_allow_html=True)
+        """, unsafe_html=True)
 
         screen_width_input = st.text_input("Screen Width", key="screen_width_input", value=str(st.session_state.screen_width), disabled=True)
         try:
@@ -489,12 +489,13 @@ def main():
                 font-size: 1.5rem;
             }
             p, div, span {
-                font-size: 14px;
+                font-size: 1rem;
+            }
             .pattern-circle {
                 width: 22px;
-                height: 22px;px;
+                height: 22px;
                 display: inline-block;
-                margin: 2px;px;
+                margin: 2px;
             }
             .display-circle {
                 width: 22px;
@@ -502,7 +503,12 @@ def main():
                 display: inline-block;
                 margin: 2px;
             }
-            @media screen and (min-width: 768px) {
+            @media (min-width: 769px) {
+                .stButton > button, .stNumberInput, .stSelectbox {
+                    max-width: 200px;
+                }
+            }
+            @media (max-width: 768px) {
                 h1 {
                     font-size: 1.8rem;
                 }
@@ -517,7 +523,7 @@ def main():
                     height: 16px !important;
                 }
                 .stButton > button {
-                    font-size: 14px;0.9rem;
+                    font-size: 0.9rem;
                     padding: 6px;
                 }
                 .stNumberInput input, .stSelectbox div {
@@ -529,7 +535,7 @@ def main():
             }
             </style>
             <script>
-            function autoScroll() {
+            function autoScrollPatterns() {
                 const containers = [
                     'bead-bin-scroll',
                     'big-road-scroll',
@@ -539,28 +545,28 @@ def main():
                     'triple-repeat-scroll',
                     'history-scroll'
                 ];
-                containers.forEach(function(id) {
+                containers.forEach(id => {
                     const element = document.getElementById(id);
                     if (element) {
                         element.scrollLeft = element.scrollWidth;
                     }
                 });
             }
-            window.onload = autoScroll;
+            window.onload = autoScrollPatterns;
             </script>
-        """, unsafe html=True)
+        """, unsafe_html=True)
 
         with st.expander("Game Settings", expanded=False):
-            st.markdown("**BLACKBOXAI Strategy**: Use commission-free Baccarat (e.g., EZ Baccarat) for lower house edge. Divide bankroll into 50 units: 60% main betting, 30% recovery, 10% acceleration. Stop at 50 units. Take 30-minute breaks after big wins/losses.")
+            st.markdown("**BLACKBOXAI Strategy**: Use commission-free Baccarat (e.g., EZ Baccarat) for lower house edge. Divide bankroll into 50 units: 60% main betting, 30% recovery, 10% acceleration. Stop at 30% profit or 20% loss. Take 30-minute breaks after big wins/losses.")
             cols = st.columns(4)
             with cols[0]:
                 initial_bankroll = st.number_input("Initial Bankroll", min_value=1.0, value=st.session_state.initial_bankroll, step=10.0, format="%.2f")
             with cols[1]:
-                base_bet =st.number_input("Base Bet (Unit Size)", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=1.0, format="%.2f")
+                base_bet = st.number_input("Base Bet (Unit Size)", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=1.0, format="%.2f")
             with cols[2]:
                 strategy_options = ["Flat Betting", "T3", "1-3-2-1"]
                 money_management_strategy = st.selectbox("Money Management Strategy", strategy_options, index=strategy_options.index(st.session_state.money_management_strategy))
-                st.markdown("<p style='font-size: 12px;font-size: 12px;'>*Flat: Fixed bets. T3: Adjusts based on last three outcomes. 1-3-2-1: BLACKBOXAI progression (1, 3, 2, 1 units.)*</p>", unsafe_html=True)
+                st.markdown("*Flat: Fixed bets. T3: Adjusts based on last three outcomes. 1-3-2-1: BLACKBOXAI progression (1, 3, 2, 1 units).*")
             with cols[3]:
                 ai_mode = st.selectbox("AI Mode", ["Conservative", "Aggressive"], index=["Conservative", "Aggressive"].index(st.session_state.ai_mode))
 
@@ -569,7 +575,7 @@ def main():
             st.session_state.money_management_strategy = money_management_strategy
             st.session_state.ai_mode = ai_mode
 
-            st.markdown("<span style=\"font-weight: bold;\">**Selected Strategy**: {}</span>".format(money_management_strategy), unsafe_html=True)
+            st.markdown(f"**Selected Strategy: {money_management_strategy}**")
 
         with st.expander("Input Game Results", expanded=True):
             cols = st.columns(4)
@@ -627,10 +633,10 @@ def main():
                         if col < max_display_cols:
                             color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
                             grid[row][col] = f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #ffffff;"></div>'
-                st.markdown('<div id="bead-bin-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+                st.markdown('<div id="bead-bin-scroll" class="pattern-scroll">', unsafe_html=True)
                 for row in grid:
-                    st.markdown(' '.join(row), unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown(' '.join(row), unsafe_html=True)
+                st.markdown('</div>', unsafe_html=True)
                 if not st.session_state.history:
                     st.markdown("No results yet. Enter results below.")
 
@@ -639,7 +645,7 @@ def main():
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 if num_cols > 0:
                     display_cols = min(num_cols, max_display_cols)
-                    st.markdown('<div id="big-road-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+                    st.markdown('<div id="big-road-scroll" class="pattern-scroll">', unsafe_html=True)
                     for row in range(6):
                         row_display = []
                         for col in range(display_cols):
@@ -652,19 +658,19 @@ def main():
                                 row_display.append(f'<div class="pattern-circle" style="border: 2px solid #38a169; border-radius: 50%;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
-                        st.markdown(''.join(row_display), unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown(''.join(row_display), unsafe_html=True)
+                    st.markdown('</div>', unsafe_html=True)
                 else:
                     st.markdown("No Big Road data.")
 
             if "Big Eye" in st.session_state.selected_patterns:
                 st.markdown("### Big Eye Boy")
-                st.markdown("<p style='font-size: 12px; color: #666666;'>Red (🎴): Repeat Pattern, Blue (🎵): Break Pattern</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 12px; color: #666666;'>Red (🎴): Repeat Pattern, Blue (🎵): Break Pattern</p>", unsafe_html=True)
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
                 if big_eye_cols > 0:
                     display_cols = min(big_eye_cols, max_display_cols)
-                    st.markdown('<div id="big-eye-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+                    st.markdown('<div id="big-eye-scroll" class="pattern-scroll">', unsafe_html=True)
                     for row in range(6):
                         row_display = []
                         for col in range(display_cols):
@@ -675,19 +681,19 @@ def main():
                                 row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000000;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
-                        st.markdown(''.join(row_display), unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown(''.join(row_display), unsafe_html=True)
+                    st.markdown('</div>', unsafe_html=True)
                 else:
                     st.markdown("No recent Big Eye data.")
 
             if "Cockroach" in st.session_state.selected_patterns:
                 st.markdown("### Cockroach Pig")
-                st.markdown("<p style='font-size: 12px; color: #666666;'>Red (🎴): Repeat Pattern, Blue (🎵): Break Pattern</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 12px; color: #666666;'>Red (🎴): Repeat Pattern, Blue (🎵): Break Pattern</p>", unsafe_html=True)
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
                 if cockroach_cols > 0:
                     display_cols = min(cockroach_cols, max_display_cols)
-                    st.markdown('<div id="cockroach-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+                    st.markdown('<div id="cockroach-scroll" class="pattern-scroll">', unsafe_html=True)
                     for row in range(6):
                         row_display = []
                         for col in range(display_cols):
@@ -698,14 +704,14 @@ def main():
                                 row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000000;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
-                        st.markdown(''.join(row_display), unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown(''.join(row_display), unsafe_html=True)
+                    st.markdown('</div>', unsafe_html=True)
                 else:
                     st.markdown("No recent Cockroach data.")
 
             if "Triple Repeat" in st.session_state.selected_patterns:
                 st.markdown("### Triple Repeat (BLACKBOXAI PBPPBB)")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>Green (🎢): PBPPBB pattern</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🎢: PBPPBB pattern</p>", unsafe_html=True)
                 sequence = st.session_state.history[-12:]
                 row_display = []
                 for i in range(len(sequence) - 5):
@@ -714,13 +720,13 @@ def main():
                         row_display.append(f'<div class="pattern-circle" style="background-color: #38a169;"></div>')
                     else:
                         row_display.append(f'<div class="display-circle"></div>')
-                st.markdown('<div id="triple-repeat-scroll" class="pattern-scroll">', unsafe_allow_html=True)
-                st.markdown(''.join(row_display), unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('<div id="triple-repeat-scroll" class="pattern-scroll">', unsafe_html=True)
+                st.markdown(''.join(row_display), unsafe_html=True)
+                st.markdown('</div>', unsafe_html=True)
 
             if "Win/Loss" in st.session_state.selected_patterns:
                 st.markdown("### Win/Loss")
-                st.markdown("<p style='font-size: 12px; color: #666666;'>Green (🎢): Win, Red (🎴): Loss, Gray (🎰): Skip or Tie</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 12px; color: #666666;'>Green (🎢): Win, Red (🎴): Loss, Gray (⬛): Skip or Tie</p>", unsafe_html=True)
                 tracker = calculate_win_loss_tracker(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy, st.session_state.ai_mode)[-max_display_cols:]
                 row_display = []
                 for result in tracker:
@@ -729,9 +735,9 @@ def main():
                         row_display.append(f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #000000;"></div>')
                     else:
                         row_display.append(f'<div class="display-circle"></div>')
-                st.markdown('<div id="win-loss-scroll" class="pattern-scroll">', unsafe_allow_html=True)
-                st.markdown(''.join(row_display), unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('<div id="win-loss-scroll" class="pattern-scroll">', unsafe_html=True)
+                st.markdown(''.join(row_display), unsafe_html=True)
+                st.markdown('</div>', unsafe_html=True)
                 if not st.session_state.history:
                     st.markdown("No results yet. Enter results below.")
 
@@ -747,22 +753,22 @@ def main():
                 reason = "Bankroll too low to continue betting."
                 emotional_tone = "Cautious"
             if bet == 'Pass':
-                st.markdown("**No Bet**: Insufficient reasoning or confidence to place a bet.")
+                st.markdown("**No Bet**: Insufficient confidence or bankroll to place a bet.")
             else:
                 st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Bet Size**: ${recommended_bet_size:.2f} | **Mood**: {emotional_tone}")
 
             # Display recent history horizontally
             st.markdown("### Recent History")
-            st.markdown("<p style='font-size: 12px; color: #666666;'>Blue (🎵): Player, Red (🎴): Banker, Green (🎢): Tie</p>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size: 12px; color: #666666;'>Blue (🎵): Player, Red (🎴): Banker, Green (🎢): Tie</p>", unsafe_html=True)
             max_history_display = 20  # Limit to 20 results for display
             sequence = st.session_state.history[-max_history_display:]
             row_display = []
             for result in sequence:
                 color = '#3182ce' if result == 'Player' else '#e53e3e' if result == 'Banker' else '#38a169'
                 row_display.append(f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #ffffff;"></div>')
-            st.markdown('<div id="history-scroll" class="pattern-scroll">', unsafe_allow_html=True)
-            st.markdown(' '.join(row_display), unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('<div id="history-scroll" class="pattern-scroll">', unsafe_html=True)
+            st.markdown(''.join(row_display), unsafe_html=True)
+            st.markdown('</div>', unsafe_html=True)
             if not st.session_state.history:
                 st.markdown("No history yet. Enter results above.")
 
