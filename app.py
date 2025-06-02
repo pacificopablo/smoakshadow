@@ -558,7 +558,8 @@ def main():
                     'big-road-scroll',
                     'big-eye-scroll',
                     'cockroach-scroll',
-                    'win-loss-scroll'
+                    'win-loss-scroll',
+                    'history-scroll'
                 ];
                 containers.forEach(id => {
                     const element = document.getElementById(id);
@@ -734,9 +735,23 @@ def main():
                     st.markdown("No results yet. Enter results below.")
 
         with st.expander("Prediction", expanded=True):
-            # Display Player, Banker, Tie history
-            freq = frequency_count(st.session_state.history)
-            st.markdown(f"**Game History**: Player: {freq['Player']}, Banker: {freq['Banker']}, Tie: {freq['Tie']}")
+            # Display Player, Banker, Tie history in a straight horizontal line
+            st.markdown("### Game History")
+            st.markdown("<p style='font-size: 12px; color: #666666;'>Blue (🔵): Player, Red (🔴): Banker, Green (🟢): Tie</p>", unsafe_allow_html=True)
+            sequence = ['P' if result == 'Player' else 'B' if result == 'Banker' else 'T' for result in st.session_state.history]
+            max_display = 30 if st.session_state.screen_width < 768 else 50
+            sequence = sequence[-max_display:] if len(sequence) > max_display else sequence
+            history_display = []
+            for result in sequence:
+                if result in ['P', 'B', 'T']:
+                    color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
+                    style = f"background-color: {color}; border-radius: 50%; border: 1px solid #ffffff;" if result != 'T' else f"border: 2px solid {color}; border-radius: 50%;"
+                    history_display.append(f'<div class="pattern-circle" style="{style}"></div>')
+            st.markdown('<div id="history-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+            st.markdown(''.join(history_display), unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            if not st.session_state.history:
+                st.markdown("No game history yet. Enter results below.")
             
             bet, confidence, reason, emotional_tone, pattern_insights = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
             st.markdown("### Prediction")
