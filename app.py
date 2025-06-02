@@ -746,11 +746,6 @@ def main():
             else:
                 st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Bet Size**: ${recommended_bet_size:.2f} | **Mood**: {emotional_tone}")
             st.markdown(f"**Reasoning**: {reason}")
-            if pattern_insights:
-                st.markdown("### Pattern Insights")
-                st.markdown("Detected patterns influencing the prediction:")
-                for insight in pattern_insights:
-                    st.markdown(f"- {insight}")
             
             # Display recent history horizontally
             st.markdown("### Recent History")
@@ -766,6 +761,12 @@ def main():
             st.markdown('</div>', unsafe_allow_html=True)
             if not st.session_state.history:
                 st.markdown("No history yet. Enter results above.")
+
+            if pattern_insights:
+                st.markdown("### Pattern Insights")
+                st.markdown("Detected patterns influencing the prediction:")
+                for insight in pattern_insights:
+                    st.markdown(f"- {insight}")
 
         with st.expander("Bankroll Progress", expanded=True):
             bankroll_progress, bet_sizes = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)
