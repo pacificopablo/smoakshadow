@@ -536,7 +536,8 @@ def main():
                     'big-eye-scroll',
                     'cockroach-scroll',
                     'win-loss-scroll',
-                    'triple-repeat-scroll'
+                    'triple-repeat-scroll',
+                    'history-scroll'
                 ];
                 containers.forEach(id => {
                     const element = document.getElementById(id);
@@ -750,6 +751,21 @@ def main():
                 st.markdown("Detected patterns influencing the prediction:")
                 for insight in pattern_insights:
                     st.markdown(f"- {insight}")
+            
+            # Display recent history horizontally
+            st.markdown("### Recent History")
+            st.markdown("<p style='font-size: 12px; color: #666666;'>Blue (🎵): Player, Red (🎴): Banker, Green (🎢): Tie</p>", unsafe_allow_html=True)
+            max_history_display = 20  # Limit to 20 results for display
+            sequence = st.session_state.history[-max_history_display:]
+            row_display = []
+            for result in sequence:
+                color = '#3182ce' if result == 'Player' else '#e53e3e' if result == 'Banker' else '#38a169'
+                row_display.append(f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #ffffff;"></div>')
+            st.markdown('<div id="history-scroll" class="pattern-scroll">', unsafe_allow_html=True)
+            st.markdown(''.join(row_display), unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            if not st.session_state.history:
+                st.markdown("No history yet. Enter results above.")
 
         with st.expander("Bankroll Progress", expanded=True):
             bankroll_progress, bet_sizes = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)
