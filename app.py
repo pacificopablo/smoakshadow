@@ -158,6 +158,10 @@ def advanced_bet_selection(history: List[str], mode: str = 'Conservative') -> Tu
             return 0
         return -sum((count / total) * math.log2(count / total) for count in freq.values() if count > 0)
 
+    # Check if skip bet toggle is off
+    if not st.session_state.get('allow_betting', True):
+        return 'Pass', 0, "Betting skipped due to Skip Bet toggle being off.", "Cautious", []
+
     recent = history[-CONFIG['max_recent_count']:] if len(history) >= CONFIG['max_recent_count'] else history
     if not recent:
         return 'Pass', 0, "No results yet. Waiting for shoe to develop.", "Cautious", []
@@ -428,6 +432,8 @@ def main():
             st.session_state.last_bet = None
         if 'last_result' not in st.session_state:
             st.session_state.last_result = None
+        if 'allow_betting' not in st.session_state:
+            st.session_state.allow_betting = True  # Default to allowing bets
 
         st.markdown("""
             <script>
@@ -483,13 +489,12 @@ def main():
                 font-size: 1.5rem;
             }
             p, div, span {
-                font-size: 1rem;
-            }
+                font-size: 14px;
             .pattern-circle {
                 width: 22px;
-                height: 22px;
+                height: 22px;px;
                 display: inline-block;
-                margin: 2px;
+                margin: 2px;px;
             }
             .display-circle {
                 width: 22px;
@@ -497,12 +502,7 @@ def main():
                 display: inline-block;
                 margin: 2px;
             }
-            @media (min-width: 769px) {
-                .stButton > button, .stNumberInput, .stSelectbox {
-                    max-width: 200px;
-                }
-            }
-            @media (max-width: 768px) {
+            @media screen and (min-width: 768px) {
                 h1 {
                     font-size: 1.8rem;
                 }
@@ -517,7 +517,7 @@ def main():
                     height: 16px !important;
                 }
                 .stButton > button {
-                    font-size: 0.9rem;
+                    font-size: 14px;0.9rem;
                     padding: 6px;
                 }
                 .stNumberInput input, .stSelectbox div {
@@ -529,7 +529,7 @@ def main():
             }
             </style>
             <script>
-            function autoScrollPatterns() {
+            function autoScroll() {
                 const containers = [
                     'bead-bin-scroll',
                     'big-road-scroll',
@@ -539,28 +539,28 @@ def main():
                     'triple-repeat-scroll',
                     'history-scroll'
                 ];
-                containers.forEach(id => {
+                containers.forEach(function(id) {
                     const element = document.getElementById(id);
                     if (element) {
                         element.scrollLeft = element.scrollWidth;
                     }
                 });
             }
-            window.onload = autoScrollPatterns;
+            window.onload = autoScroll;
             </script>
-        """, unsafe_allow_html=True)
+        """, unsafe html=True)
 
         with st.expander("Game Settings", expanded=False):
-            st.markdown("**BLACKBOXAI Strategy**: Use commission-free Baccarat (e.g., EZ Baccarat) for lower house edge. Divide bankroll into 50 units: 60% main betting, 30% recovery, 10% acceleration. Stop at 30% profit or 20% loss. Take 30-minute breaks after big wins/losses.")
+            st.markdown("**BLACKBOXAI Strategy**: Use commission-free Baccarat (e.g., EZ Baccarat) for lower house edge. Divide bankroll into 50 units: 60% main betting, 30% recovery, 10% acceleration. Stop at 50 units. Take 30-minute breaks after big wins/losses.")
             cols = st.columns(4)
             with cols[0]:
                 initial_bankroll = st.number_input("Initial Bankroll", min_value=1.0, value=st.session_state.initial_bankroll, step=10.0, format="%.2f")
             with cols[1]:
-                base_bet = st.number_input("Base Bet (Unit Size)", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=1.0, format="%.2f")
+                base_bet =st.number_input("Base Bet (Unit Size)", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=1.0, format="%.2f")
             with cols[2]:
                 strategy_options = ["Flat Betting", "T3", "1-3-2-1"]
                 money_management_strategy = st.selectbox("Money Management Strategy", strategy_options, index=strategy_options.index(st.session_state.money_management_strategy))
-                st.markdown("*Flat: Fixed bets. T3: Adjusts based on last three outcomes. 1-3-2-1: BLACKBOXAI progression (1, 3, 2, 1 units).*")
+                st.markdown("<p style='font-size: 12px;font-size: 12px;'>*Flat: Fixed bets. T3: Adjusts based on last three outcomes. 1-3-2-1: BLACKBOXAI progression (1, 3, 2, 1 units.)*</p>", unsafe_html=True)
             with cols[3]:
                 ai_mode = st.selectbox("AI Mode", ["Conservative", "Aggressive"], index=["Conservative", "Aggressive"].index(st.session_state.ai_mode))
 
@@ -569,7 +569,7 @@ def main():
             st.session_state.money_management_strategy = money_management_strategy
             st.session_state.ai_mode = ai_mode
 
-            st.markdown(f"**Selected Strategy: {money_management_strategy}**")
+            st.markdown("<span style=\"font-weight: bold;\">**Selected Strategy**: {}</span>".format(money_management_strategy), unsafe_html=True)
 
         with st.expander("Input Game Results", expanded=True):
             cols = st.columns(4)
@@ -597,6 +597,11 @@ def main():
                         st.session_state.progression_count = 0
                         st.session_state.progression_level = 1
                     st.rerun()
+
+            # Add toggle for skip bet
+            st.session_state.allow_betting = st.toggle("Allow Betting", value=st.session_state.allow_betting, help="Turn off to skip betting for this round.")
+            if not st.session_state.allow_betting:
+                st.info("Betting is disabled. The next prediction will be 'Pass'.")
 
         with st.expander("Shoe Patterns", expanded=False):
             pattern_options = ["Bead Bin", "Big Road", "Big Eye", "Cockroach", "Win/Loss", "Triple Repeat"]
@@ -700,7 +705,7 @@ def main():
 
             if "Triple Repeat" in st.session_state.selected_patterns:
                 st.markdown("### Triple Repeat (BLACKBOXAI PBPPBB)")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🎢: PBPPBB pattern</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 0.9rem; color: #666;'>Green (🎢): PBPPBB pattern</p>", unsafe_allow_html=True)
                 sequence = st.session_state.history[-12:]
                 row_display = []
                 for i in range(len(sequence) - 5):
@@ -715,7 +720,7 @@ def main():
 
             if "Win/Loss" in st.session_state.selected_patterns:
                 st.markdown("### Win/Loss")
-                st.markdown("<p style='font-size: 12px; color: #666666;'>Green (🎢): Win, Red (🎴): Loss, Gray (⬛): Skip or Tie</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 12px; color: #666666;'>Green (🎢): Win, Red (🎴): Loss, Gray (🎰): Skip or Tie</p>", unsafe_allow_html=True)
                 tracker = calculate_win_loss_tracker(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy, st.session_state.ai_mode)[-max_display_cols:]
                 row_display = []
                 for result in tracker:
@@ -742,7 +747,7 @@ def main():
                 reason = "Bankroll too low to continue betting."
                 emotional_tone = "Cautious"
             if bet == 'Pass':
-                st.markdown("**No Bet**: Insufficient confidence or bankroll to place a bet.")
+                st.markdown("**No Bet**: Insufficient reasoning or confidence to place a bet.")
             else:
                 st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Bet Size**: ${recommended_bet_size:.2f} | **Mood**: {emotional_tone}")
 
@@ -756,7 +761,7 @@ def main():
                 color = '#3182ce' if result == 'Player' else '#e53e3e' if result == 'Banker' else '#38a169'
                 row_display.append(f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #ffffff;"></div>')
             st.markdown('<div id="history-scroll" class="pattern-scroll">', unsafe_allow_html=True)
-            st.markdown(''.join(row_display), unsafe_allow_html=True)
+            st.markdown(' '.join(row_display), unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             if not st.session_state.history:
                 st.markdown("No history yet. Enter results above.")
@@ -828,6 +833,7 @@ def main():
                 st.session_state.sequence_position = 0
                 st.session_state.last_bet = None
                 st.session_state.last_result = None
+                st.session_state.allow_betting = True  # Reset toggle to allow betting
                 st.rerun()
 
     except (KeyError, ValueError, IndexError) as e:
