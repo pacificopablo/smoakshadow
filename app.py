@@ -206,8 +206,8 @@ def main():
 
     if st.session_state.session_active:
         st.markdown(f"**Current Bet:** {st.session_state.sequence[st.session_state.current_position]} (${st.session_state.base_bet * st.session_state.t3_level:.2f})")
-        st.markdown(f"**Outcome:** {st.session_state.outcome")
-
+        st.markdown(f"**Outcome:** {st.session_state.outcome}")
+        
         col3, col4, col5 = st.columns(3)
         with col3:
             if st.button("Player"):
