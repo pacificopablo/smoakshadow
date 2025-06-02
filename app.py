@@ -161,19 +161,23 @@ def generate_bead_plate():
     <div class="bead-plate">
     """
     outcomes = [bet[0] for bet in st.session_state.bet_history]  # Get result from each bet
-    for i in range(rows * cols):
-        row = i // cols
-        col = i % cols
-        if i < len(outcomes):
-            outcome = outcomes[i]
+    grid = [['' for _ in range(cols)] for _ in range(rows)]
+    for i, outcome in enumerate(outcomes):
+        row = i % rows
+        col = i // rows
+        if col < cols:  # Ensure we don't exceed columns
+            grid[row][col] = outcome
+    for row in range(rows):
+        for col in range(cols):
+            outcome = grid[row][col]
             if outcome == 'P':
                 html += '<div class="bead-cell player">P</div>'
             elif outcome == 'B':
                 html += '<div class="bead-cell banker">B</div>'
             elif outcome == 'T':
                 html += '<div class="bead-cell tie">T</div>'
-        else:
-            html += '<div class="bead-cell empty"></div>'
+            else:
+                html += '<div class="bead-cell empty"></div>'
     html += "</div>"
     return html
 
@@ -202,7 +206,7 @@ def main():
 
     if st.session_state.session_active:
         st.markdown(f"**Current Bet:** {st.session_state.sequence[st.session_state.current_position]} (${st.session_state.base_bet * st.session_state.t3_level:.2f})")
-        st.markdown(f"**Outcome:** {st.session_state.outcome}")
+        st.markdown(f"**Outcome:** {st.session_state.outcome")
 
         col3, col4, col5 = st.columns(3)
         with col3:
@@ -224,7 +228,7 @@ def main():
     st.markdown(f"**Base Bet:** ${st.session_state.base_bet:.2f}")
     st.markdown(f"**T3 Status:** Level {st.session_state.t3_level}, Results: {st.session_state.t3_results}")
     
-    st.markdown("**Bead Plate:**")
+    st.markdown("**Bead Plate (Vertical):**")
     st.markdown(generate_bead_plate(), unsafe_allow_html=True)
 
     if st.button("Quit"):
