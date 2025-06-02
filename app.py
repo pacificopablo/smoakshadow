@@ -132,6 +132,51 @@ def process_result(outcome):
 
         st.session_state.bet_history.append((outcome, bet_amount, bet_selection, bet_outcome, st.session_state.current_position, st.session_state.t3_level, st.session_state.t3_results[:]))
 
+def generate_bead_plate():
+    rows, cols = 6, 10
+    html = """
+    <style>
+        .bead-plate {
+            display: grid;
+            grid-template-columns: repeat(10, 30px);
+            gap: 2px;
+            margin: 10px 0;
+        }
+        .bead-cell {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .player { background-color: blue; }
+        .banker { background-color: red; }
+        .tie { background-color: green; }
+        .empty { background-color: gray; }
+    </style>
+    <div class="bead-plate">
+    """
+    outcomes = [bet[0] for bet in st.session_state.bet_history]  # Get result from each bet
+    for i in range(rows * cols):
+        row = i // cols
+        col = i % cols
+        if i < len(outcomes):
+            outcome = outcomes[i]
+            if outcome == 'P':
+                html += '<div class="bead-cell player">P</div>'
+            elif outcome == 'B':
+                html += '<div class="bead-cell banker">B</div>'
+            elif outcome == 'T':
+                html += '<div class="bead-cell tie">T</div>'
+        else:
+            html += '<div class="bead-cell empty"></div>'
+    html += "</div>"
+    return html
+
 def quit_game():
     win_rate = (st.session_state.wins / st.session_state.total_bets * 100) if st.session_state.total_bets > 0 else 0
     st.info(f"Game Over\nTotal Bets: {st.session_state.total_bets}\nWins: {st.session_state.wins}\nLosses: {st.session_state.losses}\nWin Rate: {win_rate:.2f}%\nFinal Bankroll: ${st.session_state.bankroll:.2f}")
@@ -178,6 +223,9 @@ def main():
     st.markdown(f"**Bankroll:** ${st.session_state.bankroll:.2f}")
     st.markdown(f"**Base Bet:** ${st.session_state.base_bet:.2f}")
     st.markdown(f"**T3 Status:** Level {st.session_state.t3_level}, Results: {st.session_state.t3_results}")
+    
+    st.markdown("**Bead Plate:**")
+    st.markdown(generate_bead_plate(), unsafe_allow_html=True)
 
     if st.button("Quit"):
         quit_game()
