@@ -764,9 +764,10 @@ def main():
                 reason = "Bankroll too low to continue betting."
                 emotional_tone = "Cautious"
             if bet == 'Pass':
-                st.markdown("**No Bet**: Insufficient confidence or bankroll to place a bet.")
+                st.markdown("**No Bet**: <span style='color: #38a169;'>Pass</span> | Insufficient confidence or bankroll to place a bet.", unsafe_allow_html=True)
             else:
-                st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Bet Size**: ${recommended_bet_size:.2f} | **Mood**: {emotional_tone}")
+                bet_color = '#3182ce' if bet == 'Player' else '#e53e3e' if bet == 'Banker' else '#38a169'
+                st.markdown(f"**Bet**: <span style='color: {bet_color};'>{bet}</span> | **Confidence**: {confidence}% | **Bet Size**: ${recommended_bet_size:.2f} | **Mood**: {emotional_tone}", unsafe_allow_html=True)
             st.markdown(f"**Reasoning**: {reason}")
             if pattern_insights:
                 st.markdown("### Pattern Insights")
