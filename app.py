@@ -731,6 +731,21 @@ def main():
                     st.markdown("No results yet. Enter results below.")
 
         with st.expander("Prediction", expanded=True):
+            bet, confidence, reason, emotional_tone, pattern_insights = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
+            st.markdown("### Prediction")
+            current_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else st.session_state.initial_bankroll
+            recommended_bet_size = money_management(current_bankroll, st.session_state.base_bet, st.session_state.money_management_strategy)
+            if current_bankroll < max(1.0, st.session_state.base_bet):
+                st.warning("Insufficient bankroll to place a bet. Please increase your bankroll or reset the game.")
+                bet = 'Pass'
+                confidence = 0
+                reason = "Bankroll too low to continue betting."
+                emotional_tone = "Cautious"
+            if bet == 'Pass':
+                st.markdown("**No Bet**: Insufficient confidence or bankroll to place a bet.")
+            else:
+                st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Bet Size**: ${recommended_bet_size:.2f} | **Mood**: {emotional_tone}")
+
             # Display recent history horizontally
             st.markdown("### Recent History")
             st.markdown("<p style='font-size: 12px; color: #666666;'>Blue (🎵): Player, Red (🎴): Banker, Green (🎢): Tie</p>", unsafe_allow_html=True)
@@ -746,20 +761,6 @@ def main():
             if not st.session_state.history:
                 st.markdown("No history yet. Enter results above.")
 
-            st.markdown("### Prediction")
-            bet, confidence, reason, emotional_tone, pattern_insights = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
-            current_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else st.session_state.initial_bankroll
-            recommended_bet_size = money_management(current_bankroll, st.session_state.base_bet, st.session_state.money_management_strategy)
-            if current_bankroll < max(1.0, st.session_state.base_bet):
-                st.warning("Insufficient bankroll to place a bet. Please increase your bankroll or reset the game.")
-                bet = 'Pass'
-                confidence = 0
-                reason = "Bankroll too low to continue betting."
-                emotional_tone = "Cautious"
-            if bet == 'Pass':
-                st.markdown("**No Bet**: Insufficient confidence or bankroll to place a bet.")
-            else:
-                st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Bet Size**: ${recommended_bet_size:.2f} | **Mood**: {emotional_tone}")
             st.markdown(f"**Reasoning**: {reason}")
 
             if pattern_insights:
