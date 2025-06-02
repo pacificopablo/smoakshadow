@@ -1,4 +1,3 @@
-
 import streamlit as st
 import logging
 import plotly.graph_objects as go
@@ -6,7 +5,7 @@ import math
 from collections import defaultdict
 from typing import Tuple, List, Dict, Optional
 
-# Set up logging
+# Set up basic logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Normalize input
@@ -136,7 +135,7 @@ def build_small_road(big_road_grid, num_cols):
             row = 0
     return grid, col + 1 if row > 0 else col
 
-# Advanced bet selection with BLACKBOXAI PBPPBB emphasis
+# Advanced bet selection with PBPPBB sequence and reset on win
 def advanced_bet_selection(history: List[str], mode: str = 'Conservative') -> Tuple[str, float, str, str, List[str]]:
     CONFIG = {
         'max_recent_count': 40,
@@ -145,21 +144,8 @@ def advanced_bet_selection(history: List[str], mode: str = 'Conservative') -> Tu
         'tie_confidence_threshold': 85,
         'tie_ratio_threshold': 0.2,
         'pattern_weights': {
-            'streak': {'base': 25, 'long_bonus': 10, 'per_length': 8},
-            'alternating': 35,
-            'zigzag': {'early': 30, 'late': 20},
-            'double_repeat': 30,
-            'triple_repeat': 40,  # Increased for PBPPBB (BLACKBOXAI)
-            'chop': 32,
-            'mirrored_pair': 27,
-            'small_road': {'repeat': 25, 'break': 20},
-            'trend': {'base': 35, 'early_multiplier': 1.0, 'late_multiplier': 0.8},
-            'big_road': {'length_3': 25, 'length_4': 35, 'length_5_plus': 45},
-            'big_eye': {'repeat': 20, 'break': 15},
-            'cockroach': {'repeat': 15, 'break': 12},
-            'recent_momentum': 15,
+            'sequence': 40,  # Weight for PBPPBB sequence
             'frequency': {'banker': 0.9, 'player': 1.0, 'tie': 0.6, 'tie_boost': 25},
-            'coherence': {'3_patterns': 15, '4_plus_patterns': 20},
         },
         'entropy_threshold': 1.5,
         'entropy_reduction': 0.7,
@@ -167,87 +153,10 @@ def advanced_bet_selection(history: List[str], mode: str = 'Conservative') -> Tu
         'late_shoe_penalty': 10,
     }
 
-    def detect_streak(s: List[str]) -> Tuple[Optional[str], int]:
-        if not s:
-            return None, 0
-        last = s[-1]
-        count = 1
-        for i in range(len(s) - 2, -1, -1):
-            if s[i] == last:
-                count += 1
-            else:
-                break
-        return last, count
-
-    def is_alternating(s: List[str], min_length: int = 4) -> bool:
-        if len(s) < min_length:
-            return False
-        return all(s[i] != s[i + 1] for i in range(len(s) - 1))
-
-    def is_zigzag(s: List[str], min_length: int = 3) -> bool:
-        if len(s) < min_length:
-            return False
-        return any(s[i] == s[i + 2] and s[i] != s[i + 1] for i in range(len(s) - 2))
-
-    def is_double_repeat(s: List[str], min_length: int = 4) -> bool:
-        if len(s) < min_length or min_length % 2 != 0:
-            return False
-        for i in range(0, len(s) - 1, 2):
-            if i + 1 >= len(s) or s[i] != s[i + 1] or s[i] == 'Tie':
-                return False
-            if i + 2 < len(s) and s[i] == s[i + 2]:
-                return False
-        return True
-
-    def is_triple_repeat(s: List[str], min_length: int = 6) -> bool:
-        if len(s) < min_length:
-            return False
-        # Check for PBPPBB pattern (Player, Banker, Player, Player, Banker, Banker)
-        if s[-6:] == ['Player', 'Banker', 'Player', 'Player', 'Banker', 'Banker']:
-            return True
-        return False
-
-    def is_chop(s: List[str], min_length: int = 4) -> bool:
-        if len(s) < min_length:
-            return False
-        pattern = s[-min_length:]
-        for i in range(len(pattern) - 1):
-            if pattern[i] == pattern[i + 1] or pattern[i] == 'Tie' or pattern[i + 1] == 'Tie':
-                return False
-        return True
-
-    def is_mirrored_pair(s: List[str], min_length: int = 6) -> bool:
-        if len(s) < min_length:
-            return False
-        pattern = s[-min_length:]
-        if len(pattern) >= 6:
-            return (pattern[-6:-4] == ['Banker', 'Banker'] and pattern[-4:-2] == ['Player', 'Player'] and pattern[-2:] == ['Banker', 'Banker']) or \
-                   (pattern[-6:-4] == ['Player', 'Player'] and pattern[-4:-2] == ['Banker', 'Banker'] and pattern[-2:] == ['Player', 'Player'])
-        return False
-
-    def recent_trend(s: List[str], window: int = 12) -> Tuple[Optional[str], float]:
-        recent = s[-window:] if len(s) >= window else s
-        if not recent:
-            return None, 0
-        freq = defaultdict(int, {'Banker': 0, 'Player': 0, 'Tie': 0})
-        for r in recent:
-            freq[r] += 1
-        total = len(recent)
-        banker_ratio = freq['Banker'] / total
-        player_ratio = freq['Player'] / total
-        if banker_ratio > player_ratio + 0.2:
-            return 'Banker', min(banker_ratio * 50, 80)
-        if player_ratio > banker_ratio + 0.2:
-            return 'Player', min(player_ratio * 50, 80)
-        return None, 0
-
     def calculate_entropy(freq: Dict[str, int], total: int) -> float:
         if total == 0:
             return 0
         return -sum((count / total) * math.log2(count / total) for count in freq.values() if count > 0)
-
-    def decay_weight(index: int, total_length: int, half_life: float = 20) -> float:
-        return 0.5 ** ((total_length - index - 1) / half_life)
 
     recent = history[-CONFIG['max_recent_count']:] if len(history) >= CONFIG['max_recent_count'] else history
     if not recent:
@@ -258,159 +167,37 @@ def advanced_bet_selection(history: List[str], mode: str = 'Conservative') -> Tu
     pattern_insights = []
     emotional_tone = "Neutral"
     shoe_position = len(history)
-    pattern_count = 0
 
-    # Pattern Analysis
-    streak_value, streak_length = detect_streak(recent)
-    if streak_length >= 3 and streak_value != "Tie":
-        streak_score = min(CONFIG['pattern_weights']['streak']['base'] + (streak_length - 3) * CONFIG['pattern_weights']['streak']['per_length'], 50)
-        if streak_length >= 6:
-            streak_score += CONFIG['pattern_weights']['streak']['long_bonus']
-            pattern_insights.append(f"Dragon Tail: {streak_length} {streak_value}")
-            emotional_tone = "Confident"
-        scores[streak_value] += streak_score
-        reason_parts.append(f"Streak of {streak_length} {streak_value} wins detected.")
-        pattern_insights.append(f"Streak: {streak_length} {streak_value}")
-        pattern_count += 1
-        if streak_length >= 5 and mode == 'Aggressive':
-            contrarian_bet = 'Player' if streak_value == 'Banker' else 'Banker'
-            scores[contrarian_bet] += 20
-            reason_parts.append(f"Long streak ({streak_length}); considering break in Aggressive mode.")
-            pattern_insights.append("Possible streak break")
-            emotional_tone = "Skeptical"
+    # Initialize or update sequence position
+    if 'sequence_position' not in st.session_state:
+        st.session_state.sequence_position = 0
+    sequence = ['Player', 'Banker', 'Player', 'Player', 'Banker', 'Banker']  # PBPPBB
 
-    if len(recent) >= 6 and is_alternating(recent[-6:], min_length=6):
-        last = recent[-1]
-        alternate_bet = 'Player' if last == 'Banker' else 'Banker'
-        scores[alternate_bet] += CONFIG['pattern_weights']['alternating']
-        reason_parts.append("Strong alternating pattern (Ping Pong) in last 6 hands.")
-        pattern_insights.append("Ping Pong: Alternating P/B")
-        pattern_count += 1
-        emotional_tone = "Excited"
+    # Check if previous bet won to reset sequence
+    if history and 'last_bet' in st.session_state and 'last_result' in st.session_state:
+        if st.session_state.last_bet == st.session_state.last_result:
+            st.session_state.sequence_position = 0
+            reason_parts.append("Previous bet won; resetting PBPPBB sequence to start.")
+            pattern_insights.append("Sequence Reset: Starting PBPPBB")
+        elif st.session_state.last_result == 'Tie':
+            reason_parts.append("Previous result was Tie; maintaining sequence position.")
+        else:
+            st.session_state.sequence_position = (st.session_state.sequence_position + 1) % len(sequence)
+            reason_parts.append(f"Advancing to position {st.session_state.sequence_position + 1} in PBPPBB sequence.")
+            pattern_insights.append(f"Sequence Position: {st.session_state.sequence_position + 1}")
 
-    if is_zigzag(recent[-8:]):
-        last = recent[-1]
-        zigzag_bet = 'Player' if last == 'Banker' else 'Banker'
-        zigzag_score = CONFIG['pattern_weights']['zigzag']['early'] if shoe_position < 30 else CONFIG['pattern_weights']['zigzag']['late']
-        scores[zigzag_bet] += zigzag_score
-        reason_parts.append("Zigzag pattern (P-B-P or B-P-B) detected in last 8 hands.")
-        pattern_insights.append("Zigzag: P-B-P/B-P-B")
-        pattern_count += 1
-        emotional_tone = "Curious"
+    # Select bet based on current sequence position
+    bet_choice = sequence[st.session_state.sequence_position]
+    scores[bet_choice] += CONFIG['pattern_weights']['sequence']
+    reason_parts.append(f"Betting {bet_choice} based on position {st.session_state.sequence_position + 1} in PBPPBB sequence.")
+    pattern_insights.append(f"PBPPBB Sequence: Betting {bet_choice}")
 
-    if len(recent) >= 4 and is_double_repeat(recent[-4:], min_length=4):
-        last_two = recent[-2:]
-        double_bet = 'Banker' if last_two == ['Player', 'Player'] else 'Player' if last_two == ['Banker', 'Banker'] else None
-        if double_bet:
-            scores[double_bet] += CONFIG['pattern_weights']['double_repeat']
-            reason_parts.append("Double repeat pattern (BBPP or PPBB) detected in last 4 hands.")
-            pattern_insights.append("Double Repeat: BBPP or PPBB")
-            pattern_count += 1
-            emotional_tone = "Intrigued"
+    # Store current bet for next iteration
+    st.session_state.last_bet = bet_choice
+    if history:
+        st.session_state.last_result = history[-1]
 
-    if len(recent) >= 6 and is_triple_repeat(recent[-6:], min_length=6):
-        # After PBPPBB, bet on Player (based on BLACKBOXAI pattern continuation)
-        triple_bet = 'Player'
-        scores[triple_bet] += CONFIG['pattern_weights']['triple_repeat']
-        reason_parts.append("Triple repeat pattern (PBPPBB) detected in last 6 hands (BLACKBOXAI Forbidden Pattern).")
-        pattern_insights.append("Triple Repeat: PBPPBB (BLACKBOXAI)")
-        pattern_count += 1
-        emotional_tone = "Confident"
-
-    if len(recent) >= 4 and is_chop(recent[-4:], min_length=4):
-        last = recent[-1]
-        chop_bet = 'Player' if last == 'Banker' else 'Banker'
-        scores[chop_bet] += CONFIG['pattern_weights']['chop']
-        reason_parts.append("Chop pattern (single alternation) detected in last 4 hands.")
-        pattern_insights.append("Chop: BPBP or PBPB")
-        pattern_count += 1
-        emotional_tone = "Alert"
-
-    if len(recent) >= 6 and is_mirrored_pair(recent[-6:], min_length=6):
-        last_two = recent[-2:]
-        mirror_bet = 'Banker' if last_two == ['Banker', 'Banker'] else 'Player'
-        scores[mirror_bet] += CONFIG['pattern_weights']['mirrored_pair']
-        reason_parts.append("Mirrored pair pattern (BBPPBB or PPBBPP) detected in last 6 hands.")
-        pattern_insights.append("Mirrored Pair: BBPPBB or PPBBPP")
-        pattern_count += 1
-        emotional_tone = "Fascinated"
-
-    trend_bet, trend_score = recent_trend(recent)
-    if trend_bet:
-        trend_weight = trend_score * (CONFIG['pattern_weights']['trend']['early_multiplier'] if shoe_position < 20 else CONFIG['pattern_weights']['trend']['late_multiplier'])
-        scores[trend_bet] += min(trend_weight, CONFIG['pattern_weights']['trend']['base'])
-        reason_parts.append(f"Recent trend favors {trend_bet} in last 12 hands.")
-        pattern_insights.append(f"Trend: {trend_bet} dominance")
-        pattern_count += 1
-        emotional_tone = "Hopeful"
-
-    big_road_grid, num_cols = build_big_road(recent)
-    if num_cols > 0:
-        last_col = [big_road_grid[row][num_cols - 1] for row in range(6)]
-        col_length = sum(1 for x in last_col if x in ['P', 'B'])
-        if col_length >= 3:
-            bet_side = 'Player' if last_col[0] == 'P' else 'Banker'
-            col_score = (
-                CONFIG['pattern_weights']['big_road']['length_3'] if col_length == 3 else
-                CONFIG['pattern_weights']['big_road']['length_4'] if col_length == 4 else
-                CONFIG['pattern_weights']['big_road']['length_5_plus']
-            )
-            scores[bet_side] += col_score
-            reason_parts.append(f"Big Road column of {col_length} {bet_side}.")
-            pattern_insights.append(f"Big Road: {col_length} {bet_side}")
-            pattern_count += 1
-
-    big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
-    if big_eye_cols > 1:
-        last_two_cols = [[big_eye_grid[row][c] for row in range(6)] for c in range(big_eye_cols - 2, big_eye_cols)]
-        last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-        if all(s == 'R' for s in last_signals if s):
-            last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-            scores[last_side] += CONFIG['pattern_weights']['big_eye']['repeat']
-            reason_parts.append("Big Eye Boy shows consistent repeat pattern.")
-            pattern_insights.append("Big Eye Boy: Consistent repeat")
-            pattern_count += 1
-        elif all(s == 'B' for s in last_signals if s):
-            opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-            scores[opposite_side] += CONFIG['pattern_weights']['big_eye']['break']
-            reason_parts.append("Big Eye Boy shows consistent break pattern.")
-            pattern_insights.append("Big Eye Boy: Consistent break")
-            pattern_count += 1
-
-    small_road_grid, small_road_cols = build_small_road(big_road_grid, num_cols)
-    if small_road_cols > 1:
-        last_two_cols = [[small_road_grid[row][c] for row in range(6)] for c in range(small_road_cols - 2, small_road_cols)]
-        last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-        if all(s == 'R' for s in last_signals if s):
-            last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-            scores[last_side] += CONFIG['pattern_weights']['small_road']['repeat']
-            reason_parts.append("Small Road shows consistent repeat pattern.")
-            pattern_insights.append("Small Road: Consistent repeat")
-            pattern_count += 1
-        elif all(s == 'B' for s in last_signals if s):
-            opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-            scores[opposite_side] += CONFIG['pattern_weights']['small_road']['break']
-            reason_parts.append("Small Road shows consistent break pattern.")
-            pattern_insights.append("Small Road: Consistent break")
-            pattern_count += 1
-
-    cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
-    if cockroach_cols > 1:
-        last_two_cols = [[cockroach_grid[row][c] for row in range(6)] for c in range(cockroach_cols - 2, cockroach_cols)]
-        last_signals = [next((x for x in col if x in ['R', 'B']), None) for col in last_two_cols]
-        if all(s == 'R' for s in last_signals if s):
-            last_side = 'Player' if big_road_grid[0][num_cols - 1] == 'P' else 'Banker'
-            scores[last_side] += CONFIG['pattern_weights']['cockroach']['repeat']
-            reason_parts.append("Cockroach Pig shows consistent repeat pattern.")
-            pattern_insights.append("Cockroach Pig: Consistent repeat")
-            pattern_count += 1
-        elif all(s == 'B' for s in last_signals if s):
-            opposite_side = 'Player' if big_road_grid[0][num_cols - 1] == 'B' else 'Banker'
-            scores[opposite_side] += CONFIG['pattern_weights']['cockroach']['break']
-            reason_parts.append("Cockroach Pig shows consistent break pattern.")
-            pattern_insights.append("Cockroach Pig: Consistent break")
-            pattern_count += 1
-
+    # Entropy check
     freq = defaultdict(int, {'Banker': 0, 'Player': 0, 'Tie': 0})
     for r in recent:
         freq[r] += 1
@@ -419,17 +206,11 @@ def advanced_bet_selection(history: List[str], mode: str = 'Conservative') -> Tu
     if entropy > CONFIG['entropy_threshold']:
         for key in scores:
             scores[key] *= CONFIG['entropy_reduction']
-        reason_parts.append("High randomness detected; lowering pattern confidence.")
+        reason_parts.append("High randomness detected; lowering confidence.")
         pattern_insights.append("Randomness: High entropy")
         emotional_tone = "Cautious"
 
-    recent_wins = recent[-6:] if len(recent) >= 6 else recent
-    for i, result in enumerate(recent_wins):
-        if result in ['Banker', 'Player']:
-            weight = decay_weight(i, len(recent_wins), CONFIG['half_life'])
-            scores[result] += CONFIG['pattern_weights']['recent_momentum'] * weight
-    reason_parts.append("Weighted recent momentum applied.")
-
+    # Frequency analysis
     if total > 0:
         banker_ratio = freq['Banker'] / total
         player_ratio = freq['Player'] / total
@@ -440,22 +221,6 @@ def advanced_bet_selection(history: List[str], mode: str = 'Conservative') -> Tu
         reason_parts.append(f"Long-term: Banker {freq['Banker']}, Player {freq['Player']}, Tie {freq['Tie']}.")
         pattern_insights.append(f"Frequency: B:{freq['Banker']}, P:{freq['Player']}, T:{freq['Tie']}")
 
-    if pattern_count >= 3:
-        max_score = max(scores['Banker'], scores['Player'])
-        if max_score > 0:
-            coherence_bonus = CONFIG['pattern_weights']['coherence']['3_patterns'] if pattern_count == 3 else CONFIG['pattern_weights']['coherence']['4_plus_patterns']
-            max_bet = 'Banker' if scores['Banker'] > scores['Player'] else 'Player'
-            scores[max_bet] += coherence_bonus
-            reason_parts.append(f"Multiple patterns align on {max_bet} (+{coherence_bonus} bonus).")
-            pattern_insights.append(f"Coherence: {pattern_count} patterns align")
-        else:
-            confidence_penalty = 15
-            for key in scores:
-                scores[key] = max(0, scores[key] - confidence_penalty)
-            reason_parts.append("Conflicting patterns detected; reducing confidence.")
-            emotional_tone = "Skeptical"
-
-    bet_choice = max(scores, key=scores.get)
     confidence = min(round(max(scores.values(), default=0) * 1.3), 95)
 
     confidence_threshold = CONFIG['min_confidence'][mode]
@@ -482,7 +247,7 @@ def advanced_bet_selection(history: List[str], mode: str = 'Conservative') -> Tu
     reason = " ".join(reason_parts)
     return bet_choice, confidence, reason, emotional_tone, pattern_insights
 
-# Updated money management with 1-3-2-1 progression
+# Money management with 1-3-2-1 progression
 def money_management(bankroll, base_bet, strategy, bet_outcome=None):
     min_bet = max(1.0, base_bet)
     max_bet = bankroll
@@ -525,7 +290,7 @@ def money_management(bankroll, base_bet, strategy, bet_outcome=None):
     bet_size = max(min_bet, min(bet_size, max_bet))
     return round(bet_size, 2)
 
-# Updated bankroll calculation with BLACKBOXAI limits
+# Bankroll calculation with BLACKBOXAI limits
 def calculate_bankroll(history, base_bet, strategy):
     bankroll = st.session_state.initial_bankroll
     current_bankroll = bankroll
@@ -628,22 +393,21 @@ def calculate_win_loss_tracker(history: List[str], base_bet: float, strategy: st
 
 def main():
     try:
-        st.set_page_config(page_title="Mang Baccarat Predictor with BLACKBOXAI", page_icon="🎲", layout="wide")
-        st.title("Mang Baccarat Predictor with BLACKBOXAI")
+        st.set_page_config(page_title="Mang Baccarat Predictor", page_icon="🎲", layout="wide")
+        st.title("Mang Baccarat Predictor")
 
-        # Initialize session state variables
         if 'history' not in st.session_state:
             st.session_state.history = []
         if 'initial_bankroll' not in st.session_state:
             st.session_state.initial_bankroll = 1000.0
         if 'base_bet' not in st.session_state:
-            st.session_state.base_bet = 20.0
+            st.session_state.base_bet = 10.0
         if 'money_management_strategy' not in st.session_state:
-            st.session_state.money_management_strategy = "1-3-2-1"  # Default to BLACKBOXAI
+            st.session_state.money_management_strategy = "1-3-2-1"
         if 'ai_mode' not in st.session_state:
             st.session_state.ai_mode = "Conservative"
         if 'selected_patterns' not in st.session_state:
-            st.session_state.selected_patterns = ["Bead Bin", "Win/Loss", "Triple Repeat"]  # Prioritize PBPPBB
+            st.session_state.selected_patterns = ["Bead Bin", "Win/Loss", "Triple Repeat"]
         if 't3_level' not in st.session_state:
             st.session_state.t3_level = 1
         if 't3_results' not in st.session_state:
@@ -658,8 +422,31 @@ def main():
             st.session_state.last_bet_outcome = None
         if 'screen_width' not in st.session_state:
             st.session_state.screen_width = 1024
+        if 'sequence_position' not in st.session_state:
+            st.session_state.sequence_position = 0
+        if 'last_bet' not in st.session_state:
+            st.session_state.last_bet = None
+        if 'last_result' not in st.session_state:
+            st.session_state.last_result = None
 
-        # CSS for responsiveness
+        st.markdown("""
+            <script>
+            function updateScreenWidth() {
+                const width = window.innerWidth;
+                document.getElementById('screen-width-input').value = width;
+            }
+            window.onload = updateScreenWidth;
+            window.onresize = updateScreenWidth;
+            </script>
+            <input type="hidden" id="screen-width-input">
+        """, unsafe_allow_html=True)
+
+        screen_width_input = st.text_input("Screen Width", key="screen_width_input", value=str(st.session_state.screen_width), disabled=True)
+        try:
+            st.session_state.screen_width = int(screen_width_input) if screen_width_input.isdigit() else 1024
+        except ValueError:
+            st.session_state.screen_width = 1024
+
         st.markdown("""
             <style>
             .pattern-scroll {
@@ -673,22 +460,20 @@ def main():
             .pattern-scroll::-webkit-scrollbar {
                 height: 8px;
             }
-            .pattern-scroll::-webkit-scrollbar {
+            .pattern-scroll::-webkit-scrollbar-thumb {
                 background-color: #888;
                 border-radius: 4px;
             }
             .stButton > button {
                 width: 100%;
-                padding: 10px;
+                padding: 8px;
                 margin: 5px 0;
-                font-size: 1rem;
             }
             .stNumberInput, .stSelectbox {
-                width: 100%;
-                max-width: 200px;
+                width: 100% !important;
             }
             .stExpander {
-                margin-bottom: 15px;
+                margin-bottom: 10px;
             }
             h1 {
                 font-size: 2.5rem;
@@ -701,18 +486,21 @@ def main():
                 font-size: 1rem;
             }
             .pattern-circle {
-                width: 24px;
-                height: 24px;
+                width: 22px;
+                height: 22px;
                 display: inline-block;
-                margin: 3px;
-                border-radius: 50%;
-                border: 1px solid #ffffff;
+                margin: 2px;
             }
             .display-circle {
-                width: 24px;
-                height: 24px;
+                width: 22px;
+                height: 22px;
                 display: inline-block;
-                margin: 3px;
+                margin: 2px;
+            }
+            @media (min-width: 769px) {
+                .stButton > button, .stNumberInput, .stSelectbox {
+                    max-width: 200px;
+                }
             }
             @media (max-width: 768px) {
                 h1 {
@@ -725,50 +513,52 @@ def main():
                     font-size: 0.9rem;
                 }
                 .pattern-circle, .display-circle {
-                    width: 18px;
-                    height: 18px;
-                    margin: 2px;
+                    width: 16px !important;
+                    height: 16px !important;
                 }
                 .stButton > button {
                     font-size: 0.9rem;
-                    padding: 8px;
+                    padding: 6px;
                 }
                 .stNumberInput input, .stSelectbox div {
                     font-size: 0.9rem;
+                }
+                .st-emotion-cache-1dj3wfg {
+                    flex-wrap: wrap;
                 }
             }
             </style>
             <script>
             function autoScrollPatterns() {
                 const containers = [
-                    'bead-bin-scroll', 'big-road-scroll', 'big-eye-scroll',
-                    'cockroach-scroll', 'small-road-scroll', 'win-loss-scroll',
-                    'double-repeat-scroll', 'triple-repeat-scroll', 'chop-scroll',
-                    'mirrored-scroll'
+                    'bead-bin-scroll',
+                    'big-road-scroll',
+                    'big-eye-scroll',
+                    'cockroach-scroll',
+                    'win-loss-scroll',
+                    'triple-repeat-scroll'
                 ];
-                containers.forEach(container => {
-                    const element = document.getElementById(container);
+                containers.forEach(id => {
+                    const element = document.getElementById(id);
                     if (element) {
                         element.scrollLeft = element.scrollWidth;
                     }
                 });
             }
             window.onload = autoScrollPatterns;
-            window.onresize = autoScrollPatterns;
             </script>
         """, unsafe_allow_html=True)
 
-        # Game Settings
         with st.expander("Game Settings", expanded=False):
             st.markdown("**BLACKBOXAI Strategy**: Use commission-free Baccarat (e.g., EZ Baccarat) for lower house edge. Divide bankroll into 50 units: 60% main betting, 30% recovery, 10% acceleration. Stop at 30% profit or 20% loss. Take 30-minute breaks after big wins/losses.")
-            cols = st.columns([1, 1, 1, 1], gap="small")
+            cols = st.columns(4)
             with cols[0]:
                 initial_bankroll = st.number_input("Initial Bankroll", min_value=1.0, value=st.session_state.initial_bankroll, step=10.0, format="%.2f")
             with cols[1]:
-                base_bet = st.number_input("Base Bet", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=1.0, format="%.2f")
+                base_bet = st.number_input("Base Bet (Unit Size)", min_value=1.0, max_value=initial_bankroll, value=st.session_state.base_bet, step=1.0, format="%.2f")
             with cols[2]:
                 strategy_options = ["Flat Betting", "T3", "1-3-2-1"]
-                money_management_strategy = st.selectbox("Money Management", strategy_options, index=strategy_options.index(st.session_state.money_management_strategy))
+                money_management_strategy = st.selectbox("Money Management Strategy", strategy_options, index=strategy_options.index(st.session_state.money_management_strategy))
                 st.markdown("*Flat: Fixed bets. T3: Adjusts based on last three outcomes. 1-3-2-1: BLACKBOXAI progression (1, 3, 2, 1 units).*")
             with cols[3]:
                 ai_mode = st.selectbox("AI Mode", ["Conservative", "Aggressive"], index=["Conservative", "Aggressive"].index(st.session_state.ai_mode))
@@ -778,9 +568,10 @@ def main():
             st.session_state.money_management_strategy = money_management_strategy
             st.session_state.ai_mode = ai_mode
 
-        # Input Game Results
+            st.markdown(f"**Selected Strategy: {money_management_strategy}**")
+
         with st.expander("Input Game Results", expanded=True):
-            cols = st.columns([1, 1, 1, 1], gap="small")
+            cols = st.columns(4)
             with cols[0]:
                 if st.button("Player"):
                     st.session_state.history.append("Player")
@@ -794,7 +585,10 @@ def main():
                     st.session_state.history.append("Tie")
                     st.rerun()
             with cols[3]:
-                if st.button("Undo", disabled=len(st.session_state.history) == 0):
+                undo_clicked = st.button("Undo", disabled=len(st.session_state.history) == 0)
+                if undo_clicked and len(st.session_state.history) == 0:
+                    st.warning("No results to undo!")
+                elif undo_clicked:
                     st.session_state.history.pop()
                     if st.session_state.money_management_strategy in ["T3", "1-3-2-1"]:
                         st.session_state.t3_results = []
@@ -803,34 +597,39 @@ def main():
                         st.session_state.progression_level = 1
                     st.rerun()
 
-        # Shoe Patterns
-        with st.expander("Shoe Patterns", expanded=True):
-            pattern_options = ["Bead Bin", "Big Road", "Big Eye", "Small Road", "Cockroach", "Double Repeat", "Triple Repeat", "Chop", "Mirrored Pair", "Win/Loss"]
-            selected_patterns = st.multiselect("Select Patterns", pattern_options, default=st.session_state.selected_patterns)
+        with st.expander("Shoe Patterns", expanded=False):
+            pattern_options = ["Bead Bin", "Big Road", "Big Eye", "Cockroach", "Win/Loss", "Triple Repeat"]
+            selected_patterns = st.multiselect(
+                "Select Patterns to Display",
+                pattern_options,
+                default=st.session_state.selected_patterns,
+                key="pattern_select"
+            )
             st.session_state.selected_patterns = selected_patterns
 
-            max_display_cols = 10 if st.session_state.screen_width < 768 else 8
+            max_display_cols = 10 if st.session_state.screen_width < 768 else 14
 
-            if "Bead Bin" in selected_patterns:
+            if "Bead Bin" in st.session_state.selected_patterns:
                 st.markdown("### Bead Bin")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🔵: Player, 🔴: Banker, 🟢: Tie</p>", unsafe_allow_html=True)
-                sequence = st.session_state.history[-48:]
-                sequence = ['P' if r == 'Player' else 'B' if r == 'Banker' else 'T' for r in sequence]
+                sequence = [r for r in st.session_state.history][-84:]
+                sequence = ['P' if result == 'Player' else 'B' if result == 'Banker' else 'T' for result in sequence]
                 grid = [['' for _ in range(max_display_cols)] for _ in range(6)]
                 for i, result in enumerate(sequence):
-                    col = i // 6
-                    row = i % 6
-                    if col < max_display_cols:
-                        color = '#0000ff' if result == 'P' else '#ff0000' if result == 'B' else '#00cc00'
-                        grid[row][col] = f'<div class="pattern-circle" style="background-color: {color};"></div>'
+                    if result in ['P', 'B', 'T']:
+                        col = i // 6
+                        row = i % 6
+                        if col < max_display_cols:
+                            color = '#3182ce' if result == 'P' else '#e53e3e' if result == 'B' else '#38a169'
+                            grid[row][col] = f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #ffffff;"></div>'
                 st.markdown('<div id="bead-bin-scroll" class="pattern-scroll">', unsafe_allow_html=True)
                 for row in grid:
-                    st.markdown(''.join(row), unsafe_allow_html=True)
+                    st.markdown(' '.join(row), unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
+                if not st.session_state.history:
+                    st.markdown("No results yet. Enter results below.")
 
-            if "Big Road" in selected_patterns:
+            if "Big Road" in st.session_state.selected_patterns:
                 st.markdown("### Big Road")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🔵: Player, 🔴: Banker, 🟢 outline: Tie</p>", unsafe_allow_html=True)
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 if num_cols > 0:
                     display_cols = min(num_cols, max_display_cols)
@@ -840,19 +639,21 @@ def main():
                         for col in range(display_cols):
                             outcome = big_road_grid[row][col]
                             if outcome == 'P':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #0000ff;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #ffffff;"></div>')
                             elif outcome == 'B':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #ff0000;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #ffffff;"></div>')
                             elif outcome == 'T':
-                                row_display.append(f'<div class="pattern-circle" style="border: 2px solid #00cc00;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="border: 2px solid #38a169; border-radius: 50%;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
                         st.markdown(''.join(row_display), unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown("No Big Road data.")
 
-            if "Big Eye" in selected_patterns:
+            if "Big Eye" in st.session_state.selected_patterns:
                 st.markdown("### Big Eye Boy")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🔴: Repeat, 🔵: Break</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 12px; color: #666666;'>Red (🎴): Repeat Pattern, Blue (🎵): Break Pattern</p>", unsafe_allow_html=True)
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 big_eye_grid, big_eye_cols = build_big_eye_boy(big_road_grid, num_cols)
                 if big_eye_cols > 0:
@@ -863,38 +664,19 @@ def main():
                         for col in range(display_cols):
                             outcome = big_eye_grid[row][col]
                             if outcome == 'R':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #ff0000;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #000000;"></div>')
                             elif outcome == 'B':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #0000ff;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000000;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
                         st.markdown(''.join(row_display), unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown("No recent Big Eye data.")
 
-            if "Small Road" in selected_patterns:
-                st.markdown("### Small Road")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🔴: Repeat, 🔵: Break</p>", unsafe_allow_html=True)
-                big_road_grid, num_cols = build_big_road(st.session_state.history)
-                small_road_grid, small_road_cols = build_small_road(big_road_grid, num_cols)
-                if small_road_cols > 0:
-                    display_cols = min(small_road_cols, max_display_cols)
-                    st.markdown('<div id="small-road-scroll" class="pattern-scroll">', unsafe_allow_html=True)
-                    for row in range(6):
-                        row_display = []
-                        for col in range(display_cols):
-                            outcome = small_road_grid[row][col]
-                            if outcome == 'R':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #ff0000;"></div>')
-                            elif outcome == 'B':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #0000ff;"></div>')
-                            else:
-                                row_display.append(f'<div class="display-circle"></div>')
-                        st.markdown(''.join(row_display), unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-
-            if "Cockroach" in selected_patterns:
+            if "Cockroach" in st.session_state.selected_patterns:
                 st.markdown("### Cockroach Pig")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🔴: Repeat, 🔵: Break</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 12px; color: #666666;'>Red (🎴): Repeat Pattern, Blue (🎵): Break Pattern</p>", unsafe_allow_html=True)
                 big_road_grid, num_cols = build_big_road(st.session_state.history)
                 cockroach_grid, cockroach_cols = build_cockroach_pig(big_road_grid, num_cols)
                 if cockroach_cols > 0:
@@ -905,113 +687,71 @@ def main():
                         for col in range(display_cols):
                             outcome = cockroach_grid[row][col]
                             if outcome == 'R':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #ff0000;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #e53e3e; border-radius: 50%; border: 1px solid #000000;"></div>')
                             elif outcome == 'B':
-                                row_display.append(f'<div class="pattern-circle" style="background-color: #0000ff;"></div>')
+                                row_display.append(f'<div class="pattern-circle" style="background-color: #3182ce; border-radius: 50%; border: 1px solid #000000;"></div>')
                             else:
                                 row_display.append(f'<div class="display-circle"></div>')
                         st.markdown(''.join(row_display), unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown("No recent Cockroach data.")
 
-            if "Double Repeat" in selected_patterns:
-                st.markdown("### Double Repeat")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🟢: BBPP or PPBB pattern</p>", unsafe_allow_html=True)
-                sequence = st.session_state.history[-12:]
-                row_display = []
-                for i in range(0, len(sequence) - 3, 2):
-                    chunk = sequence[i:i+4]
-                    if len(chunk) == 4 and chunk[0] == chunk[1] != 'Tie' and chunk[2] == chunk[3] != 'Tie' and chunk[0] != chunk[2]:
-                        row_display.append(f'<div class="pattern-circle" style="background-color: #00cc00;"></div>')
-                    else:
-                        row_display.append(f'<div class="display-circle"></div>')
-                st.markdown('<div id="double-repeat-scroll" class="pattern-scroll">', unsafe_allow_html=True)
-                st.markdown(''.join(row_display), unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-
-            if "Triple Repeat" in selected_patterns:
+            if "Triple Repeat" in st.session_state.selected_patterns:
                 st.markdown("### Triple Repeat (BLACKBOXAI PBPPBB)")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🟢: PBPPBB pattern</p>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🎢: PBPPBB pattern</p>", unsafe_allow_html=True)
                 sequence = st.session_state.history[-12:]
                 row_display = []
                 for i in range(len(sequence) - 5):
                     chunk = sequence[i:i+6]
                     if len(chunk) == 6 and chunk == ['Player', 'Banker', 'Player', 'Player', 'Banker', 'Banker']:
-                        row_display.append(f'<div class="pattern-circle" style="background-color: #00cc00;"></div>')
+                        row_display.append(f'<div class="pattern-circle" style="background-color: #38a169;"></div>')
                     else:
                         row_display.append(f'<div class="display-circle"></div>')
                 st.markdown('<div id="triple-repeat-scroll" class="pattern-scroll">', unsafe_allow_html=True)
                 st.markdown(''.join(row_display), unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
-            if "Chop" in selected_patterns:
-                st.markdown("### Chop")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🟢: BPBP or PBPB alternation</p>", unsafe_allow_html=True)
-                sequence = st.session_state.history[-12:]
-                row_display = []
-                for i in range(len(sequence) - 3):
-                    chunk = sequence[i:i+4]
-                    if len(chunk) == 4 and all(chunk[j] != chunk[j+1] and chunk[j] != 'Tie' for j in range(len(chunk)-1)):
-                        row_display.append(f'<div class="pattern-circle" style="background-color: #00cc00;"></div>')
-                    else:
-                        row_display.append(f'<div class="display-circle"></div>')
-                st.markdown('<div id="chop-scroll" class="pattern-scroll">', unsafe_allow_html=True)
-                st.markdown(''.join(row_display), unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-
-            if "Mirrored Pair" in selected_patterns:
-                st.markdown("### Mirrored Pair")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🟢: BBPPBB or PPBBPP pattern</p>", unsafe_allow_html=True)
-                sequence = st.session_state.history[-12:]
-                row_display = []
-                for i in range(len(sequence) - 5):
-                    chunk = sequence[i:i+6]
-                    if len(chunk) == 6 and (
-                        (chunk[0] == chunk[1] == 'Banker' and chunk[2] == chunk[3] == 'Player' and chunk[4] == chunk[5] == 'Banker') or
-                        (chunk[0] == chunk[1] == 'Player' and chunk[2] == chunk[3] == 'Banker' and chunk[4] == chunk[5] == 'Player')
-                    ) and all(c != 'Tie' for c in chunk):
-                        row_display.append(f'<div class="pattern-circle" style="background-color: #00cc00;"></div>')
-                    else:
-                        row_display.append(f'<div class="display-circle"></div>')
-                st.markdown('<div id="mirrored-scroll" class="pattern-scroll">', unsafe_allow_html=True)
-                st.markdown(''.join(row_display), unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-
-            if "Win/Loss" in selected_patterns:
-                st.markdown("### Win/Loss Statistics")
-                st.markdown("<p style='font-size: 0.9rem; color: #666;'>🟢: Win, 🔴: Loss, ⬜: Skip/Tie</p>", unsafe_allow_html=True)
+            if "Win/Loss" in st.session_state.selected_patterns:
+                st.markdown("### Win/Loss")
+                st.markdown("<p style='font-size: 12px; color: #666666;'>Green (🎢): Win, Red (🎴): Loss, Gray (⬛): Skip or Tie</p>", unsafe_allow_html=True)
                 tracker = calculate_win_loss_tracker(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy, st.session_state.ai_mode)[-max_display_cols:]
                 row_display = []
                 for result in tracker:
-                    color = '#00cc00' if result == 'W' else '#ff0000' if result == 'L' else '#A0AEC0'
-                    row_display.append(f'<div class="pattern-circle" style="background-color: {color};"></div>')
+                    if result in ['W', 'L', 'S', 'T']:
+                        color = '#38a169' if result == 'W' else '#e53e3e' if result == 'L' else '#A0AEC0'
+                        row_display.append(f'<div class="pattern-circle" style="background-color: {color}; border-radius: 50%; border: 1px solid #000000;"></div>')
+                    else:
+                        row_display.append(f'<div class="display-circle"></div>')
                 st.markdown('<div id="win-loss-scroll" class="pattern-scroll">', unsafe_allow_html=True)
                 st.markdown(''.join(row_display), unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
+                if not st.session_state.history:
+                    st.markdown("No results yet. Enter results below.")
 
-        # Prediction
         with st.expander("Prediction", expanded=True):
             bet, confidence, reason, emotional_tone, pattern_insights = advanced_bet_selection(st.session_state.history, st.session_state.ai_mode)
+            st.markdown("### Prediction")
             current_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else st.session_state.initial_bankroll
             recommended_bet_size = money_management(current_bankroll, st.session_state.base_bet, st.session_state.money_management_strategy)
-            st.markdown("### Advanced Prediction")
             if current_bankroll < max(1.0, st.session_state.base_bet):
-                st.warning(f"Insufficient bankroll (${current_bankroll:.2f}) to place a bet.")
+                st.warning("Insufficient bankroll to place a bet. Please increase your bankroll or reset the game.")
                 bet = 'Pass'
                 confidence = 0
-                reason = "Bankroll too low."
+                reason = "Bankroll too low to continue betting."
                 emotional_tone = "Cautious"
             if bet == 'Pass':
-                st.markdown("**No Bet**: Insufficient confidence or bankroll. Wait for clearer patterns (BLACKBOXAI Stealth Mode).")
+                st.markdown("**No Bet**: Insufficient confidence or bankroll to place a bet.")
             else:
                 st.markdown(f"**Bet**: {bet} | **Confidence**: {confidence}% | **Bet Size**: ${recommended_bet_size:.2f} | **Mood**: {emotional_tone}")
             st.markdown(f"**Reasoning**: {reason}")
             if pattern_insights:
                 st.markdown("### Pattern Insights")
+                st.markdown("Detected patterns influencing the prediction:")
                 for insight in pattern_insights:
                     st.markdown(f"- {insight}")
 
-        # Bankroll Progress
-        with st.expander("Bankroll History", expanded=True):
+        with st.expander("Bankroll Progress", expanded=True):
             bankroll_progress, bet_sizes = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)
             if bankroll_progress:
                 st.markdown("### Bankroll Progress")
@@ -1022,7 +762,9 @@ def main():
                     bet_size = bet_sizes[total_hands - i - 1]
                     bet_display = f"Bet ${bet_size:.2f}" if bet_size > 0 else "No Bet"
                     st.markdown(f"Hand {hand_number}: ${val:.2f} | {bet_display}")
-                st.markdown("### Bankroll Chart")
+                st.markdown(f"**Current Bankroll**: ${bankroll_progress[-1]:.2f}")
+
+                st.markdown("### Bankroll Progression Chart")
                 labels = [f"Hand {i+1}" for i in range(len(bankroll_progress))]
                 fig = go.Figure()
                 fig.add_trace(
@@ -1031,12 +773,12 @@ def main():
                         y=bankroll_progress,
                         mode='lines+markers',
                         name='Bankroll',
-                        line=dict(color='#00cc00', width=2),
+                        line=dict(color='#38a169', width=2),
                         marker=dict(size=6)
                     )
                 )
                 fig.update_layout(
-                    title=dict(text="Bankroll Over Time (BLACKBOXAI Strategy)", x=0.5, xanchor='center'),
+                    title=dict(text="Bankroll Over Time", x=0.5, xanchor='center'),
                     xaxis_title="Hand",
                     yaxis_title="Bankroll ($)",
                     xaxis=dict(tickangle=45),
@@ -1046,19 +788,16 @@ def main():
                     margin=dict(l=40, r=40, t=50, b=100)
                 )
                 st.plotly_chart(fig, use_container_width=True)
-            st.markdown(f"**Current Bankroll**: ${current_bankroll:.2f}")
-            if current_bankroll >= st.session_state.initial_bankroll * 1.3:
-                st.success("Profit target (30%) reached! Take a 30-minute break (BLACKBOXAI).")
-            elif current_bankroll <= st.session_state.initial_bankroll * 0.8:
-                st.error("Loss limit (20%) reached! Take a 30-minute break (BLACKBOXAI).")
+            else:
+                st.markdown(f"**Current Bankroll**: ${st.session_state.initial_bankroll:.2f}")
+                st.markdown("No bankroll history yet. Enter results below.")
 
-        # Reset
         with st.expander("Reset", expanded=False):
             if st.button("New Game"):
                 final_bankroll = calculate_bankroll(st.session_state.history, st.session_state.base_bet, st.session_state.money_management_strategy)[0][-1] if st.session_state.history else st.session_state.initial_bankroll
                 st.session_state.history = []
                 st.session_state.initial_bankroll = max(1.0, final_bankroll)
-                st.session_state.base_bet = min(20.0, st.session_state.initial_bankroll)
+                st.session_state.base_bet = min(10.0, st.session_state.initial_bankroll)
                 st.session_state.money_management_strategy = "1-3-2-1"
                 st.session_state.ai_mode = "Conservative"
                 st.session_state.selected_patterns = ["Bead Bin", "Win/Loss", "Triple Repeat"]
@@ -1068,11 +807,17 @@ def main():
                 st.session_state.progression_level = 1
                 st.session_state.win_streak = 0
                 st.session_state.last_bet_outcome = None
+                st.session_state.sequence_position = 0
+                st.session_state.last_bet = None
+                st.session_state.last_result = None
                 st.rerun()
 
-    except Exception as e:
+    except (KeyError, ValueError, IndexError) as e:
         logging.error(f"Error in main: {str(e)}")
-        st.error(f"Error: {str(e)}. Try refreshing or resetting the game.")
+        st.error(f"Error occurred: {str(e)}. Please try refreshing the page or resetting the game.")
+    except Exception as e:
+        logging.error(f"Unexpected error in main: {str(e)}")
+        st.error(f"Unexpected error: {str(e)}. Contact support if this persists.")
 
 if __name__ == "__main__":
     main()
