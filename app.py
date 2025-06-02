@@ -108,7 +108,7 @@ def process_result(outcome):
                 st.session_state.bankroll += bet_amount * 0.95  # Banker win with 5% commission
             else:
                 st.session_state.bankroll += bet_amount  # Player win
-            st.session_state.current_position = 0  # Reset to start of sequence
+            st.session_state.current_position = 0  # Reset to start of sequenceThe 
             if st.session_state.current_position == 0 and len(st.session_state.t3_results) == 0:
                 st.session_state.t3_level = max(1, st.session_state.t3_level - 1)
             st.session_state.t3_results.append('W')
@@ -181,6 +181,29 @@ def generate_bead_plate():
     html += "</div>"
     return html
 
+def generate_prediction_display():
+    if not st.session_state.session_active:
+        return "<div>-</div>"
+    bet = st.session_state.sequence[st.session_state.current_position]
+    amount = st.session_state.base_bet * st.session_state.t3_level
+    bet_name = "Player" if bet == 'P' else "Banker"
+    color = "blue" if bet == 'P' else "red"
+    html = f"""
+    <style>
+        .prediction {{
+            background-color: {color};
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            margin: 10px 0;
+        }}
+    </style>
+    <div class="prediction">{bet_name} (${amount:.2f})</div>
+    """
+    return html
+
 def quit_game():
     win_rate = (st.session_state.wins / st.session_state.total_bets * 100) if st.session_state.total_bets > 0 else 0
     st.info(f"Game Over\nTotal Bets: {st.session_state.total_bets}\nWins: {st.session_state.wins}\nLosses: {st.session_state.losses}\nWin Rate: {win_rate:.2f}%\nFinal Bankroll: ${st.session_state.bankroll:.2f}")
@@ -227,6 +250,9 @@ def main():
     st.markdown(f"**Bankroll:** ${st.session_state.bankroll:.2f}")
     st.markdown(f"**Base Bet:** ${st.session_state.base_bet:.2f}")
     st.markdown(f"**T3 Status:** Level {st.session_state.t3_level}, Results: {st.session_state.t3_results}")
+    
+    st.markdown("**Next Predicted Bet:**")
+    st.markdown(generate_prediction_display(), unsafe_allow_html=True)
     
     st.markdown("**Bead Plate (Vertical):**")
     st.markdown(generate_bead_plate(), unsafe_allow_html=True)
