@@ -2,20 +2,20 @@ import streamlit as st
 import streamlit.components.v1 as components
 import time
 
-# 🔗 Target redirect URL
+# Target redirect URL
 redirect_url = "https://pacificopablo.github.io/BFC-TRACKER/"
 
-# 🌐 Page configuration
+# Page setup
 st.set_page_config(
     page_title="Welcome to Baccarat Fund Club",
     page_icon="🃏",
     layout="centered"
 )
 
-# 🎰 Baccarat background image
+# Baccarat background image (royalty-free)
 background_image_url = "https://cdn.pixabay.com/photo/2017/01/18/19/19/roulette-1992501_1280.jpg"
 
-# 🖌️ Custom CSS styling
+# Custom CSS for full-page background and styling
 st.markdown(f"""
     <style>
     body {{
@@ -25,7 +25,7 @@ st.markdown(f"""
         background-repeat: no-repeat;
     }}
     .stApp {{
-        background-color: rgba(0, 0, 0, 0.6);
+        background-color: rgba(0, 0, 0, 0.65);
         padding-top: 200px;
         padding-bottom: 200px;
         color: white;
@@ -47,14 +47,14 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# 🎉 Welcome text
+# Welcome message
 st.markdown("## 🃏 Welcome to Baccarat Fund Club")
 st.markdown("### Click the **Enter** button to go to your dashboard")
 
-# 🎲 Enter button with spinner + redirect
+# Enter button with loading spinner
 if st.button("🎲 Enter"):
-    with st.spinner("Loading... Please wait..."):
-        time.sleep(2)  # simulate loading time
+    with st.spinner("Loading... Redirecting to your dashboard..."):
+        time.sleep(2)  # Simulated loading
         components.html(f"""
             <script>
                 window.location.href = "{redirect_url}";
