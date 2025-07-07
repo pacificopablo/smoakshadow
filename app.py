@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import time
 
 # Target redirect URL
@@ -40,7 +39,7 @@ st.markdown(f"""
     .welcome-header {{
         font-size: 2em;
         font-weight: 600;
-        color: #d4af37; /* Gold tone for elegance */
+        color: #d4af37;
         margin-bottom: 15px;
         text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
     }}
@@ -53,7 +52,7 @@ st.markdown(f"""
         font-size: 1.2em;
         padding: 12px 30px;
         border-radius: 8px;
-        background-color: #2e7d32; /* Deep green for professionalism */
+        background-color: #2e7d32;
         color: white;
         border: none;
         transition: all 0.3s ease;
@@ -71,15 +70,11 @@ st.markdown(f"""
 st.markdown('<div class="welcome-header">🃏 Welcome to Baccarat Fund Club</div>', unsafe_allow_html=True)
 st.markdown('<div class="welcome-text">Click the <strong>Enter</strong> button to access your dashboard</div>', unsafe_allow_html=True)
 
-# Enter button with loading spinner
+# Enter button with redirect
 if st.button("🎲 Enter"):
     with st.spinner("Redirecting to your dashboard..."):
         time.sleep(2)  # Simulated loading
-        components.html(f"""
-            <script>
-                window.location.href = "{redirect_url}";
-            </script>
-        """, height=0)
+        st.markdown(f'<meta http-equiv="refresh" content="0; url={redirect_url}">', unsafe_allow_html=True)
 
 # Optional footer for professionalism
 st.markdown('<div style="text-align: center; font-size: 0.8em; color: #bbb; margin-top: 20px;">© 2025 Baccarat Fund Club. All rights reserved.</div>', unsafe_allow_html=True)
